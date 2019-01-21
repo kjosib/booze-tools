@@ -93,7 +93,7 @@ class Scanner:
 		new_mark = (self.__mark if nr_chars < 0 else self.__start) + nr_chars
 		assert self.__start <= new_mark <= self.__mark
 		self.__mark = new_mark
-		self.__bol = new_mark == 0 or self.__text[new_mark-1]=='\n'
+		self.__bol = new_mark == 0 or self.__text[new_mark-1] in '\r\n'
 	def __iter__(self):
 		"""
 		This algorithm deliberately ignores a zero-width, zero-context match.
@@ -114,7 +114,7 @@ class Scanner:
 			else:
 				self.__mark = mark
 				trail = rulebase.get_trailing_context(rule_id)
-				if trail is None: self.__bol = text[mark-1]=='\n'
+				if trail is None: self.__bol = text[mark-1] in '\r\n'
 				else: self.less(trail)
 				action = rulebase.get_rule_action(rule_id)
 				token = self.invoke(action)

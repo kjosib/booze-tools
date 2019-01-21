@@ -148,6 +148,7 @@ def _BEGIN_():
 		return fn
 	def _bracket_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1:-1]]
 	def _shorthand_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1]]
+	def _dot_reference(scanner): return 'reference', scanner.env['DOT']
 	def _hex_escape(scanner): return 'c', int(scanner.matched_text()[2:], 16)
 	def _control(scanner): return 'c', 31 & ord(scanner.matched_text()[2:])
 	def _arbitrary_character(scanner): return 'c', ord(scanner.matched_text())
@@ -178,11 +179,12 @@ def _BEGIN_():
 	def ref(x): return PRELOAD['ASCII'][x]
 	
 	eof_charclass = regular.CharClass(charclass.EOF)
+	dollar_charclass = regular.CharClass(charclass.union(charclass.EOF, PRELOAD['ASCII']['vertical'].cls))
 	META.install_rule(expression=txt('^'), action=_metatoken, bol=(False, True))
-	META.install_rule(expression=txt('^^'), action=_metatoken, bol=(True, False))
-	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=1, action=lambda scanner:('$', eof_charclass))
+	META.install_rule(expression=txt('^^'), action=_metatoken, bol=(False, True))
+	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=1, action=lambda scanner:('$', dollar_charclass))
 	for c in '(|)?*+/': META.install_rule(expression=txt(c), action=_metatoken)
-	META.install_rule(expression=txt('.'), action=lambda scanner:scanner.env['DOT']) # BOOM!
+	META.install_rule(expression=txt('.'), action=_dot_reference) # BOOM!
 	for c in '[{': META.install_rule(expression=txt(c), action=_and_then(c))
 	META.install_rule(expression=txt('[^'), trail=-1, action=_and_then('^'))
 	META.install_rule(expression=txt('^'), condition='^', action=_and_then('['))

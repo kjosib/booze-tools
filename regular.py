@@ -186,7 +186,7 @@ class Alternation(Regular):
 		self.a.encode(src, dst, nfa, rank)
 		self.b.encode(src, dst, nfa, rank)
 	def length(self):
-		a,b = len(self.a), len(self.b)
+		a, b = self.a.length(), self.b.length()
 		if a==b: return a
 
 class Sequence(Regular):
@@ -196,7 +196,7 @@ class Sequence(Regular):
 		self.a.encode(src, midpoint, nfa, rank)
 		self.b.encode(midpoint, dst, nfa, rank)
 	def length(self):
-		a,b = len(self.a), len(self.b)
+		a,b = self.a.length(), self.b.length()
 		if None not in (a,b): return a+b
 
 class Inflection(Regular):
