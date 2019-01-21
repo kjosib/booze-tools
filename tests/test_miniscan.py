@@ -1,5 +1,5 @@
 import unittest
-import miniscan
+import miniscan, algorithms
 
 M = miniscan.META
 P = miniscan.PRELOAD['ASCII']
@@ -67,7 +67,7 @@ class TestBootstrap(unittest.TestCase):
 		result = list(s.scan('There was eating, drinking, and merriment all around, but the man did not eat.'))
 		self.assertEqual(['eat', ], result)
 	
-	def test_08_trailing_context_should_be_put_back(self):
+	def test_08_trailing_context_gets_put_back(self):
 		s = miniscan.Definition()
 		s.on(r'\d/\d')(lambda scanner:scanner.matched_text())
 		s.on(r'.')(None)
@@ -75,18 +75,12 @@ class TestBootstrap(unittest.TestCase):
 		expect = list('12')
 		self.assertEqual(expect, result)
 	
-	def test_10_bert_and_ernie(self):
+	def test_09_forgotten_action(self):
 		s = miniscan.Definition()
-		s.on('bert$')('bert') # match bert, but only at the end.
-		s.on(r'ernie/\s+bert')('ernie') # match ernie, but only if spaoe and bert follows.
-		s.on('.')(None) # Ignore all else.
-		for text, expect in [
-			('bert and ernie', ''),
-			('ernie and bert', 'bert'),
-			('ernie bert and', 'ernie'),
-			('ernie bert', 'ernie bert'),
-		]:
-			with self.subTest(text=text):
-				self.assertEqual(expect.split(), [t[0] for t in s.scan(text)])
+		s.on('ernie$')('ernie') # match ernie, but only at the end.
+		s.on(r'bert/\s+and') # match bert, but only if " and" follows. However, forget to provide an action,
+		with self.assertRaises(algorithms.MetaError):
+			s.on('.')(None) # triggering an exception at the next attempt to define a pattern.
+
 
 		

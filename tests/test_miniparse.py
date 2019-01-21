@@ -1,7 +1,7 @@
 """ A run-down of basic features, I suppose... """
 import unittest
 import operator
-import miniparse
+import miniparse, algorithms
 
 class TestMiniParse(unittest.TestCase):
 	def test_00_smoke_test(self):
@@ -35,4 +35,9 @@ class TestMiniParse(unittest.TestCase):
 			with self.subTest(expr=expr):
 				each_token = [(x,None) if x in '()+-*/' else ('number', x) for x in expr.split()]
 				self.assertEqual(answer, b.parse(each_token))
-
+	
+	def test_02_forgotten_action(self):
+		b = miniparse.MiniParse('S')
+		b.rule('S', 'a B')
+		with self.assertRaises(algorithms.MetaError):
+			b.rule('B', 'b c')

@@ -11,6 +11,7 @@ class Definition(interfaces.ScanRules):
 		self.__dfa:regular.DFA = None
 		self.__nfa = regular.NFA()
 		self.__minimize = minimize
+		self.__awaiting_action = False
 	
 	def initial_condition(self) -> str: pass
 	def get_trailing_context(self, rule_id: int): return self.__trails[rule_id]
@@ -18,11 +19,12 @@ class Definition(interfaces.ScanRules):
 	
 	def get_dfa(self) -> interfaces.FiniteAutomaton:
 		if self.__dfa is None:
+			if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the final pattern!')
 			self.__dfa = self.__nfa.subset_construction()
 			if self.__minimize: self.__dfa = self.__dfa.minimize_states().minimize_alphabet()
 		return self.__dfa
 	
-	def scan(self, text, *, start=None, env=None): yield from MiniScanner(definition=self, text=text, start=start, env=env)
+	def scan(self, text, *, start=None, env=None): return MiniScanner(definition=self, text=text, start=start, env=env)
 	
 	def install_subexpression(self, name:str, expression:regular.Regular):
 		assert isinstance(name, str) and name not in self.__subexpressions and len(name) > 1
@@ -52,6 +54,8 @@ class Definition(interfaces.ScanRules):
 		@scanner_definition.on(r'[A-Za-z_]+')
 		def word(scanner): return ('word', scanner.matched_text()) # Return a token.
 		"""
+		if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the previous pattern!')
+		self.__awaiting_action = True
 		bol, expression, trailing_context = rex.parse(META.scan(pattern, env=self.__subexpressions))
 		assert isinstance(expression, regular.Regular)
 		if not trailing_context: trail = None
@@ -63,6 +67,8 @@ class Definition(interfaces.ScanRules):
 			elif stem: trail = stem
 			else: raise algorithms.SemanticError(pattern, 'Variable stem and variable trailing context are not presently supported in the same pattern.')
 		def decorator(fn):
+			assert self.__awaiting_action
+			self.__awaiting_action = False
 			assert callable(fn) or isinstance(fn, str) or fn is None
 			self.install_rule(action=fn, expression=expression, bol=bol, condition=condition, trail=trail, rank=rank)
 			return fn

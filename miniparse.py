@@ -8,6 +8,7 @@ class MiniParse:
 		self.__start = start
 		self.__grammar = context_free.ContextFreeGrammar()
 		self.__hfa:context_free.DragonBookTable = None
+		self.__awaiting_action = False
 	
 	def left(self, symbols:list): self.__grammar.assoc(context_free.LEFT, symbols)
 	def right(self, symbols:list): self.__grammar.assoc(context_free.RIGHT, symbols)
@@ -35,8 +36,12 @@ class MiniParse:
 			def add(a,b): return a+b
 		"""
 		assert self.__hfa is None
+		if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the prior production rule.')
+		self.__awaiting_action = True
 		rhs, offsets = MiniParse.__analyze(rhs)
 		def decorate(fn=None):
+			assert self.__awaiting_action
+			self.__awaiting_action = False
 			if fn is None:
 				if len(rhs) == 1: message = None # Unit/renaming rule
 				elif len(offsets) == 1: message = ((lambda x:x), offsets) # Bracketing rule
@@ -47,6 +52,7 @@ class MiniParse:
 	def display(self): self.__grammar.display()
 	def get_hfa(self):
 		if self.__hfa is None:
+			if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the final production rule.')
 			self.__grammar.validate(self.__start)
 			self.__hfa = self.__grammar.lalr_construction(self.__start)
 		return self.__hfa

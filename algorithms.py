@@ -5,6 +5,9 @@ class LanguageError(ValueError): pass
 class ScanError(LanguageError): pass
 class ParseError(LanguageError): pass
 class SemanticError(LanguageError): pass
+class MetaError(LanguageError):
+	""" This gets raised if there's something wrong in the definition of a parser or scanner. """
+	pass
 
 def parse(tables:interfaces.ParserTables, combine, each_token, *, language=None, interactive=False):
 	"""
