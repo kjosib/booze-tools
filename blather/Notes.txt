@@ -25,5 +25,3 @@ and they follow the same sound-change rules in the process.
 It would be splendid to be able to write down the rules of interaction formally, and then
 rely on the computer to recover both verb and suffixes from some utterance.
 
-Possibly indirectly related, it would be cool to have a proper implementation of the real
-Aho/Corasick

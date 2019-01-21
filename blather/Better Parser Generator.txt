@@ -1,0 +1,125 @@
+A Better Parser Generator
+=========================
+
+Writing down the grammar and basic parsing mechanisms for a language should not be so complicated.
+
+Recursive descent parsers are:
+	easy enough to write by hand, 
+	tedious, and
+	prone to error at scale.
+
+Parser Generators based on straight BNF, such as BISON or YACC, can be
+	powerful in terms of the grammars that they can accept, but
+	annoyingly duplicative.
+
+EBNF is a fine enhancement over BNF for summarizing a grammar in a lot less writing.
+	It's tricky to embed actions properly into a practical generator that understands EBNF.
+	The extra features in EBNF are principally useful for embedding repetition and alternation into the middle of a production.
+	All these can be mechanically translated to plain BNF by introducing anonymous implied non-terminals.
+	A trivial extension allows them to see symbols to their left in the named production.
+		The portion of the stack IN VIEW at the action extends as far as the named LHS,
+		but when the reduction fires, it only actually CONSUMES as many symbols as are in the enclosed portion of the rule.
+		"Internal Actions" then amount to anonymous epsilon productions.
+
+MACROS:
+Often a language will have many similar constructions, such as different sorts of delimited lists.
+It's nice to be able to factor them into something like a function call which PRODUCES PRODUCTION RULES.
+Any semantic references passed into the macro expansion should have LEXICAL SCOPE.
+This calls for a dynamic "macro expansion environment".
+It's probably sensible to demand no forward references to macros.
+Macros would thus be able to take, as parameters, either
+	symbols,
+	semantic references, or
+	parse actions (which may CONTAIN semantic refs, and thus would require a fix-up).
+There is probably no need for blueprint references to be passed in.
+
+Semantic References are best understood as indexing some particular distance into the value stack.
+Reserved words and punctuation need not push anything onto the value stack; they can merely yield a state change.
+In that light, you need to be able to count semantic values as you read through a production.
+When a value is introduced, it is defined as its offset from the left end of the production. However, when it's actually used,
+the entire production will have been shifted onto the value stack, so it needs to be INTERPRETED in light of the number of
+values shifted since the last "zero point". These "zero points" occur at the beginning of NAMED productions.
+Anonymous productions (introduced by EBNF constructs, internal actions, or macro expansions) would occur in a context where the relevant "zero point" isn't the same as the size of the reduction.
+
+Grammar definitions should be language-neutral and process-neutral: they must not embed expressions in a specific target language, but rather:
+	some sort of generic AST blueprints, and
+	named actions for integrating with other layers of a real application.
+So for example, by default a 'repetition' construct in EBNF could mean to create a list in any target language.
+These could be done by standard implied actions in the de-sugaring process, especially if the thing-to-be-listed is clearly indicated, perhaps by a /list tag.
+
+One nice approach is:
+	Declared non-terminals correspond to 
+	"Actions" 
+
+
+Dealing with Unit Productions:
+Simplistically, "unit production rules" are those which have exactly a single symbol on the RHS and no specific "parse action".
+Handling these specially can give a more-efficient parser: Instead of producing a unit-production/unit-reduction, simply shift the unit symbol into the state following the corresponding nonterminal.
+If a given nonterminal has ONLY unit production rules, then the edge for the nonterminal itself may be left out of the process; this results in a smaller parse table.
+
+
+
+An Approach to Context Sensitivity:
+===================================
+RUBY as it might be parsed: During a statement, one or more here-doc terminators may be picked up. The here-doc starts on the first line after the expression closes. So upon recognition of a here-doc terminator, it needs to go into a list of here-docs to be consumed (and possibly parsed for interpolation expressions), but only the parser knows when a statement is finished.
+
+RUBY ignores most line endings, but they are significant at the end of a statement. Thus: Most of the time (perhaps by pragma-ignore?) the parser state would treat a newline token as a NOP, but on the rare occasion when they appear explicitly as a terminal in a production, then those states have different instructions in the "newline" column. And finally, it's important to reduce <statement> BEFORE asking the lexer for another token, to make sure it can be told to slurp any here-docs. So that means, after shifting, if the parser is in a reduce-only state (all the same reduction) then the parser should perform that reduction immediately before waiting for a look-ahead.
+
+
+Defining a Scanner:
+===================
+Different "models of computation" suit word-structure and phrase-structure, so it's normal to define a separate scanner and parser.
+A traditional scanner-generator lets you work with ordinary regular expressions on a leftmost-longest match rule with backtracking as needed.
+Better ones also support:
+	Named common sub-expressions.
+	Named character classes, which may include several pre-defined ones.
+	Unicode -- which is generally a matter of:
+		working by code-point instead of binary-ASCII,
+		using a character classifier that doesn't depend on a small upper bound, and
+		adopting the Unicode character class definitions.
+	Start-states, which may be indirectly defined as sets of (named) rule-groups, or alternately groups of rules may explicitly include or exclude start states.
+	Reserved words after-the-fact can result in much smaller scanner tables:
+		Any rule that matches a reserved word gets a test for such inserted before the normal response.
+		The set of reserved words not otherwise matched contribute to an error message about inadequate coverage.
+		The above logic must be repeated for each start state.
+		Hint: Run each RW through the DFSM to find which actions need tests and which RWs fail to match.
+		Hint: A dictionary of reserved words would provide token IDs and start-state membership sets; these last can be combined to equivalence classes.
+	Rule priority levels:
+		Allows 'FOO' to precede '[A-Z]*' when the text is 'FOOBAR'
+		Needs a means to declare as much.
+		Hint: solve it in the determinization phase.
+	Some line-oriented features like not including line-end characters in the [everything] character class (by default).
+	Some way to handle (partial) indent-grammars and picture-grammars like YAML.
+
+
+Conventional tools let you attach arbitrary code to each match.
+In practice, you generally only care for a limited set of distinct actions, but parameterized by the actual match.
+A language-neutral solution would allow for the definition of "action categories" and some enumeration of "tokens" which parameterize the actions.
+One built-in action is always IGNORE which allows for the generated scanner to make more efficient decisions.
+The most typical other actions would be EMIT and ERROR.
+It may also be worthwhile to define start-state management actions JUMP, PUSH, POP, and maybe some way to predicate those on (named) externally-defined criteria.
+Small combinations of these could allow an essentially language-neutral and process-neutral definition for MOST of what you'll ever need to scan.
+
+In practice, operating such a scanner would mean supplying a driver for the named actions.
+Translating the scanner into whatever target language includes generating an interface definition for such a driver.
+A typical version might translate scanner actions to method calls accepting a token ID and a match reference.
+The match reference provides the actual text matched as well as forensic data for error reporting.
+One simple way to do forensic data is as follows:
+	Create a list of token boundaries as integers.
+	Each time a token is matched its endpoint goes into the list.
+	A Match Reference is just an integer index into that list.
+	For convenience, maybe the text of the most recent match is part of the action calling convention.
+	Error processing is the exceptional case, so it may rewind files to determine line/column.
+
+Integrating the Pipeline:
+=========================
+
+Should:
+	the parser call the scanner when it needs a token?
+	the scanner call the parser with each scanned token?
+	some other loop call both?
+
+It doesn't matter: the nature of the application should drive such a decision. Generally parsing is "the easy part" of most
+interesting applications of language-driven systems, so performance should be an afterthought. Therefore, no particular
+control structure is perfect. A typical resolution is to provide the mechanism and the common use cases as distinct APIs.
+
