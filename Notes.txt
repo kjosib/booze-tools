@@ -1,0 +1,29 @@
+Roadmap:
+
+A MacroParse module should support embedded actions, quantifiers, etc. using a message-based approach
+to the combiner.
+
+Location tracking is going to have to come on-scene because any kind of serious semantic error
+reporting requires it.
+
+A Greedy-Generalized-LALR(1) parsing facility would be a fun enhancement. The essential concept
+is to shift when possible, but store a backtracking entry when a reduction is ALSO possible.
+So that means a given <state,token> cell needs to be able to carry both the shifts and the reductions
+which may apply in the event of an unresolved conflict, and this basically means an alternative
+to the "determinize" step in the present LALR construction.
+
+An extension to the above idea is context predicates, which could essentially add additional
+criteria to the success or failure of specific rules in the HFA.
+
+A further, perhaps also-related, idea was the development of context-sensitive tools. An example
+use case is in analyzing the morphology of sound combinations and spelling changes when inflecting
+Korean words. For example: regular verbs fall in two categories based on the penultimate vowel in
+the dictionary form. Suffixes can then interact with that vowel in various ways, but principally
+depending on features of the initial syllable of that affix. What's more, suffixes can combine,
+and they follow the same sound-change rules in the process.
+
+It would be splendid to be able to write down the rules of interaction formally, and then
+rely on the computer to recover both verb and suffixes from some utterance.
+
+Possibly indirectly related, it would be cool to have a proper implementation of the real
+Aho/Corasick
