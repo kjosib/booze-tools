@@ -53,14 +53,17 @@ class Definition(interfaces.ScanRules):
 		def word(scanner): return ('word', scanner.matched_text()) # Return a token.
 		"""
 		bol, expression, trailing_context = rex.parse(META.scan(pattern, env=self.__subexpressions))
-		if trailing_context is None: trail = None
-		if trailing_context is not None:
-			stem, trail = len(expression), len(trailing_context)
+		assert isinstance(expression, regular.Regular)
+		if not trailing_context: trail = None
+		else:
+			assert isinstance(trailing_context, regular.Regular), trailing_context
+			stem, trail = expression.length(), trailing_context.length()
 			expression = regular.Sequence(expression, trailing_context)
 			if trail: trail = -trail
 			elif stem: trail = stem
 			else: raise algorithms.SemanticError(pattern, 'Variable stem and variable trailing context are not presently supported in the same pattern.')
 		def decorator(fn):
+			assert callable(fn) or isinstance(fn, str) or fn is None
 			self.install_rule(action=fn, expression=expression, bol=bol, condition=condition, trail=trail, rank=rank)
 			return fn
 		return decorator
@@ -81,7 +84,10 @@ class MiniScanner(algorithms.Scanner):
 		self.__definition = definition
 		self.env = env
 		super().__init__(text=text, automaton=definition.get_dfa(), rulebase=definition, start=start)
-	def invoke(self, action): return action(self)
+	def invoke(self, action):
+		if callable(action): return action(self)
+		if isinstance(action, str): return action, self.matched_text()
+		assert action is None
 
 #########################
 # A pattern parser is easy to build using the miniparse module:

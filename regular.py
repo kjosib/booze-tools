@@ -173,19 +173,19 @@ class NFA:
 
 class Regular:
 	def encode(self, src:int, dst:int, nfa:NFA, rank): raise NotImplementedError(type(self))
-	def __len__(self): raise NotImplementedError(type(self))
+	def length(self): raise NotImplementedError(type(self)) # Can't use __len__ because Python runtime demands an integer.
 
 class CharClass(Regular):
 	def __init__(self, cls:list): self.cls = cls
 	def encode(self, src:int, dst:int, nfa:NFA, rank): nfa.link(src, dst, self.cls)
-	def __len__(self): return 1
+	def length(self): return 1
 
 class Alternation(Regular):
 	def __init__(self, a:Regular, b:Regular): self.a, self.b = a,b
 	def encode(self, src:int, dst:int, nfa:NFA, rank):
 		self.a.encode(src, dst, nfa, rank)
 		self.b.encode(src, dst, nfa, rank)
-	def __len__(self):
+	def length(self):
 		a,b = len(self.a), len(self.b)
 		if a==b: return a
 
@@ -195,13 +195,13 @@ class Sequence(Regular):
 		midpoint = nfa.new_node(rank)
 		self.a.encode(src, midpoint, nfa, rank)
 		self.b.encode(midpoint, dst, nfa, rank)
-	def __len__(self):
+	def length(self):
 		a,b = len(self.a), len(self.b)
 		if None not in (a,b): return a+b
 
 class Inflection(Regular):
 	def __init__(self, sub:Regular): self.sub = sub
-	def __len__(self): return None
+	def length(self): return None
 
 class Star(Inflection):
 	def encode(self, src:int, dst:int, nfa:NFA, rank):
@@ -246,7 +246,7 @@ class Counted(Regular):
 				self.sub.encode(p1, p2, nfa, rank)
 				nfa.link_epsilon(p2, dst)
 				p1 = p2
-	def __len__(self):
+	def length(self):
 		if self.m == self.n:
 			x = len(self.sub)
 			if x is not None: return x * self.m
