@@ -41,6 +41,10 @@ The `.install_rule` methods are for internal use: You should not need to use the
 but it may be instructive to see what calls them. If you want to look at the generated discrete
 finite automaton, the `.get_dfa()` method will supply your needs.
 
+The architecture is intended to be easy to extend, approachable, and informative. 
+
+See the wiki (linked above) for a bit more information and some differences in default behavior vs. other tools.
+
 ### miniparse
 This is your basic LALR(1) parser accepting BNF rules, with one key extra-fancy feature:
 * You can have more than one "start" symbol within a single grammar, and select among them at parse time.
@@ -53,3 +57,5 @@ in the attribute cell from the scanner.
 The best way to see how to write a `miniparse` grammar is to look in the unit tests and also the
 defininition of the "rex" object within the `miniscan` module: it defines a grammar for regular
 expression patterns.
+
+The wiki page (linked above) contains a bit more information and some differences in default behavior vs. other tools.
