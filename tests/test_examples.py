@@ -33,6 +33,8 @@ class TestJson(unittest.TestCase):
     }
 }
 		"""
-		entry = json.parse(text)
-		self.assertEqual('Standard Generalized Markup Language', entry['glossary']['GlossDiv']['GlossList']['GlossEntry']['GlossTerm'])
+		data = json.parse(text)
+		entry = data['glossary']['GlossDiv']['GlossList']['GlossEntry']
+		self.assertEqual('Standard Generalized Markup Language', entry['GlossTerm'])
+		self.assertEqual(["GML", "XML"], entry['GlossDef']['GlossSeeAlso'])
 		
