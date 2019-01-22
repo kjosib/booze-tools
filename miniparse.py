@@ -49,6 +49,19 @@ class MiniParse:
 			else: message = (fn, offsets)
 			self.__grammar.rule(lhs, rhs, message, prec_sym)
 		return decorate
+	
+	def renaming(self, lhs:str, *alternatives):
+		"""
+		Facilitates those "X => A | B | C | D" type rules you often find in real grammars.
+		"""
+		if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the prior production rule.')
+		for branch in alternatives:
+			rhs, offsets = MiniParse.__analyze(branch)
+			if len(rhs) == 1: message = None  # Unit/renaming rule
+			elif len(offsets) == 1: message = ((lambda x: x), offsets)  # Bracketing rule
+			else: raise algorithms.MetaError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.'%branch)
+			self.__grammar.rule(lhs, rhs, message, None)
+	
 	def display(self): self.__grammar.display()
 	def get_hfa(self):
 		if self.__hfa is None:

@@ -56,7 +56,10 @@ class Definition(interfaces.ScanRules):
 		"""
 		if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the previous pattern!')
 		self.__awaiting_action = True
-		bol, expression, trailing_context = rex.parse(META.scan(pattern, env=self.__subexpressions))
+		try: bol, expression, trailing_context = rex.parse(META.scan(pattern, env=self.__subexpressions))
+		except algorithms.ParseError as e:
+			sequence = [token[0] for token in META.scan(pattern, env=self.__subexpressions)]
+			raise algorithms.MetaError('Broken regular expression pattern', pattern, 'scanned as', sequence) from e
 		assert isinstance(expression, regular.Regular)
 		if not trailing_context: trail = None
 		else:
@@ -74,6 +77,7 @@ class Definition(interfaces.ScanRules):
 			return fn
 		return decorator
 	def condition(self, *condition): return ConditionContext(self, *condition)
+	
 
 class ConditionContext:
 	""" I'd like to be able to use Python's context manager protocol to simplify writing definitions of scan conditions. """
@@ -152,12 +156,20 @@ def _BEGIN_():
 			scanner.enter(condition)
 			return _metatoken(scanner)
 		return fn
+	def _instead(condition):
+		def fn(scanner):
+			scanner.less(0)
+			scanner.enter(condition)
+		return fn
 	def _bracket_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1:-1]]
 	def _shorthand_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1]]
 	def _dot_reference(scanner): return 'reference', scanner.env['DOT']
 	def _hex_escape(scanner): return 'c', int(scanner.matched_text()[2:], 16)
 	def _control(scanner): return 'c', 31 & ord(scanner.matched_text()[2:])
 	def _arbitrary_character(scanner): return 'c', ord(scanner.matched_text())
+	def _class_initial_close_bracket(scanner):
+		scanner.enter('[')
+		return _arbitrary_character(scanner)
 	def _arbitrary_escape(scanner): return 'c', ord(scanner.matched_text()[1:])
 	def _number(scanner): return 'number', int(scanner.matched_text())
 	
@@ -166,6 +178,7 @@ def _BEGIN_():
 	for codepoint, mnemonic in enumerate('NUL SOH STX ETX EOT ENQ ACK BEL BS TAB LF VT FF CR SO SI DLE DC1 DC2 DC3 DC4 NAK SYN ETB CAN EM SUB ESC FS GS RS US SP'.split()):
 		PRELOAD['ASCII'][mnemonic] = regular.CharClass(charclass.singleton(codepoint))
 	PRELOAD['ASCII']['DEL'] = regular.CharClass(charclass.singleton(127))
+	PRELOAD['ASCII']['ANY'] = regular.CharClass(charclass.UNIVERSAL)
 	PRELOAD['ASCII']['vertical'] = regular.CharClass([10, 14])
 	for letter, cls in [
 		('d', [48, 58]),
@@ -190,17 +203,22 @@ def _BEGIN_():
 	META.install_rule(expression=txt('^^'), action=_metatoken, bol=(False, True))
 	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=1, action=lambda scanner:('$', dollar_charclass))
 	for c in '(|)?*+/': META.install_rule(expression=txt(c), action=_metatoken)
-	META.install_rule(expression=txt('.'), action=_dot_reference) # BOOM!
-	for c in '[{': META.install_rule(expression=txt(c), action=_and_then(c))
+	META.install_rule(expression=txt('.'), action=_dot_reference)
+	META.install_rule(expression=txt('{'), action=_and_then('{'))
+	META.install_rule(expression=txt('['), action=_and_then('[.'))
 	META.install_rule(expression=txt('[^'), trail=-1, action=_and_then('^'))
-	META.install_rule(expression=txt('^'), condition='^', action=_and_then('['))
+	META.install_rule(expression=txt('^'), condition='^', action=_and_then('[.'))
+	with META.condition('[.') as start_class:
+		start_class.install_rule(expression=txt(']'), action = _class_initial_close_bracket)
+		start_class.install_rule(expression=txt('-'), action = _arbitrary_character)
+		start_class.install_rule(expression=ref('ANY'), action = _instead('['))
 	with META.condition('[') as in_class:
 		in_class.install_rule(expression=txt(']'), action=_and_then(None))
 		in_class.install_rule(expression=txt('&&'), action=_metatoken)
 		in_class.install_rule(expression=txt('&&^'), trail=-1, action=_and_then('^'))
 		in_class.install_rule(expression=txt('-'), action=_metatoken)
 		in_class.install_rule(expression=txt('-]'), trail=-1, action=_arbitrary_character)
-	with META.condition(None, '[', '[.') as anywhere:
+	with META.condition(None, '[') as anywhere:
 		anywhere.install_rule(expression=seq(txt('{'), regular.Plus(ref('alpha')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\')
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]: META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('hex'), n, n)), action=_hex_escape)

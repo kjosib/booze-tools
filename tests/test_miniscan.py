@@ -1,5 +1,5 @@
 import unittest
-import miniscan, algorithms
+import miniscan, algorithms, charclass, regular
 
 M = miniscan.META
 P = miniscan.PRELOAD['ASCII']
@@ -9,7 +9,18 @@ class TestBootstrap(unittest.TestCase):
 		self.assertEqual([], list(M.scan('')))
 		self.assertEqual(1, len(list(M.scan("a"))))
 		M.get_dfa().stats()
+	
+	def test_10_charclass_beginning_with_minus(self):
+		result = list(M.scan(r'[-x]'))
+		print(result)
+		k = miniscan.rex.parse(result, language='Regular')
+		assert isinstance(k, regular.CharClass)
+		assert charclass.in_class(k.cls, ord('-'))
+		assert charclass.in_class(k.cls, ord('x'))
+		assert not charclass.in_class(k.cls, ord('a'))
 		
+
+class TestMiniScan(unittest.TestCase):
 	def test_01_simple_tokens_with_rank_feature(self):
 		s = miniscan.Definition()
 		s.on('\s+')(None) # Ignore spaces except inasmuch as they separate tokens.
@@ -82,5 +93,3 @@ class TestBootstrap(unittest.TestCase):
 		with self.assertRaises(algorithms.MetaError):
 			s.on('.')(None) # triggering an exception at the next attempt to define a pattern.
 
-
-		
