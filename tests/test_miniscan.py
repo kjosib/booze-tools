@@ -93,3 +93,14 @@ class TestMiniScan(unittest.TestCase):
 		with self.assertRaises(algorithms.MetaError):
 			s.on('.')(None) # triggering an exception at the next attempt to define a pattern.
 
+	def test_10_charclass_intersection(self):
+		""" Exercise the canonical "consonants" example. """
+		s = miniscan.Definition()
+		s.let('vowel', r'[AEIOUaeiou]')
+		s.let('consonant', r'[{alpha}&&^{vowel}]')
+		s.on('{consonant}+')(lambda scanner:scanner.matched_text())
+		s.on('{ANY}')(None)
+		original_text = 'To sit in solemn silence on a dull dark dock,'
+		result = '-'.join(s.scan(original_text))
+		expect = 'T-s-t-n-s-l-mn-s-l-nc-n-d-ll-d-rk-d-ck'
+		self.assertEqual(expect, result)
