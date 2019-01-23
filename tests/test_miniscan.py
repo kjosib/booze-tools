@@ -10,15 +10,18 @@ class TestBootstrap(unittest.TestCase):
 		self.assertEqual(1, len(list(M.scan("a"))))
 		M.get_dfa().stats()
 	
-	def test_10_charclass_beginning_with_minus(self):
-		result = list(M.scan(r'[-x]'))
-		print(result)
-		k = miniscan.rex.parse(result, language='Regular')
-		assert isinstance(k, regular.CharClass)
-		assert charclass.in_class(k.cls, ord('-'))
-		assert charclass.in_class(k.cls, ord('x'))
-		assert not charclass.in_class(k.cls, ord('a'))
-		
+	def test_01_confusing_charclass(self):
+		for spec, inside, outside in [
+			(r'[-x]', '-x', 'Aa'), # contains minus
+			(r'[^]^abc]', 'xX\n', '^]abc'), # negates; contains close-bracket
+			(r'[^-]^abc]', 'xX\n', '-]^abc'), # contains both tricky characters
+		]:
+			with self.subTest(spec=spec):
+				tokens = list(M.scan(spec))
+				k = miniscan.rex.parse(tokens, language='Regular')
+				assert isinstance(k, regular.CharClass)
+				for c in inside: assert charclass.in_class(k.cls, ord(c))
+				for c in outside: assert not charclass.in_class(k.cls, ord(c))
 
 class TestMiniScan(unittest.TestCase):
 	def test_01_simple_tokens_with_rank_feature(self):
@@ -104,3 +107,4 @@ class TestMiniScan(unittest.TestCase):
 		result = '-'.join(s.scan(original_text))
 		expect = 'T-s-t-n-s-l-mn-s-l-nc-n-d-ll-d-rk-d-ck'
 		self.assertEqual(expect, result)
+	
