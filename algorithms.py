@@ -64,6 +64,7 @@ class Scanner:
 	ranks. The longest-match heuristic breaks ties among the highest ranked rules that match.
 	"""
 	def __init__(self, *, text:str, automaton:interfaces.FiniteAutomaton, rulebase:interfaces.ScanRules, start=None):
+		if not isinstance(text, str): raise ValueError('text argument should be a string, not a ', type(text))
 		self.__text = text
 		self.__automaton = automaton
 		self.__rulebase = rulebase
