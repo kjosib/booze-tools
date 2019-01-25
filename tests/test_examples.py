@@ -6,6 +6,7 @@ class TestJson(unittest.TestCase):
 	
 	def test_00_smoke_test(self):
 		self.assertEqual(25.2, json.parse('25.2'))
+		self.assertEqual(chr(255), json.parse(r'"\u00ff"'))
 	
 	def test_01_glossary_entry(self):
 		""" See https://json.org/example.html """
