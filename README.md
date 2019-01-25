@@ -7,8 +7,10 @@ For now there are two major components. Eventually there will be more. These are
 
 # Priorities?
 * These operate within a Python environment.
-* They have some features not found in other such tools, and
-* The code is deliberately kept simple, small and well-factored, aiming for suitability in an instructional context.
+* They have some features not found in other such tools.
+* The code is deliberately kept simple, small and well-factored:
+    * Easy to extend, approachable, and informative. 
+    * Aiming for suitability in an instructional context.
 * These modules do not generate code:
     * They plug directly into your application and work right away.
     * This makes them excellent for rapid prototyping.
