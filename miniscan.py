@@ -180,19 +180,24 @@ def _BEGIN_():
 	PRELOAD['ASCII']['DEL'] = regular.CharClass(charclass.singleton(127))
 	PRELOAD['ASCII']['ANY'] = regular.CharClass(charclass.UNIVERSAL)
 	PRELOAD['ASCII']['vertical'] = regular.CharClass([10, 14])
-	for letter, cls in [
-		('d', [48, 58]),
-		('digit', [48, 58]),
-		('upper', [65, 91]),
-		('lower', [97, 123]),
-		('alpha', [65, 91, 97, 123]),
-		('l', [65, 91, 97, 123]), # L for Letter
-		('alnum', [48, 58, 65, 91, 97, 123]),
-		('hex', [48, 58, 65, 71, 95, 101]),
-		('w', [48, 58, 65, 91, 95, 96, 97, 123]),
+	def bootstrap_charclass(spec:str):
+		# Trivial conversion makes it easier to write down preloaded character classes.
+		return [ord(c)+(i%2) for i,c in enumerate(spec)]
+	for letter, spec in [
+		('d', '09'),
+		('digit', '09'),
+		('upper', 'AZ'),
+		('lower', 'az'),
+		('alpha', 'AZaz'),
+		('l', 'AZaz'), # L for Letter
+		('alnum', '09AZaz'),
+		('hex', '09AFaf'),
+		('w', '09AZ__az'),
 		('s', [8, 14, 32, 33]),
 		('h', [8, 10, 32, 33]),
 	]:
+		cls = bootstrap_charclass(spec) if isinstance(spec, str) else spec # After getting some things wrong...
+		assert cls == sorted(cls)
 		PRELOAD['ASCII'][letter] = regular.CharClass(cls)
 		PRELOAD['ASCII'][letter.upper()] = regular.CharClass(charclass.subtract(dot.cls, cls))
 	def ref(x): return PRELOAD['ASCII'][x]
