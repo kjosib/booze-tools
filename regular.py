@@ -27,7 +27,9 @@ class MetaClassifier(Classifier):
 		assert set(self.classes) == set(range(self.cardinality()))
 	def cardinality(self): return max(self.classes)+1
 	def classify(self, codepoint): return self.classes[bisect.bisect_right(self.bounds, codepoint)]
-	def display(self): pretty.print_grid([('-',)+self.bounds, self.classes,])
+	def display(self):
+		bound_repr = ["'"+chr(b) if 32 < b < 127 else b for b in self.bounds]
+		pretty.print_grid([('-', *bound_repr), self.classes,])
 
 class DFA(interfaces.FiniteAutomaton):
 	"""  """
@@ -52,7 +54,7 @@ class DFA(interfaces.FiniteAutomaton):
 		self.alphabet.display()
 		print('Initial:', self.initial)
 		head = ['*', '', ]+list(range(self.alphabet.cardinality()))
-		body = [[self.final.get(i,''), i, *row] for i, row in enumerate(self.states)]
+		body = [[self.final.get(i,''), i, *[s if s >= 0 else '' for s in row]] for i, row in enumerate(self.states)]
 		pretty.print_grid([head]+body)
 	
 	def minimize_states(self) -> "DFA":
