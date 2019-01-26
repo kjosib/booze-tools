@@ -7,7 +7,7 @@ class PassiveScanner(algorithms.Scanner):
 
 class MockRulebase(interfaces.ScanRules):
 	
-	def initial_condition(self) -> str: return None
+	def initial_condition(self): return None
 	
 	def get_trailing_context(self, rule_id: int): return None
 	
@@ -43,3 +43,25 @@ class TestNFA(unittest.TestCase):
 		self.assertEqual([(1,'j')], list(PassiveScanner(text='j', automaton=dfa, rulebase=MockRulebase())))
 		dfa = dfa.minimize_states().minimize_alphabet()
 		self.assertEqual([(1,'j')], list(PassiveScanner(text='j', automaton=dfa, rulebase=MockRulebase())))
+
+class TestAST(unittest.TestCase):
+	def test_00_lengths_behave_correctly(self):
+		"""
+		Explains the nature of computing the a-priori length of a regular expression.
+		This gets used in working out the details for trailing-context expressions.
+		"""
+		c = regular.CharClass([32, 128]) # The ascii printing characters :)
+		two = regular.Sequence(c,c) # Two of them in a row
+		assert c.length() == 1
+		assert two.length() == 2
+		assert regular.Alternation(c, c).length() == 1
+		assert regular.Alternation(two, two).length() == 2
+		assert regular.Alternation(c, two).length() is None
+		assert regular.Hook(c).length() is None
+		assert regular.Star(c).length() is None
+		assert regular.Plus(c).length() is None
+		assert regular.Counted(c, 4,4).length() == 4
+		assert regular.Counted(two, 4,4).length() == 8
+		assert regular.Counted(two, 3,4).length() is None
+		
+		

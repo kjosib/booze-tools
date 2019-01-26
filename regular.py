@@ -250,7 +250,7 @@ class Counted(Regular):
 				p1 = p2
 	def length(self):
 		if self.m == self.n:
-			x = len(self.sub)
+			x = self.sub.length()
 			if x is not None: return x * self.m
 
 		
