@@ -5,6 +5,8 @@ For now there are two major components. Eventually there will be more. These are
 * MiniParse -- Provides LALR(1) and operator-precedence grammar facilities (like Lemon, YACC, or Bison).
 * MiniScan -- Provides a DFA-based backtracking scanner (like Flex or Lex) with a few extra goodies.
 
+Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/wiki). A worked example is in [/example/](https://github.com/kjosib/booze-tools/tree/master/example).
+
 # Priorities?
 * These operate within a Python environment.
 * They have some features not found in other such tools.
