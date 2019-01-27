@@ -1,7 +1,7 @@
 """ Hook regular expression patterns up to method calls on a scanner object. """
 import interfaces, regular, algorithms, miniparse, charclass
 
-PRELOAD = {'ASCII': {}, }
+PRELOAD = {'ASCII': {k:regular.CharClass(cls) for k,cls in charclass.POSIX.items()}}
 
 class Definition(interfaces.ScanRules):
 	def __init__(self, *, minimize=True, mode='ASCII'):
@@ -180,26 +180,16 @@ def _BEGIN_():
 	PRELOAD['ASCII']['DEL'] = regular.CharClass(charclass.singleton(127))
 	PRELOAD['ASCII']['ANY'] = regular.CharClass(charclass.UNIVERSAL)
 	PRELOAD['ASCII']['vertical'] = regular.CharClass([10, 14])
-	def bootstrap_charclass(spec:str):
-		# Trivial conversion makes it easier to write down preloaded character classes.
-		return [ord(c)+(i%2) for i,c in enumerate(spec)]
-	for letter, spec in [
-		('d', '09'),
-		('digit', '09'),
-		('upper', 'AZ'),
-		('lower', 'az'),
-		('alpha', 'AZaz'),
-		('l', 'AZaz'), # L for Letter
-		('alnum', '09AZaz'),
-		('hex', '09AFaf'),
-		('w', '09AZ__az'),
-		('s', [8, 14, 32, 33]),
-		('h', [8, 10, 32, 33]),
+	PRELOAD['ASCII']['horizontal'] = regular.CharClass([8, 10, 32, 33])
+	for shorthand, longhand in [
+		('d', 'digit'),
+		('l', 'alpha'),
+		('w', 'word'),
+		('s', 'space'),
+		('h', 'horizontal'),
 	]:
-		cls = bootstrap_charclass(spec) if isinstance(spec, str) else spec # After getting some things wrong...
-		assert cls == sorted(cls)
-		PRELOAD['ASCII'][letter] = regular.CharClass(cls)
-		PRELOAD['ASCII'][letter.upper()] = regular.CharClass(charclass.subtract(dot.cls, cls))
+		PRELOAD['ASCII'][shorthand] = PRELOAD['ASCII'][longhand]
+		PRELOAD['ASCII'][shorthand.upper()] = regular.CharClass(charclass.subtract(dot.cls, PRELOAD['ASCII'][longhand].cls))
 	def ref(x): return PRELOAD['ASCII'][x]
 	
 	eof_charclass = regular.CharClass(charclass.EOF)
@@ -226,7 +216,7 @@ def _BEGIN_():
 	with META.condition(None, '[') as anywhere:
 		anywhere.install_rule(expression=seq(txt('{'), regular.Plus(ref('alpha')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\')
-		for c, n in [('x', 2), ('u', 4), ('U', 8)]: META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('hex'), n, n)), action=_hex_escape)
+		for c, n in [('x', 2), ('u', 4), ('U', 8)]: META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
 		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharClass([64,128])), action=_control)
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)

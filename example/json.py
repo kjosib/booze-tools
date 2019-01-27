@@ -63,7 +63,7 @@ escapes = {'b': 8, 't': 9, 'n': 10, 'f': 12, 'r': 13, }
 in_string.on(r'\\[bfnrt]')(lambda scanner:('character', chr(escapes[scanner.matched_text()[1]])))
 
 # Arbitrary Unicode BMP code point:
-@in_string.on(r'\\u{hex}{4}')
+@in_string.on(r'\\u{xdigit}{4}')
 def unicode_escape(scanner):
 	hex = scanner.matched_text()[2:]
 	value = int(hex, 16)

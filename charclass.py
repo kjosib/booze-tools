@@ -6,16 +6,37 @@ The second is to expand classes into a specific set of include/exclude booleans 
 a sorted sequence of bounding points.
 
 I've chosen to define the character-class data structure as a sorted list of lower bounds
-with implied exclusion below the first listed bound.
-Thus:
+with implied exclusion below the first listed bound. That is: a character is a member of
+the class exactly when an odd number of lower-bounds in the class are less-than-or-equal-to
+that character's codepoint value. (See the `in_class(...)` function.)
+
+The next segment provides for the manufacture of character classes idiomatically:
+singletons, ranges, and logical combinations (set operations).
+
+Of note, I treat -1 as the "end-of-file" character to make end-of-file rule processing
+blend in with the rest of the finite-automaton clockwork, but it is a bit special:
+"end-of-file" does not appear in the 'universal set' of characters or the complement
+of any class, so the only way to get it is expressly from an end-of-file rule or end-of-line
+trailing-context.
+
+Lower down in the file, I define standard POSIX-type character classes for the ASCII range.
+
+Note that locale-based POSIX character equivalents are not supported in this module.
+Digraphs (e.g. Czech or Spanish "ch") mean the concept works at a higher level than
+the individual code point, and would throw several things out of kilter.
+
 """
 import bisect, operator
 
+# How to tell if a character (by codepoint) is a member of the class:
+def in_class(cls:list, codepoint:int) -> bool: return bisect.bisect_right(cls, codepoint) % 2
+
+
+# Character class construction and set-operations:
 EMPTY = []
 UNIVERSAL = [0]
 EOF = [-1, 0]
 
-def in_class(cls:list, codepoint:int) -> bool: return bisect.bisect_right(cls, codepoint) % 2
 def singleton(codepoint:int) -> list: return [codepoint, codepoint + 1]
 def range_class(first, last) -> list: return [first, last+1] if first <= last else [last, first+1]
 def complement(cls:list) -> list:
@@ -40,3 +61,24 @@ def combine(op, x:list, y:list) -> list:
 def union(a:list, b:list) -> list: return combine(operator.or_, a, b)
 def intersect(a:list, b:list) -> list: return combine(operator.and_, a, b)
 def subtract(a:list, b:list) -> list: return intersect(a, complement(b))
+
+# POSIX classes for the ASCII range:
+# (See https://www.regular-expressions.info/posixbrackets.html)
+
+POSIX = {}
+POSIX['ascii'] = range_class(0, 127)
+POSIX['cntrl'] = range_class(0, 31)
+POSIX['blank'] = union(singleton(9), singleton(32))
+POSIX['space'] = union(range_class(9, 13), singleton(32))
+POSIX['digit'] = range_class(ord('0'), ord('9'))
+POSIX['upper'] = range_class(ord('A'), ord('Z'))
+POSIX['lower'] = range_class(ord('a'), ord('z'))
+POSIX['alpha'] = union(POSIX['upper'],  POSIX['lower'])
+POSIX['alnum'] = union(POSIX['digit'], POSIX['alpha'])
+POSIX['word']  = union(POSIX['alnum'], singleton(ord('_')))
+POSIX['xdigit'] = union(POSIX['digit'], union(range_class(ord('A'), ord('F')), range_class(ord('a'), ord('f'))))
+POSIX['print'] = subtract(POSIX['ascii'], POSIX['cntrl'])
+POSIX['graph'] = subtract(POSIX['print'], POSIX['space'])
+POSIX['punct'] = subtract(POSIX['graph'], POSIX['alnum'])
+
+assert all(cls == sorted(cls) for cls in POSIX.values())
