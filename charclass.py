@@ -67,7 +67,7 @@ def subtract(a:list, b:list) -> list: return intersect(a, complement(b))
 
 POSIX = {}
 POSIX['ascii'] = range_class(0, 127)
-POSIX['cntrl'] = range_class(0, 31)
+POSIX['cntrl'] = union(range_class(0, 31), singleton(127))
 POSIX['blank'] = union(singleton(9), singleton(32))
 POSIX['space'] = union(range_class(9, 13), singleton(32))
 POSIX['digit'] = range_class(ord('0'), ord('9'))
