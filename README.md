@@ -16,7 +16,7 @@ Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/w
 * These modules do not generate code:
     * They plug directly into your application and work right away.
     * This makes them excellent for rapid prototyping.
-    * Pickled automatons will be the next major feature.
+    * Pickled automatons will be part of the next major feature (MacroParse).
     * Code generation for other languages is in the foreseeable future.
 * Performance is accordingly NOT a top priority, but:
     * if someone wants to play with the profiler they are welcome, and
