@@ -17,7 +17,8 @@ if they want to make use of your syntax description most effectively.
 
 The sections significant to the `MacroParse` compiler are those distinguished by keywords
 drawn from the set {`Definitions`, `Conditions`, `Patterns`, `Precedence`, `Productions`}.
-Sections may appear in any order, and except for `Patterns`, each may appear at most once.
+Sections may appear in any order, and except for `Patterns`, each ought to appear at most once.
+(This is not enforced.)
 
 * `Patterns` sections are distinguished by an optional pattern-group name following the keyword.
 * `Productions` sections are adorned with the name of the start symbol (or alternatives)
