@@ -1,14 +1,14 @@
 """ Hook regular expression patterns up to method calls on a scanner object. """
-import interfaces, regular, algorithms, miniparse, charclass
+from boozetools import miniparse, charclass, algorithms, regular, interfaces
 
-PRELOAD = {'ASCII': {k:regular.CharClass(cls) for k,cls in charclass.POSIX.items()}}
+PRELOAD = {'ASCII': {k: regular.CharClass(cls) for k, cls in charclass.POSIX.items()}}
 
 class Definition(interfaces.ScanRules):
 	def __init__(self, *, minimize=True, mode='ASCII'):
 		self.__actions = []
 		self.__trails = []
 		self.__subexpressions = PRELOAD[mode].copy()
-		self.__dfa:regular.DFA = None
+		self.__dfa: regular.DFA = None
 		self.__nfa = regular.NFA()
 		self.__minimize = minimize
 		self.__awaiting_action = False
@@ -26,12 +26,12 @@ class Definition(interfaces.ScanRules):
 	
 	def scan(self, text, *, start=None, env=None): return MiniScanner(definition=self, text=text, start=start, env=env)
 	
-	def install_subexpression(self, name:str, expression:regular.Regular):
+	def install_subexpression(self, name:str, expression: regular.Regular):
 		assert isinstance(name, str) and name not in self.__subexpressions and len(name) > 1
 		assert isinstance(expression, regular.Regular)
 		self.__subexpressions[name] = expression
 	
-	def install_rule(self, *, action:callable, expression:regular.Regular, bol=(True, True), condition: (str, list, tuple)=None, trail:int=None, rank:int=0 ) -> int:
+	def install_rule(self, *, action:callable, expression: regular.Regular, bol=(True, True), condition: (str, list, tuple)=None, trail:int=None, rank:int=0) -> int:
 		rule_id = len(self.__actions)
 		self.__actions.append(action)
 		self.__trails.append(trail)
@@ -138,7 +138,7 @@ rex.rule('Item', 'c')(charclass.singleton)
 rex.rule('Item', '.c - .c')(charclass.range_class)
 rex.rule('Item', 'short')(lambda c:c.cls)
 @rex.rule('Item', 'reference')
-def classref(subex:regular.Regular):
+def classref(subex: regular.Regular):
 	if isinstance(subex, regular.CharClass): return subex.cls
 	else: raise algorithms.SemanticError('Reference is not to a character class, and so cannot be used within one.')
 
@@ -174,7 +174,8 @@ def _BEGIN_():
 	def _number(scanner): return 'number', int(scanner.matched_text())
 	
 	dot = PRELOAD['ASCII']['DOT'] = regular.CharClass([0, 10, 14])
-	for codepoint, char in [(0, '0'), (27, 'e'), *enumerate('abtnvfr', 7)]: PRELOAD['ASCII'][char] = regular.CharClass(charclass.singleton(codepoint))
+	for codepoint, char in [(0, '0'), (27, 'e'), *enumerate('abtnvfr', 7)]: PRELOAD['ASCII'][char] = regular.CharClass(
+		charclass.singleton(codepoint))
 	for codepoint, mnemonic in enumerate('NUL SOH STX ETX EOT ENQ ACK BEL BS TAB LF VT FF CR SO SI DLE DC1 DC2 DC3 DC4 NAK SYN ETB CAN EM SUB ESC FS GS RS US SP'.split()):
 		PRELOAD['ASCII'][mnemonic] = regular.CharClass(charclass.singleton(codepoint))
 	PRELOAD['ASCII']['DEL'] = regular.CharClass(charclass.singleton(127))
@@ -189,7 +190,8 @@ def _BEGIN_():
 		('h', 'horizontal'),
 	]:
 		PRELOAD['ASCII'][shorthand] = PRELOAD['ASCII'][longhand]
-		PRELOAD['ASCII'][shorthand.upper()] = regular.CharClass(charclass.subtract(dot.cls, PRELOAD['ASCII'][longhand].cls))
+		PRELOAD['ASCII'][shorthand.upper()] = regular.CharClass(
+			charclass.subtract(dot.cls, PRELOAD['ASCII'][longhand].cls))
 	def ref(x): return PRELOAD['ASCII'][x]
 	
 	eof_charclass = regular.CharClass(charclass.EOF)
@@ -217,7 +219,7 @@ def _BEGIN_():
 		anywhere.install_rule(expression=seq(txt('{'), regular.Plus(ref('alpha')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\')
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]: META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
-		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharClass([64,128])), action=_control)
+		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharClass([64, 128])), action=_control)
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)
 		anywhere.install_rule(expression=dot, action=_arbitrary_character)

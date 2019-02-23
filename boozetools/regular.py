@@ -2,9 +2,8 @@
 
 import typing, bisect, operator
 
-import interfaces
-from foundation import *
-import pretty, charclass
+from boozetools.foundation import *
+from boozetools import charclass, pretty, interfaces
 
 
 class Classifier:
@@ -29,7 +28,7 @@ class MetaClassifier(Classifier):
 	def classify(self, codepoint): return self.classes[bisect.bisect_right(self.bounds, codepoint)]
 	def display(self):
 		bound_repr = ["'"+chr(b) if 32 < b < 127 else b for b in self.bounds]
-		pretty.print_grid([('-', *bound_repr), self.classes,])
+		pretty.print_grid([('-', *bound_repr), self.classes, ])
 
 class DFA(interfaces.FiniteAutomaton):
 	"""  """
@@ -55,7 +54,7 @@ class DFA(interfaces.FiniteAutomaton):
 		print('Initial:', self.initial)
 		head = ['*', '', ]+list(range(self.alphabet.cardinality()))
 		body = [[self.final.get(i,''), i, *[s if s >= 0 else '' for s in row]] for i, row in enumerate(self.states)]
-		pretty.print_grid([head]+body)
+		pretty.print_grid([head] + body)
 	
 	def minimize_states(self) -> "DFA":
 		""" Let's try Moore's Algorithm: It's easier to get right. """

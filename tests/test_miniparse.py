@@ -1,7 +1,8 @@
 """ A run-down of basic features, I suppose... """
 import unittest
 import operator
-import miniparse, algorithms
+from boozetools import miniparse, algorithms
+
 
 class TestMiniParse(unittest.TestCase):
 	def test_00_smoke_test(self):

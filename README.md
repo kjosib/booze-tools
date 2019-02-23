@@ -23,7 +23,7 @@ Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/w
     * contributions in that vein will be accepted as long as they are consistent with the higher priorities.
 
 # What Else?
-There is a complete worked example JSON scanner/parser in the `samples` folder. It has a lot of commentary to walk you through setting up both scanner and parser.
+There is a complete worked example JSON scanner/parser in the `example` folder. It has a lot of commentary to walk you through setting up both scanner and parser.
 
 There are unit tests. They're not vast and imposing, but they exercise the interface both directly and via the example code.
 

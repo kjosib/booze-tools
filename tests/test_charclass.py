@@ -1,5 +1,6 @@
 import unittest
-import charclass
+from boozetools import charclass
+
 
 class TestCharClass(unittest.TestCase):
 	def setUp(self):

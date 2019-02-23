@@ -1,6 +1,7 @@
 import unittest
 
-import context_free, algorithms
+from boozetools import context_free, algorithms
+
 
 def collect(*args): return args
 

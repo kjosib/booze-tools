@@ -1,6 +1,8 @@
 import unittest
+import os
 
 from example import json
+from boozetools.macroparse import compiler
 
 # See https://json.org/example.html
 GLOSSARY_JSON = """
@@ -39,4 +41,9 @@ class TestJson(unittest.TestCase):
 		entry = data['glossary']['GlossDiv']['GlossList']['GlossEntry']
 		self.assertEqual('Standard Generalized Markup Language', entry['GlossTerm'])
 		self.assertEqual(["GML", "XML"], entry['GlossDef']['GlossSeeAlso'])
-		
+
+class TestMacroJson(unittest.TestCase):
+	
+	def test_00_smoke_test(self):
+		example_folder = os.path.dirname(json.__file__)
+		automaton = compiler.compile_file(os.path.join(example_folder, 'json.md'))

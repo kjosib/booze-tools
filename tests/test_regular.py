@@ -1,6 +1,7 @@
 import unittest
 
-import regular, algorithms, interfaces
+from boozetools import algorithms, regular, interfaces
+
 
 class PassiveScanner(algorithms.Scanner):
 	def invoke(self, action): return action, self.matched_text()

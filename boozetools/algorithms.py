@@ -1,5 +1,6 @@
 """ The essential algorithms are given in this file. """
-import interfaces
+from boozetools import interfaces
+
 
 class LanguageError(ValueError): pass
 class ScanError(LanguageError): pass
@@ -9,7 +10,7 @@ class MetaError(LanguageError):
 	""" This gets raised if there's something wrong in the definition of a parser or scanner. """
 	pass
 
-def parse(tables:interfaces.ParserTables, combine, each_token, *, language=None, interactive=False):
+def parse(tables: interfaces.ParserTables, combine, each_token, *, language=None, interactive=False):
 	"""
 	The canonical table-driven LR parsing algorithm. As much as possible is left abstract.
 	Perhaps unfortunately, there's no explicit support for location tracking here, although
@@ -63,7 +64,7 @@ class Scanner:
 	but a powerful and fast alternative is built into the DFA generator in the form of rule priority
 	ranks. The longest-match heuristic breaks ties among the highest ranked rules that match.
 	"""
-	def __init__(self, *, text:str, automaton:interfaces.FiniteAutomaton, rulebase:interfaces.ScanRules, start=None):
+	def __init__(self, *, text:str, automaton: interfaces.FiniteAutomaton, rulebase: interfaces.ScanRules, start=None):
 		if not isinstance(text, str): raise ValueError('text argument should be a string, not a ', type(text))
 		self.__text = text
 		self.__automaton = automaton

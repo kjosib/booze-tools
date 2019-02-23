@@ -1,13 +1,14 @@
 """ No frills. Plenty useful. """
 
-import context_free, algorithms
+from boozetools import context_free, algorithms
+
 
 class MiniParse:
 	""" Connects BNF production rules directly to Python functions. No frills. Very useful as-is. """
 	def __init__(self, *start):
 		self.__start = start
 		self.__grammar = context_free.ContextFreeGrammar()
-		self.__hfa:context_free.DragonBookTable = None
+		self.__hfa: context_free.DragonBookTable = None
 		self.__awaiting_action = False
 	
 	def left(self, symbols:list): self.__grammar.assoc(context_free.LEFT, symbols)
@@ -59,7 +60,7 @@ class MiniParse:
 			rhs, offsets = MiniParse.__analyze(branch)
 			if len(rhs) == 1: message = None  # Unit/renaming rule
 			elif len(offsets) == 1: message = ((lambda x: x), offsets)  # Bracketing rule
-			else: raise algorithms.MetaError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.'%branch)
+			else: raise algorithms.MetaError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.' % branch)
 			self.__grammar.rule(lhs, rhs, message, None)
 	
 	def display(self): self.__grammar.display()

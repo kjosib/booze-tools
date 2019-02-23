@@ -1,7 +1,6 @@
 import typing, collections
-from foundation import *
-import interfaces
-import pretty
+from boozetools.foundation import *
+from boozetools import pretty, interfaces
 
 LEFT, RIGHT, NONASSOC = object(), object(), object()
 
@@ -25,7 +24,7 @@ class ContextFreeGrammar:
 	def display(self):
 		head = ['', 'Symbol', 'Produces', 'Using']
 		body = [[i, rule.lhs, rule.rhs, rule.attribute] for i,rule in enumerate(self.rules)]
-		pretty.print_grid([head]+body)
+		pretty.print_grid([head] + body)
 
 	def rule(self, lhs, rhs, attribute, prec_sym=None):
 		assert lhs not in self.token_precedence
@@ -286,4 +285,4 @@ class DragonBookTable(interfaces.ParserTables):
 		body = []
 		for i, (b, a, g) in enumerate(zip(self.breadcrumbs, self.action, self.go)):
 			body.append([i, b, *a, '', *g])
-		pretty.print_grid([head]+body)
+		pretty.print_grid([head] + body)

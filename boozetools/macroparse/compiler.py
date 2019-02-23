@@ -5,8 +5,7 @@ It extends the language of attributed context-free grammars with additional feat
 The design for this module is still in flux, although most of the main ideas are laid out.
 """
 import re
-import miniscan, miniparse, foundation
-import context_free, regular
+from boozetools import context_free, miniscan, regular
 
 INITIAL = 'INITIAL'
 

@@ -1,7 +1,9 @@
 """ Small is beautiful. """
 
+# These algorithms need no introduction.
+
 def allocate(a_list:list, item):
-	""" Too frequent an idiom not to automate. """
+	""" Too frequent an idiom not to abbreviate. """
 	idx = len(a_list)
 	a_list.append(item)
 	return idx
@@ -19,10 +21,11 @@ def transitive_closure(roots, successors) -> set:
 	return black
 
 class BreadthFirstTraversal:
+	""" This object also accumulates and exposes data about the traversal path. """
 	def __init__(self):
-		""" visit(key, lookup) should call lookup(successor_key, breadcrumb), which returns an integer. """
 		self.current, self.traversal, self.catalog, self.earliest_predecessor, self.breadcrumbs = None, [], {}, [], []
 	def execute(self, visit):
+		""" visit(key, lookup) should call self.lookup(successor_key, breadcrumb), which returns an integer. """
 		for self.current, k in enumerate(self.traversal): visit(k)
 		self.current = None
 	def lookup(self, key, *, breadcrumb=None) -> int:

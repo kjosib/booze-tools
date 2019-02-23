@@ -1,5 +1,5 @@
 import unittest
-import miniscan, algorithms, charclass, regular
+from boozetools import charclass, miniscan, algorithms, regular
 
 M = miniscan.META
 P = miniscan.PRELOAD['ASCII']
