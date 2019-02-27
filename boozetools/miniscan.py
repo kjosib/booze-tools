@@ -56,19 +56,7 @@ class Definition(interfaces.ScanRules):
 		"""
 		if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the previous pattern!')
 		self.__awaiting_action = True
-		try: bol, expression, trailing_context = rex.parse(META.scan(pattern, env=self.__subexpressions))
-		except algorithms.ParseError as e:
-			sequence = [token[0] for token in META.scan(pattern, env=self.__subexpressions)]
-			raise algorithms.MetaError('Broken regular expression pattern', pattern, 'scanned as', sequence) from e
-		assert isinstance(expression, regular.Regular)
-		if not trailing_context: trail = None
-		else:
-			assert isinstance(trailing_context, regular.Regular), trailing_context
-			stem, trail = expression.length(), trailing_context.length()
-			expression = regular.Sequence(expression, trailing_context)
-			if trail: trail = -trail
-			elif stem: trail = stem
-			else: raise algorithms.SemanticError(pattern, 'Variable stem and variable trailing context are not presently supported in the same pattern.')
+		bol, expression, trail = analyze_pattern(pattern, self.__subexpressions)
 		def decorator(fn):
 			assert self.__awaiting_action
 			self.__awaiting_action = False
@@ -78,6 +66,21 @@ class Definition(interfaces.ScanRules):
 		return decorator
 	def condition(self, *condition): return ConditionContext(self, *condition)
 	
+def analyze_pattern(pattern:str, env):
+	try: bol, expression, trailing_context = rex.parse(META.scan(pattern, env=env))
+	except algorithms.ParseError as e:
+		sequence = [token[0] for token in META.scan(pattern, env=env)]
+		raise algorithms.MetaError('Broken regular expression pattern', pattern, 'scanned as', sequence) from e
+	assert isinstance(expression, regular.Regular)
+	if not trailing_context: trail = None
+	else:
+		assert isinstance(trailing_context, regular.Regular), trailing_context
+		stem, trail = expression.length(), trailing_context.length()
+		expression = regular.Sequence(expression, trailing_context)
+		if trail: trail = -trail
+		elif stem: trail = stem
+		else: raise algorithms.SemanticError(pattern, 'Variable stem and variable trailing context are not presently supported in the same pattern.')
+	return bol, expression, trail
 
 class ConditionContext:
 	""" I'd like to be able to use Python's context manager protocol to simplify writing definitions of scan conditions. """

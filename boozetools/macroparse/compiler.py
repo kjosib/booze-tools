@@ -5,7 +5,9 @@ It extends the language of attributed context-free grammars with additional feat
 The design for this module is still in flux, although most of the main ideas are laid out.
 """
 import re
-from boozetools import context_free, miniscan, regular
+from boozetools import context_free, miniscan, regular, foundation
+
+class DefinitionError(Exception): pass
 
 INITIAL = 'INITIAL'
 
@@ -20,8 +22,8 @@ def compile_string(document:str):
 
 	def definitions():
 		name, regex = s.split(None, 1)
-		assert name not in env, 'You cannot redefine named subexpression %r.'%name
-		assert re.fullmatch(r'[A-Za-z][A-Za-z_]+', name), 'Subexpression %r ought to obey the rule here.'%name
+		if name in env: raise DefinitionError('You cannot redefine named subexpression %r at line %d.'%(name, line_number))
+		if not re.fullmatch(r'[A-Za-z][A-Za-z_]+', name): raise DefinitionError('Subexpression %r ought to obey the rule at line %d.'%(name, line_number))
 		env[name] = miniscan.rex.parse(miniscan.META.scan(regex, env=env), language='Regular')
 		assert isinstance(env[name], regular.Regular), "This would be a bug."
 	
@@ -30,7 +32,18 @@ def compile_string(document:str):
 		pass
 	
 	def patterns():
-		assert False, 'Code for this block is not designed yet.'
+		m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(\s+[A-Za-z_]+)?(?:\s+:(0|[1-9][0-9]*))?', s)
+		if not m: raise DefinitionError('Unable to analyze overall pattern/action/parameter/(rank) structure at line %d.'%line_number)
+		pattern, action, parameter, rank_string = m.groups()
+		rank = int(rank_string) if rank_string else 0
+		bol, expression, trail = miniscan.analyze_pattern(pattern, env)
+		rule_id = foundation.allocate(nfa_actions, (action, parameter, trail, line_number))
+		src = nfa.new_node(rank)
+		dst = nfa.new_node(rank)
+		for q,b in zip(nfa.condition(group), bol):
+			if b: nfa.link_epsilon(q, src)
+		nfa.final[dst] = rule_id
+		expression.encode(src, dst, nfa, rank)
 		pass
 	
 	def precedence():
@@ -55,8 +68,8 @@ def compile_string(document:str):
 			# conditions are determined, then there's nothing to delete, and all groups get presented.
 			return conditions
 		if head == 'patterns':
+			nonlocal group
 			group = tokens[1] if len(tokens)>1 else INITIAL
-			if group not in pattern_groups: pattern_groups[group] = nfa.condition(group)
 			return patterns
 		if head == 'precedence': return precedence
 		if head == 'productions':
@@ -74,14 +87,15 @@ def compile_string(document:str):
 	# The regular (finite-state) portion of the definition:
 	env = miniscan.PRELOAD['ASCII'].copy()
 	nfa = regular.NFA()
-	nfa_actions = [] # That of a regular-language rule entry is <message, parameter>
-	pattern_groups = {}
+	nfa_actions = [] # That of a regular-language rule entry is <message, parameter, trail, line_number>
+	group = None
 
 
 	# Here begins the outermost layer of grammar definition parsing, which is to comprehend the
 	# structure of a supplied mark-down document just enough to extract headers and code-blocks.
-	section, in_code = None, False
+	section, in_code, line_number = None, False, 0
 	for s in document.splitlines(keepends=False):
+		line_number += 1
 		if in_code:
 			s = s.strip()
 			if '```' in s: in_code = False
