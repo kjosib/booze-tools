@@ -26,7 +26,33 @@ class ContextFreeGrammar:
 		body = [[i, rule.lhs, rule.rhs, rule.attribute] for i,rule in enumerate(self.rules)]
 		pretty.print_grid([head] + body)
 
-	def rule(self, lhs, rhs, attribute, prec_sym=None):
+	def rule(self, lhs:str, rhs:(list, tuple), attribute:object, prec_sym=None):
+		"""
+		This is your basic mechanism to install arbitrary plain-jane BNF rules.
+		For the sake of simplicity, at this layer symbols are all strings.
+		Duplicate rules are rejected by raising an exception.
+		
+		:param lhs: The "left-hand-side" non-terminal symbol which is declared to produce...
+		
+		:param rhs: this "right-hand-side" sequence of symbols.
+		
+		:param attribute: This is uninterpreted, except in one simple manner:
+		if the attribute is `None` and the right-hand-side contains only a single symbol,
+		then the production is considered a unit/renaming rule, and the parser tables
+		will optimize this rule to a zero-cost abstraction (wherever possible).
+		
+		:param prec_sym: Set the precedence of this reduction explicitly according to that
+		of the given symbol as previously declared. If this is not supplied and the table
+		construction algorithm finds it necessary, method infer_prec_sym(...) implements
+		default processing on the right-hand-side.
+		
+		:return: Nothing.
+		
+		Please note: Certain rare constructions make the unit-rule optimization unsound.
+		The tables will be constructed correctly but the general parsing algorithm needs
+		to be prepared to find a rule with a null attribute. Correct behavior is generally
+		to leave the semantic-stack unchanged.
+		"""
 		assert lhs not in self.token_precedence
 		assert attribute is not None or len(rhs) == 1, 'There are no shortcuts at this layer.'
 		if prec_sym is not None: assert prec_sym in self.token_precedence
@@ -74,9 +100,19 @@ class ContextFreeGrammar:
 		if rp == sp: return self.level_assoc[rp]
 		return RIGHT
 	
-	def infer_prec_sym(self, rhs): # The first RHS member assigned a precedence level, which is generally the only...
+	def infer_prec_sym(self, rhs):
+		"""
+		If a rule without an explicit precedence declaration is involved in a shift/reduce conflict,
+		the parse table generation algorithm will call this to decide which symbol represents the
+		precedence of this right-hand-side.
+		
+		As a slight refinement to the BISON approach, this returns the first terminal with an
+		assigned precedence, as opposed to the first terminal symbol whatsoever. Often that's
+		a distinction without a difference, but when it matters I think this makes more sense.
+		"""
 		for symbol in rhs:
-			if symbol in self.token_precedence: return symbol
+			if symbol in self.token_precedence:
+				return symbol
 
 	def lalr_construction(self, start: (str, list, tuple), *, strict:bool=False):
 		class State(typing.NamedTuple):

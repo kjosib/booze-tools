@@ -147,13 +147,13 @@ Here, then, is the context-free portion of the grammar for JSON syntax:
 ```
 value => string | number | object | array | true | false | null
 
-object ::= '{ .list_of(key_value_pair) '} :object
+object ::= '{' .list_of(key_value_pair) '}' :object
 
-array = '[ .list_of(value) '] :array
+array = '[' .list_of(value) ']' :array
 
-key_value_pair -> .string ': .value :pair
+key_value_pair -> .string ':' .value :pair
 
-string : '" .text '"
+string : '"' .text '"'
 
 text ==> :empty
   | text character :append

@@ -13,7 +13,7 @@ simple applications of standard Python regex machinery. However, b
 
 """
 import re
-from boozetools import context_free, miniscan, regular, foundation, algorithms
+from boozetools import miniscan, regular, foundation, algorithms
 from boozetools.macroparse import grammar
 
 class DefinitionError(Exception): pass
@@ -21,9 +21,6 @@ class DefinitionError(Exception): pass
 def compile_file(pathname):
 	with(open(pathname)) as fh: document = fh.read()
 	return compile_string(document)
-
-
-# Now that the meta-macro-facility is supplied, the syntax definition for production rule lines is fairly mechanical.
 
 
 def compile_string(document:str):
@@ -63,29 +60,8 @@ def compile_string(document:str):
 		pass
 	
 	def productions():
-		nonlocal recent_nonterminal
-		try: head, list_of_rewrites = grammar.PRODUCTION.parse(grammar.LEX.scan(s))
-		except algorithms.LanguageError: raise DefinitionError()
-		# Deal with nonterminal elision:
-		if head is None:
-			if recent_nonterminal is None: raise DefinitionError('At line %d, there should be a nonterminal introduced before rewrites make sense.' % line_number)
-			else: head = recent_nonterminal
-		else:
-			recent_nonterminal = head
-			if isinstance(head, tuple):
-				name, formals = head
-				if name in macro_definitions:
-					_, _, prior = macro_definitions[name]
-					raise DefinitionError('Macro %r is first declared on line %d, then redeclared on line %d. Place all alternatives together between \'|\' symbols, please.'%(name, prior, line_number))
-				else:
-					macro_definitions[name] = formals, [], line_number
-		if isinstance(head, tuple): macro_definitions[head[0]][1].extend(list_of_rewrites)
-		else:
-			for rewrite in list_of_rewrites:
-				assert isinstance(rewrite, grammar.Rewrite)
-				rule_id = alloc_production(rewrite.message, rewrite.prefix_capture(rewrite.size))
-				cfg.rule(head, desugar(rewrite, {}), rule_id, rewrite.precsym)
-				
+		ebnf.read_one_line(s, line_number)
+		pass
 	
 	def decide_section():
 		# Looks at a header line to see which parsing mode/section to shift into based on a leading keyword,
@@ -106,27 +82,15 @@ def compile_string(document:str):
 			return patterns
 		if head == 'precedence': return precedence
 		if head == 'productions':
-			nonlocal recent_nonterminal
-			recent_nonterminal = None
+			ebnf.current_head = None
 			for t in tokens[1:]:
-				if t not in start:
-					start.append(t)
+				if t not in ebnf.start:
+					ebnf.start.append(t)
 			return productions
 		return None
-	# Supporting functions:
-	def alloc_production(message, captures): return foundation.allocate(cfg_actions, (message, captures, line_number))
-	def desugar(rewrite:grammar.Rewrite, env:dict) -> list:
-		for i, elt in enumerate(rewrite.elements):
-			pass
-		assert False, 'Code for this block is not designed yet.'
-		pass
-	
+
 	# The context-free portion of the definition:
-	recent_nonterminal = None
-	cfg = context_free.ContextFreeGrammar()
-	cfg_actions = [] # The format of a cfg action entry shall be the tuple <message_name, tuple-of-offsets, line_number>
-	start = []
-	macro_definitions = {}
+	ebnf = grammar.EBNF_Definition()
 	
 	# The regular (finite-state) portion of the definition:
 	env = miniscan.PRELOAD['ASCII'].copy()
