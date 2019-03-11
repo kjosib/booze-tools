@@ -7,6 +7,8 @@ For now there are two major components. Eventually there will be more. These are
 
 Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/wiki). A worked example is in [/example/json.py](https://github.com/kjosib/booze-tools/tree/master/example/json.py).
 
+The `dev` branch currently has two major focuses: proper packaging for distribution on PYPI, and the MacroParse module.
+
 # Priorities?
 * These operate within a Python environment.
 * They have some features not found in other such tools.
@@ -23,7 +25,7 @@ Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/w
     * contributions in that vein will be accepted as long as they are consistent with the higher priorities.
 
 # What Else?
-There is a complete worked example JSON scanner/parser in the `samples` folder. It has a lot of commentary to walk you through setting up both scanner and parser.
+There is a complete worked example JSON scanner/parser in the `example` folder. It has a lot of commentary to walk you through setting up both scanner and parser.
 
 There are unit tests. They're not vast and imposing, but they exercise the interface both directly and via the example code.
 
