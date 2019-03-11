@@ -7,6 +7,8 @@ For now there are two major components. Eventually there will be more. These are
 
 Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/wiki). A worked example is in [/example/json.py](https://github.com/kjosib/booze-tools/tree/master/example/json.py).
 
+The `dev` branch currently has two major focuses: proper packaging for distribution on PYPI, and the MacroParse module.
+
 # Priorities?
 * These operate within a Python environment.
 * They have some features not found in other such tools.
