@@ -130,3 +130,6 @@ class Scanner:
 		if q>=0:
 			token = self.invoke(automaton.get_state_rule_id(q))
 			if token is not None: yield token
+	def current_position(self) -> int:
+		""" As advertised. This was motivated by a desire to produce helpful error messages. """
+		return self.__start

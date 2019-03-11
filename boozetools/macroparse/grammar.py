@@ -25,32 +25,38 @@ class Element:
 		available to any action to its right.
 		Please note: 'capturing' a rule-final action makes no sense and is presently ignored.
 	"""
-	def canonical_symbol(self) -> str:
+	def canonical_symbol(self, bindings:dict) -> str:
 		""" To support the enhancements over plain BNF, each element needs a canonical symbolic expression. """
 		raise NotImplementedError(type(self))
 
 class Action(Element):
 	def __init__(self, name): self.name = name
-	def canonical_symbol(self) -> str: return ':'+self.name
+	def canonical_symbol(self, bindings:dict) -> str: return ':'+self.name # Maybe I could pass actions into macros by adjusting this?
 
 class Symbol(Element):
 	def __init__(self, name): self.name = name
-	def canonical_symbol(self) -> str: return self.name
+	def canonical_symbol(self, bindings:dict) -> str: return bindings.get(self.name, self.name)
 
 class InlineRenaming(Element):
-	def __init__(self, alternatives): self.alternatives = alternatives
-	def canonical_symbol(self) -> str: return "[%s]"%("|".join(s.canonical_symbol() for s in self.alternatives))
+	def __init__(self, alternatives):
+		self.alternatives = tuple(alternatives)
+		for a in self.alternatives: assert isinstance(a, Element) and not isinstance(a, Action)
+		
+	def canonical_symbol(self, bindings:dict) -> str: return "[%s]"%("|".join(s.canonical_symbol(bindings) for s in self.alternatives))
 
 class MacroCall(Element):
-	def __init__(self, name, actuals): self.name, self.actuals = name, actuals
-	def canonical_symbol(self) -> str: return "%s(%s)"%(self.name, ",".join(s.canonical_symbol() for s in self.actuals))
+	def __init__(self, name, actual_parameters):
+		self.name, self.actual_parameters = name, tuple(actual_parameters)
+		assert isinstance(self.name, str)
+		for a in self.actual_parameters: assert isinstance(a, Element), type(a)
+	def canonical_symbol(self, bindings:dict) -> str: return "%s(%s)"%(self.name, ",".join(s.canonical_symbol(bindings) for s in self.actual_parameters))
 
 
 class Rewrite:
 	def __init__(self, elements:list, precsym:str=None):
 		self.elements = elements
 		self.precsym = precsym
-		self.message = self.elements.pop(-1).name if isinstance(self.elements[-1], Action) else None
+		self.message:Action = self.elements.pop(-1) if isinstance(self.elements[-1], Action) else None
 		self.__args = args = []
 		self.size = len(self.elements)
 		for i,elt in enumerate(self.elements):
@@ -99,19 +105,21 @@ PRODUCTION.rule('rewrite', '.'+ELEMENTS+' pragma_precsym .terminal')(Rewrite)
 
 PRODUCTION.renaming('terminal', 'name', 'literal')
 
-PRODUCTION.renaming('element', 'slot')
-@PRODUCTION.rule('element', 'capture .slot')
-def capture(slot:Element) -> Element:
-	slot.capture = True
-	return slot
+PRODUCTION.renaming('element', 'positional_element')
+@PRODUCTION.rule('element', 'capture .positional_element')
+def capture(positional_element:Element) -> Element:
+	positional_element.capture = True
+	return positional_element
 
-PRODUCTION.renaming('slot', 'symbol')
-PRODUCTION.rule('slot', 'message')(Action)
+PRODUCTION.renaming('positional_element', 'actual_parameter')
+PRODUCTION.rule('positional_element', 'message')(Action)
+
+PRODUCTION.renaming('actual_parameter', 'symbol') # alternation brackets should not nest directly...
+PRODUCTION.rule('actual_parameter', '[ .'+one_or_more('symbol')+' ]')(InlineRenaming)
 
 PRODUCTION.rule('symbol', 'name')(Symbol)    # Normal symbol
 PRODUCTION.rule('symbol', 'literal')(Symbol) # Also a normal symbol with a funny name
-PRODUCTION.rule('symbol', '[ .'+one_or_more('symbol')+' ]')(InlineRenaming)
-PRODUCTION.rule('symbol', '.name ( .'+list_of('symbol', ',')+' )')(MacroCall)
+PRODUCTION.rule('symbol', '.name ( .'+list_of('actual_parameter', ',')+' )')(MacroCall)
 
 
 ### The lexeme definitions for production rule lines are as follows:
@@ -139,31 +147,35 @@ class MacroDefinition:
 # Please note: The format of an action entry shall be the tuple <message_name, tuple-of-offsets, line_number>.
 # These are a pass-through into the ContextFreeGrammar and eventually the parse tables themselves.
 
+def illustrate_position(line:str, column:int): return line[:column]+'<<_here_>>'+line[column:]
+
 class EBNF_Definition:
 	def __init__(self):
 		self.plain_cfg = context_free.ContextFreeGrammar()
 		self.current_head = None # This bit of state facilitates the feature of beginning a line with an alternation symbol.
 		self.start = [] # The correct start symbol(s) may be specified asynchronously to construction or the rules.
 		self.macro_definitions = {} # name -> MacroDefinition
+		self.implementations = {} # canonical symbol -> line number of first elaboration
 		self.current_line_nr = 0 # Useful in diagnostic messages.
+	
+	def gripe(self, message): raise DefinitionError('At line %d: %s.'%(self.current_line_nr, message))
 	
 	def read_one_line(self, line:str, line_nr:int):
 		""" This is the main interface to defining grammars. Call this repeatedly for each line of the grammar. """
 		assert isinstance(line_nr, int), type(line_nr)
 		self.current_line_nr = line_nr
-		try:
-			head, rewrites = PRODUCTION.parse(LEX.scan(line))
+		metascan = LEX.scan(line)
+		try: head, rewrites = PRODUCTION.parse(metascan)
 		except algorithms.ScanError as e:
 			column = e.args[0]
-			message = 'The MacroParse MetaScanner got confused at line %d, right...\n\t'%line_nr
-			message += line[:column]
-			message += '<<_here_>>'
-			message += line[column:]
-			raise DefinitionError(message)
-		except: raise DefinitionError(line_nr, line)
+			self.gripe('The MacroParse MetaScanner got confused right...\n\t'+illustrate_position(line, column))
+		except algorithms.ParseError as e:
+			self.gripe('The MacroParse MetaParser got confused. Stack condition was\n\t%r\nActual point of failure was:\n\t%s'%(e.args[0], illustrate_position(line, metascan.current_position())))
+		del metascan
 		# Set the current head field, or use it unchanged if not specified on this line:
 		if head is None:
-			if self.current_head is None: raise DefinitionError('Confused about what the head nonterminal is on line %d.'%line_nr)
+			if self.current_head is None:
+				self.gripe('Confused about what the current head nonterminal is')
 			head = self.current_head
 		else:
 			if isinstance(head, tuple): # Do we need to enter a macro declaration?
@@ -176,33 +188,46 @@ class EBNF_Definition:
 		if isinstance(self.current_head, MacroDefinition):
 			self.macro_definitions[self.current_head[0]][1].extend(rewrites)
 		else:
-			for R in rewrites: self.__install(head, R)
+			for R in rewrites: self.__install(head, R, {})
 		pass
 	
-	def __install(self, head:str, rewrite:Rewrite):
+	def __install(self, head:str, rewrite:Rewrite, bindings:dict):
 		"""
 		Install one rewrite rule:
 		Does everything necessary to interpret extension forms down to plain BNF,
 		and then enters that into self.plain_bnf as an option for `head`.
 		"""
-		raw_bnf = [self.__desugar(E, i, {}) for i, E in enumerate(rewrite.elements)]
+		raw_bnf = [self.__desugar(E, rewrite, i, bindings) for i, E in enumerate(rewrite.elements)]
 		offsets = rewrite.prefix_capture(len(raw_bnf))
 		if len(raw_bnf) == 1 and rewrite.message is None: attribute = None
-		else: attribute = (rewrite.message, offsets, self.current_line_nr)
+		else: attribute = (rewrite.message.canonical_symbol(bindings), offsets, self.current_line_nr)
 		self.plain_cfg.rule(head, raw_bnf, attribute, rewrite.precsym)
 	
-	def __desugar(self, element:Element, position:int, bindings:dict) -> str:
+	def __desugar(self, element:Element, rewrite:Rewrite, position:int, bindings:dict) -> str:
 		"""
 		This is basically a case-statement over the types of symbols that may appear in a right-hand side.
 		It needs to make sure that compound (a.k.a. extended) symbols are properly defined (once) in plain
 		BNF before they get used in a real rule. As such, it contains the core of the macro system.
 		"""
+		canon = element.canonical_symbol(bindings)
 		if isinstance(element, Symbol):
-			symbol = element.canonical_symbol()
-			return bindings.get(symbol, symbol)
-		elif isinstance(element, Action): pass
-		elif isinstance(element, InlineRenaming): pass
-		elif isinstance(element, MacroCall): pass
+			return canon
+		elif isinstance(element, Action):
+			if canon in self.implementations: self.gripe('Internal action %s was first elaborated on line %d; reuse is not (presently) supported.'%(canon, self.implementations[canon]))
+			self.implementations[canon] = self.current_line_nr
+			attribute = (canon, rewrite.prefix_capture(position), self.current_line_nr)
+			self.plain_cfg.rule(canon, [], attribute, None)
+			return canon
+		elif isinstance(element, InlineRenaming):
+			if canon not in self.implementations:
+				self.implementations[canon] = self.current_line_nr
+				for a in element.alternatives: self.plain_cfg.rule(canon, [self.__desugar(a, None, None, bindings)], None, None)
+			return canon
+		elif isinstance(element, MacroCall):
+			if canon not in self.implementations:
+				self.implementations[canon] = self.current_line_nr
+				
+			pass
 		
 		assert False, 'Not finished handling %r.'%type(element)
 		
