@@ -38,7 +38,7 @@ def parse(tables: interfaces.ParserTables, combine, each_token, *, language=None
 			step = tables.step(tos(), terminal_id)
 			if step >= 0: break
 			reduce(-step-1) # Bison parsers offset the rule data to save a decrement, but that breaks abstraction.
-		if step == 0: raise ParseError([tables.get_breadcrumb(q) for q in state_stack[1:]])
+		if step == 0: raise ParseError([tables.get_breadcrumb(q) for q in state_stack[1:]], symbol if terminal_id else '<<END>>')
 		return step
 	for symbol, attribute in each_token:
 		state_stack.append(prepare_to_shift(tables.get_translation(symbol)))

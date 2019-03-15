@@ -141,8 +141,26 @@ unimportant. Therefore, any blob of punctuation marks will be treated as the arr
 Nonterminals must have identifier names. Terminals are much freer.
 Letter case is not enforced as a distinguishing feature.
 
+For the moment, production-rule macros must be defined before they are used. This is because
+the present grammar definition machinery operates in a single pass, desugaring macros as it
+goes along. Here are the grammar-macro definitions appropriate to a grammar for JSON:
 
-Here, then, is the context-free portion of the grammar for JSON syntax:
+```
+list_of(item) -> :empty | one_or_more(item)
+
+one_or_more(item) -> item :first 
+ | .one_or_more(item) ',' .item :append
+```
+
+As may be inferred, `item` is here a formal-parameter to the macros `list_of` and `one_or_more`.
+The macro expansion machinery does the right thing at the context-free-grammar level, but it
+is up to the application to deal properly with, say, message `:first` applying either to a `value`
+or a `key_value_pair` as appropriate. If you're working in a dynamic language, that won't be
+any trouble at all. In one with strict static typing, you'll doubtless have some sort
+of "parse stack entry" type defined: it needs a variant for "list-of-entries".
+
+
+Last but not least appears the context-free portion of the grammar for JSON syntax:
 
 ```
 value => string | number | object | array | true | false | null
@@ -159,24 +177,6 @@ text ==> :empty
   | text character :append
 
 ```
-
-This is also the section where production-rule macros would be defined.
-They are known by the parenthetical arguments they operate on.
-
-```
-list_of(item) -> :empty | one_or_more(item)
-
-one_or_more(item) -> item :first
-  | .one_or_more(item) `, .item :append
-```
-
-As may be inferred, `item` is here a formal-parameter to the macros `list_of` and `one_or_more`.
-The macro expansion machinery does the right thing at the context-free-grammar level, but it
-is up to the application to deal properly with, say, message `:first` applying either to a `value`
-or a `key_value_pair` as appropriate. If you're working in a dynamic language, that won't be
-any trouble at all. In one with strict static typing, you'll doubtless have some sort
-of "parse stack entry" type defined: it needs a variant for "list-of-entries".
-
 
 # Notes:
 

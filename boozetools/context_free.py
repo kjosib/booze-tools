@@ -2,9 +2,9 @@ import typing, collections
 from boozetools.foundation import *
 from boozetools import pretty, interfaces
 
+DOT = '\u25cf'
+
 LEFT, RIGHT, NONASSOC = object(), object(), object()
-
-
 
 class ContextFreeGrammar:
 	class Fault(ValueError): pass
@@ -114,7 +114,7 @@ class ContextFreeGrammar:
 			if symbol in self.token_precedence:
 				return symbol
 
-	def lalr_construction(self, start: (str, list, tuple), *, strict:bool=False):
+	def lalr_construction(self, start: (str, list, tuple), *, strict:bool=False) -> 'DragonBookTable':
 		class State(typing.NamedTuple):
 			shifts: dict
 			complete: set  # rule_id
@@ -211,7 +211,7 @@ class ContextFreeGrammar:
 					cursor = bft.earliest_predecessor[cursor]
 				else: break
 			print('==============\nIn language %r, consider:' % start[cursor])
-			print('\t'+' '.join(reversed(trail)),'\u25cf',lookahead)
+			print('\t'+' '.join(reversed(trail)),DOT,lookahead)
 			for x in options:
 				if x > 0:
 					print("Do we shift into:")

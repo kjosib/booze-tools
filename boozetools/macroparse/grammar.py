@@ -93,11 +93,11 @@ def APPEND(the_list, element):
 ### The MacroParse metagrammar for individual production lines is as follows.
 PRODUCTION = miniparse.MiniParse('production')
 
-PRODUCTION.rule('production', '.head arrow .'+list_of('rewrite', '|'))(None)
+PRODUCTION.rule('production', '.head .'+list_of('rewrite', '|'))(None)
 
-PRODUCTION.rule('head', '')(lambda :None) # "use prior" is represented by a null "head".
-PRODUCTION.renaming('head', 'name',) # This will come across as a string.
-PRODUCTION.rule('head', '.name ( .%s )'%list_of('name', ','))(None) # Represent macro heads with (name, args) tuples.
+PRODUCTION.rule('head', '|')(None) # "use prior" is represented by a null "head".
+PRODUCTION.rule('head', '.name arrow',)(None) # This will come across as a string.
+PRODUCTION.rule('head', '.name ( .%s ) arrow'%list_of('name', ','))(None) # Represent macro heads with (name, args) tuples.
 
 ELEMENTS = one_or_more('element')
 PRODUCTION.rule('rewrite', ELEMENTS)(Rewrite)
@@ -129,7 +129,7 @@ LEX.on(r'\l\w*')('name') # Identifiers as token type "name".
 LEX.on(r':\l\w*')(lambda scanner:('message', scanner.matched_text()[1:])) # Strip out the colon for message names
 LEX.on(r'%\l+')(lambda scanner:('pragma_'+scanner.matched_text()[1:], None)) # Build pragma token types from the text.
 LEX.on(r'[.]/\S')('capture') # a dot prefixes a captured element, so it needs to be followed by something.
-LEX.on(r'[][(),|]')(lambda scanner:(scanner.matched_text(), None)) # Punctuation is represented directly above.
+LEX.on(r'[][(),|]')(lambda scanner:(scanner.matched_text(), None)) # Punctuation is represented directly, with null semantic value.
 LEX.on(r"'\S+'")(lambda scanner:('literal', scanner.matched_text()[1:-1])) # Literals are allowed two ways, so you can
 LEX.on(r'"\S+"')(lambda scanner:('literal', scanner.matched_text()[1:-1])) # easily contain whichever kind of quote.
 LEX.on(r'[-=>:<]+')('arrow') # Arrows in grammar definitions tend to look all different ways. This is flexible.
@@ -141,6 +141,7 @@ class MacroDefinition:
 		self.formals = tuple(formals)
 		self.line_nr = line_nr
 		self.rewrites = []
+		self.actually_used = False
 		if len(set(self.formals) | {name}) <= len(self.formals): raise DefinitionError("On line %d, all the names in a macro head declaration must be distinct."%line_nr)
 
 ### Grammar object:
@@ -154,6 +155,7 @@ class EBNF_Definition:
 		self.plain_cfg = context_free.ContextFreeGrammar()
 		self.current_head = None # This bit of state facilitates the feature of beginning a line with an alternation symbol.
 		self.start = [] # The correct start symbol(s) may be specified asynchronously to construction or the rules.
+		self.inferential_start = None # Use this to infer a start symbol if necessary.
 		self.macro_definitions = {} # name -> MacroDefinition
 		self.implementations = {} # canonical symbol -> line number of first elaboration
 		self.current_line_nr = 0 # Useful in diagnostic messages.
@@ -170,7 +172,7 @@ class EBNF_Definition:
 			column = e.args[0]
 			self.gripe('The MacroParse MetaScanner got confused right...\n\t'+illustrate_position(line, column))
 		except algorithms.ParseError as e:
-			self.gripe('The MacroParse MetaParser got confused. Stack condition was\n\t%r\nActual point of failure was:\n\t%s'%(e.args[0], illustrate_position(line, metascan.current_position())))
+			self.gripe('The MacroParse MetaParser got confused. Stack condition was\n\t%r %s %r\nActual point of failure was:\n\t%s'%(e.args[0],context_free.DOT, e.args[1], illustrate_position(line, metascan.current_position())))
 		del metascan
 		# Set the current head field, or use it unchanged if not specified on this line:
 		if head is None:
@@ -186,8 +188,10 @@ class EBNF_Definition:
 			self.current_head = head
 		# Proceed to do the right thing with supplied rewrite rules on this line:
 		if isinstance(self.current_head, MacroDefinition):
-			self.macro_definitions[self.current_head[0]][1].extend(rewrites)
+			self.current_head.rewrites.extend(rewrites)
 		else:
+			assert isinstance(head, str)
+			if self.inferential_start is None: self.inferential_start = head
 			for R in rewrites: self.__install(head, R, {})
 		pass
 	
@@ -198,9 +202,11 @@ class EBNF_Definition:
 		and then enters that into self.plain_bnf as an option for `head`.
 		"""
 		raw_bnf = [self.__desugar(E, rewrite, i, bindings) for i, E in enumerate(rewrite.elements)]
-		offsets = rewrite.prefix_capture(len(raw_bnf))
-		if len(raw_bnf) == 1 and rewrite.message is None: attribute = None
-		else: attribute = (rewrite.message.canonical_symbol(bindings), offsets, self.current_line_nr)
+		raw_message = None if rewrite.message is None else rewrite.message.canonical_symbol(bindings)
+		if len(raw_bnf) == 1 and raw_message is None: attribute = None
+		else:
+			offsets = rewrite.prefix_capture(len(raw_bnf))
+			attribute = (raw_message, offsets, self.current_line_nr)
 		self.plain_cfg.rule(head, raw_bnf, attribute, rewrite.precsym)
 	
 	def __desugar(self, element:Element, rewrite:Rewrite, position:int, bindings:dict) -> str:
@@ -226,8 +232,28 @@ class EBNF_Definition:
 		elif isinstance(element, MacroCall):
 			if canon not in self.implementations:
 				self.implementations[canon] = self.current_line_nr
-				
-			pass
+				# Construct a new binding environment; lexical scope...
+				try: definition = self.macro_definitions[element.name]
+				except KeyError: self.gripe('Macro call %s is not yet defined. Please define macros before using them. (This limitation may eventually be lifted.)'%element.name)
+				assert isinstance(definition, MacroDefinition)
+				definition.actually_used = True
+				actual_parameters = [self.__desugar(p, None, None, bindings) for p in element.actual_parameters]
+				if len(actual_parameters) != len(definition.formals): self.gripe("Macro call %s has %d parameters; expected %d."%(element.name, len(actual_parameters), len(definition.formals)))
+				new_bindings = dict(zip(definition.formals, actual_parameters))
+				for r in definition.rewrites:
+					assert isinstance(r, Rewrite)
+					self.__install(canon, r, new_bindings)
+			return canon
 		
 		assert False, 'Not finished handling %r.'%type(element)
+	
+	def validate(self):
+		unused_macros = sorted(name+':'+str(definition.line_nr) for name, definition in self.macro_definitions.items() if not definition.actually_used)
+		if unused_macros: self.gripe('The following macro(s) were defined but never used: '+', '.join(unused_macros))
+		if not self.inferential_start: self.gripe("No production rules have been given, so how am I to compile a grammar? (You could give a trivial one...)")
+		if not self.start:
+			print('Inferring CFG start symbol %r from earliest production because none was given explicitly.'%self.inferential_start)
+			self.start.append(self.inferential_start)
+		self.plain_cfg.validate(self.start)
 		
+			

@@ -113,12 +113,11 @@ def compile_string(document:str):
 		else: continue
 	
 	# Validate everything possible:
-	if not start:
-		print('Inferring CFG start symbol from earliest production because none was given on a #Productions header.')
-		start.append(cfg.rules[0].lhs)
-	cfg.validate(start)
+	ebnf.validate()
 	
 	# Compose, compress, and serialize the control tables.
+	scan_table = nfa.subset_construction().minimize_states().minimize_alphabet()
+	parse_table = ebnf.plain_cfg.lalr_construction(ebnf.start)
 	assert False, 'Code for this block is not designed yet.'
 	pass
 
