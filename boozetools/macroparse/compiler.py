@@ -46,7 +46,7 @@ def compile_string(document:str):
 		rank = int(rank_string) if rank_string else 0
 		try: bol, expression, trail = miniscan.analyze_pattern(pattern, env)
 		except algorithms.LanguageError as e: raise DefinitionError('Malformed pattern on line %d.'%line_number) from e
-		rule_id = foundation.allocate(nfa_actions, (action, parameter, trail, line_number))
+		rule_id = foundation.allocate(scan_actions, (action, parameter, trail, line_number))
 		src = nfa.new_node(rank)
 		dst = nfa.new_node(rank)
 		for q,b in zip(nfa.condition(group), bol):
@@ -95,7 +95,7 @@ def compile_string(document:str):
 	# The regular (finite-state) portion of the definition:
 	env = miniscan.PRELOAD['ASCII'].copy()
 	nfa = regular.NFA()
-	nfa_actions = [] # That of a regular-language rule entry is <message, parameter, trail, line_number>
+	scan_actions = [] # That of a regular-language rule entry is <message, parameter, trail, line_number>
 	group = None
 
 
@@ -116,9 +116,52 @@ def compile_string(document:str):
 	ebnf.validate()
 	
 	# Compose, compress, and serialize the control tables.
-	scan_table = nfa.subset_construction().minimize_states().minimize_alphabet()
+	scan_table = modified_aho_corasick_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions)
+	scan_table.stats()
 	parse_table = ebnf.plain_cfg.lalr_construction(ebnf.start)
+	
 	assert False, 'Code for this block is not designed yet.'
+	pass
+
+def modified_aho_corasick_encoding(dfa:regular.DFA, scan_actions:list) -> dict:
+	"""
+	Alfred V. Aho and Margaret J. Corasick discovered a truly wonderful algorithm for a particular class
+	of string search problem in which there are both many needles and lots of haystack data. It works by
+	the construction of a TRIE for identifying needles, together with a failure pointer for what state to
+	enter if the present haystack character is not among the outbound edges from the current state. The
+	structure so constructed is queried at most twice per character of haystack data on average, because
+	the failure pointers always point to a node at least one edge less deep into the TRIE.
+	
+	That structure provides the inspiration for a fast, efficient encoding of an arbitrary DFA. The key
+	idea is to observe that any given state is likely to much in common with another, shallower state.
+	Therefore, it is sufficient to store the identity of a well-chosen shallower state and a sparse list
+	of exceptions. If the sparse list results in expansion, a dense row may be stored instead.
+	
+	For the sake of brevity, the "jam state" is implied to consist of nothing but jam-transitions, and
+	is not explicitly stored.
+	
+	It may be said that today's fast machines and big memories mean little need to compress scanner
+	tables. However, compression can help the tables fit in a cache. Alternatively, a driver may
+	trivially uncompress the exception tables into the raw tables to avoid a level of indirection
+	during actual scanning; this still saves disk space. Non-trivially, the compressed form could
+	be translated to machine code and use the program counter to encode the current state...
+	"""
+	# To begin, we need to renumber the states according to a breadth-first topology, and also determine
+	# the resulting depth boundaries.
+	
+	jam = dfa.jam_state()
+	bft = foundation.BreadthFirstTraversal()
+	states = []
+	def renumber(src): states.append([jam if dst == jam else bft.lookup(dst) for dst in dfa.states[src]])
+	initial = {condition: (bft.lookup(q0), bft.lookup(q1)) for condition, (q0, q1) in dfa.initial.items()}
+	bft.execute(renumber)
+	final = {bft.lookup(q): rule_id for q, rule_id in dfa.final.items()}
+	depth = bft.depth_list()
+	
+	# Next, we need to construct the compressed structure. For simplicity, this will be three arrays
+	# named for their function.
+	
+	assert False, 'Code for this block is not finished yet.'
 	pass
 
 def main():

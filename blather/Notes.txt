@@ -15,6 +15,8 @@ to the "determinize" step in the present LALR construction.
 An extension to the above idea is context predicates, which could essentially add additional
 criteria to the success or failure of specific rules in the HFA.
 
+==============================================================================
+
 A further, perhaps also-related, idea was the development of context-sensitive tools. An example
 use case is in analyzing the morphology of sound combinations and spelling changes when inflecting
 Korean words. For example: regular verbs fall in two categories based on the penultimate vowel in
@@ -25,3 +27,54 @@ and they follow the same sound-change rules in the process.
 It would be splendid to be able to write down the rules of interaction formally, and then
 rely on the computer to recover both verb and suffixes from some utterance.
 
+==============================================================================
+
+A crazy idea:
+
+Table-driven scanners are notoriously slower than hand-written recursive-descent.
+Per https://link.springer.com/content/pdf/10.1007%2FBFb0026419.pdf this is largely
+because of the overhead to consult the tables, but also partly because of having
+to scan e.g. numbers twice (once to identify the token class, and once to interpret
+the value).
+
+One of the earliest regular-expression engines translated the expression to native
+code at runtime. A set of scanner tables could equally be translated to native code.
+
+A JRE with a JIT can convert arbitrary Java byte-code to native code, and does so
+whenever that code gets "hot". Therefore, by converting a set of scanner tables
+directly to Java byte-code, one may have one's cake and eat it too: most of the 
+speed of a hand-optimized scanner and all the convenience of a specification language.
+
+A hair-brained extension to a crazy idea:
+
+There is a suggestion to include semantic actions "mid-stream" in scanner
+specifications. This is a domain normally occupied by parsers (not scanners) but
+some minimum of semantic analysis is often done in a tokenizer anyway, such as
+translating numeric constants. It may be possible to design a hybrid mechanism
+that uses finite-state machinery (and thus no stack manipulations) but supports
+certain semantical actions, and then translates the resulting tables to a
+high-level structured program.
+
+Boom.
+
+==============================================================================
+
+How to serialize:
+
+One fairly general approach is a JSON document. It's merely necessary to specify the
+structure of the object thereby encoded.
+
+Probably, the JSON object should have a "scanner" key and a "parser" key. They can be
+present or absent. Up front, a "comment" key can provide a few hints for humans.
+I should also include a "version" key consisting of a list of three integers reflecting
+the API version for which the table is produced. Initially, these will be 0, 0, 0.
+
+Actual I/O for the JSON document should make use of standard libraries rather than
+example code.
+
+The scanner DFA should be run through Aho-Corasick-style preprocessing to compress it
+down to an examples/exceptions table pair.
+
+The parse DFA is basically the dragon-book format with default-reductions.
+
+Both sorts of 
