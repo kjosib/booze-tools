@@ -13,17 +13,17 @@ simple applications of standard Python regex machinery. However, b
 
 """
 import re
-from boozetools import miniscan, regular, foundation, algorithms
+from boozetools import miniscan, regular, context_free, foundation, algorithms
 from boozetools.macroparse import grammar
 
 class DefinitionError(Exception): pass
 
-def compile_file(pathname):
+def compile_file(pathname) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
 	return compile_string(document)
 
 
-def compile_string(document:str):
+def compile_string(document:str) -> dict:
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
 	# Each major sub-language is line-oriented and interpreted with one of the following five subroutines:
@@ -115,13 +115,12 @@ def compile_string(document:str):
 	# Validate everything possible:
 	ebnf.validate()
 	
-	# Compose, compress, and serialize the control tables.
-	scan_table = modified_aho_corasick_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions)
-	scan_table.stats()
-	parse_table = ebnf.plain_cfg.lalr_construction(ebnf.start)
-	
-	assert False, 'Code for this block is not designed yet.'
-	pass
+	# Compose and compress the control tables. (Serialization will be straight JSON via standard library.)
+	return {
+		'version': (0,0,0),
+		'scanner': modified_aho_corasick_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions),
+		'parser': some_encoding_of(ebnf.plain_cfg.lalr_construction(ebnf.start))
+	}
 
 def modified_aho_corasick_encoding(dfa:regular.DFA, scan_actions:list) -> dict:
 	"""
@@ -148,7 +147,7 @@ def modified_aho_corasick_encoding(dfa:regular.DFA, scan_actions:list) -> dict:
 	"""
 	# To begin, we need to renumber the states according to a breadth-first topology, and also determine
 	# the resulting depth boundaries.
-	
+	dfa.stats()
 	jam = dfa.jam_state()
 	bft = foundation.BreadthFirstTraversal()
 	states = []
@@ -159,9 +158,35 @@ def modified_aho_corasick_encoding(dfa:regular.DFA, scan_actions:list) -> dict:
 	depth = bft.depth_list()
 	
 	# Next, we need to construct the compressed structure. For simplicity, this will be three arrays
-	# named for their function.
-	
-	assert False, 'Code for this block is not finished yet.'
+	# named for their function and indexed by state number.
+	default, sparse_index, sparse_data = [], [], []
+	for i, row in enumerate(states):
+		# Find the shortest encoding by reference to shallower states:
+		pointer, best = jam, [k for k,x in enumerate(row) if x != jam]
+		for j in range(i):
+			if depth[j] == depth[i]: break
+			contender = [k for k,x in enumerate(states[j]) if x != row[k]]
+			if len(contender) < len(best): pointer, best = j, contender
+		# Append the chosen encoding into the structure:
+		if len(best) * 2 < len(row): # If the compression actually saves space on this row:
+			default.append(pointer)
+			sparse_index.append(best)
+			sparse_data.append([row[k] for k in best])
+		else: # Otherwise, a dense storage format is indicated.
+			default.append(None)
+			sparse_index.append(None)
+			sparse_data.append(row)
+	# At this point, the DFA is represented in about as terse a format as makes sense.
+	metric = len(default) + sum(map(len, sparse_data)) + sum(x is None or len(x) for x in sparse_index)
+	print('Matrix compressed into %d cells.' % metric)
+	return {
+		'dfa': {'default':default, 'column':sparse_index, 'edge':sparse_data, 'initial':initial, 'final':final,},
+		'action': scan_actions,
+		'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
+	}
+
+def some_encoding_of(dbt:context_free.DragonBookTable) -> dict:
+	assert False, 'Code for this block is not designed yet.'
 	pass
 
 def main():
