@@ -1,6 +1,6 @@
-""" Small is beautiful. """
+""" Small is beautiful. These algorithms need no introduction. """
 
-# These algorithms need no introduction.
+import operator
 
 def allocate(a_list:list, item):
 	""" Too frequent an idiom not to abbreviate. """
@@ -47,3 +47,8 @@ class EquivalenceClassifier:
 		if key not in self.catalog:
 			self.catalog[key] = allocate(self.exemplars, key)
 		return self.catalog[key]
+
+def hamming_distance(a, b):
+	""" Compute the number of places in two (equal-length) sequences with unequal corresponding elements. """
+	assert len(a) == len(b)
+	return sum(map(operator.ne, a, b))
