@@ -57,6 +57,10 @@ high-level structured program.
 
 Boom.
 
+However, that last concept means (essentially) a programming language embedded
+into the specification language, which (in at least some respects) couples the
+two in undesirable ways.
+
 ==============================================================================
 
 How to serialize:

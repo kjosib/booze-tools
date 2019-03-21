@@ -13,7 +13,7 @@ simple applications of standard Python regex machinery. However, b
 
 """
 import re
-from boozetools import miniscan, regular, context_free, foundation, algorithms
+from boozetools import miniscan, regular, context_free, foundation, algorithms, compaction
 from boozetools.macroparse import grammar
 
 class DefinitionError(Exception): pass
@@ -21,7 +21,6 @@ class DefinitionError(Exception): pass
 def compile_file(pathname) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
 	return compile_string(document)
-
 
 def compile_string(document:str) -> dict:
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
@@ -117,77 +116,40 @@ def compile_string(document:str) -> dict:
 	
 	# Compose and compress the control tables. (Serialization will be straight JSON via standard library.)
 	return {
-		'version': (0,0,0),
-		'scanner': modified_aho_corasick_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions),
-		'parser': some_encoding_of(ebnf.plain_cfg.lalr_construction(ebnf.start))
+		'version': (0, 0, 0),
+		'scanner': scan_table_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions),
+		'parser': parse_table_encoding(ebnf.plain_cfg.lalr_construction(ebnf.start))
 	}
 
-def modified_aho_corasick_encoding(dfa:regular.DFA, scan_actions:list) -> dict:
-	"""
-	Alfred V. Aho and Margaret J. Corasick discovered a truly wonderful algorithm for a particular class
-	of string search problem in which there are both many needles and lots of haystack data. It works by
-	the construction of a TRIE for identifying needles, together with a failure pointer for what state to
-	enter if the present haystack character is not among the outbound edges from the current state. The
-	structure so constructed is queried at most twice per character of haystack data on average, because
-	the failure pointers always point to a node at least one edge less deep into the TRIE.
-	
-	That structure provides the inspiration for a fast, efficient encoding of an arbitrary DFA. The key
-	idea is to observe that any given state is likely to much in common with another, shallower state.
-	Therefore, it is sufficient to store the identity of a well-chosen shallower state and a sparse list
-	of exceptions. If the sparse list results in expansion, a dense row may be stored instead.
-	
-	For the sake of brevity, the "jam state" is implied to consist of nothing but jam-transitions, and
-	is not explicitly stored.
-	
-	It may be said that today's fast machines and big memories mean little need to compress scanner
-	tables. However, compression can help the tables fit in a cache. Alternatively, a driver may
-	trivially uncompress the exception tables into the raw tables to avoid a level of indirection
-	during actual scanning; this still saves disk space. Non-trivially, the compressed form could
-	be translated to machine code and use the program counter to encode the current state...
-	"""
-	# To begin, we need to renumber the states according to a breadth-first topology, and also determine
-	# the resulting depth boundaries.
+def scan_table_encoding(dfa:regular.DFA, scan_actions:list) -> dict:
 	dfa.stats()
-	jam = dfa.jam_state()
-	bft = foundation.BreadthFirstTraversal()
-	states = []
-	def renumber(src): states.append([jam if dst == jam else bft.lookup(dst) for dst in dfa.states[src]])
-	initial = {condition: (bft.lookup(q0), bft.lookup(q1)) for condition, (q0, q1) in dfa.initial.items()}
-	bft.execute(renumber)
-	final = {bft.lookup(q): rule_id for q, rule_id in dfa.final.items()}
-	depth = bft.depth_list()
-	
-	# Next, we need to construct the compressed structure. For simplicity, this will be three arrays
-	# named for their function and indexed by state number.
-	default, sparse_index, sparse_data = [], [], []
-	for i, row in enumerate(states):
-		# Find the shortest encoding by reference to shallower states:
-		pointer, best = jam, [k for k,x in enumerate(row) if x != jam]
-		for j in range(i):
-			if depth[j] == depth[i]: break
-			contender = [k for k,x in enumerate(states[j]) if x != row[k]]
-			if len(contender) < len(best): pointer, best = j, contender
-		# Append the chosen encoding into the structure:
-		if len(best) * 2 < len(row): # If the compression actually saves space on this row:
-			default.append(pointer)
-			sparse_index.append(best)
-			sparse_data.append([row[k] for k in best])
-		else: # Otherwise, a dense storage format is indicated.
-			default.append(None)
-			sparse_index.append(None)
-			sparse_data.append(row)
-	# At this point, the DFA is represented in about as terse a format as makes sense.
-	metric = len(default) + sum(map(len, sparse_data)) + sum(x is None or len(x) for x in sparse_index)
-	print('Matrix compressed into %d cells.' % metric)
 	return {
-		'dfa': {'default':default, 'column':sparse_index, 'edge':sparse_data, 'initial':initial, 'final':final,},
+		'dfa': compaction.modified_aho_corasick_encoding(initial=dfa.initial, matrix=dfa.states, final=dfa.final, jam=dfa.jam_state()),
 		'action': scan_actions,
 		'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
 	}
 
-def some_encoding_of(dbt:context_free.DragonBookTable) -> dict:
-	assert False, 'Code for this block is not designed yet.'
-	pass
+def parse_table_encoding(table:context_free.DragonBookTable) -> dict:
+	symbol_index = {s: i for i, s in enumerate(table.terminals + table.nonterminals)}
+	symbol_index[None] = None
+	return {
+		'initial': table.initial,
+		'action': compaction.compress_action_table(table.action_matrix, table.essential_errors),
+		'goto': compaction.compress_goto_table(table.goto_matrix),
+		'terminals': table.terminals,
+		'nonterminals': table.nonterminals,
+		'breadcrumbs': [symbol_index[s] for s in table.breadcrumbs],
+		'rule': encode_parse_rules(table.rule_table),
+	}
+
+def encode_parse_rules(rules:list) -> dict:
+	assert isinstance(rules, list), type(rules)
+	result = {'head': [], 'size': [], 'message': [], 'view':[], 'line_nr':[]}
+	unit = (None, None, None)
+	for head, size, attribute in rules:
+		message, view, line_nr = unit if attribute is None else attribute
+		compaction.multi_append(result, {'head': head, 'size':size, 'message': message, 'view':view, 'line_nr':line_nr})
+	return result
 
 def main():
 	import argparse

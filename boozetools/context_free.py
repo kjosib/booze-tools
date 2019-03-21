@@ -280,20 +280,21 @@ class DragonBookTable(interfaces.ParserTables):
 	"""
 	This is the classic textbook view of a set of parse tables. It's also a reasonably quick implementation
 	if you have a modern amount of RAM in your machine. In days of old, it would be necessary to compress
-	the parse tables. Today, that's still not such a bad idea.
+	the parse tables. Today, that's still not such a bad idea. The compaction submodule contains
+	some code for a typical method of parser table compression.
 	"""
 	def __init__(self, *, initial:dict, action:list, goto:list, essential_errors:set, rules:list, terminals:list, nonterminals:list, breadcrumbs:list):
 		self.initial = initial
-		self.action = action
-		self.go = goto
+		self.action_matrix = action
+		self.goto_matrix = goto
 		self.essential_errors = essential_errors
 		self.translate = {symbol: i for i, symbol in enumerate(terminals)}
 		self.get_translation = self.translate.__getitem__
 		nontranslate = {symbol: i for i, symbol in enumerate(nonterminals)}
 		self.terminals, self.nonterminals = terminals, nonterminals
 		self.breadcrumbs = breadcrumbs
-		
-		self.rule = [(nontranslate[rule.lhs], len(rule.rhs), rule.attribute) for rule in rules].__getitem__
+		self.rule_table = [(nontranslate[rule.lhs], len(rule.rhs), rule.attribute) for rule in rules]
+		self.get_rule = self.rule_table.__getitem__
 		
 		interactive = []
 		for row in action:
@@ -306,19 +307,19 @@ class DragonBookTable(interfaces.ParserTables):
 	
 	def get_translation(self, symbol) -> int: return self.translate[symbol] # This gets replaced ...
 	
-	def step(self, state_id, terminal_id) -> int: return self.action[state_id][terminal_id]
+	def get_action(self, state_id, terminal_id) -> int: return self.action_matrix[state_id][terminal_id]
 	
-	def goto(self, state_id, nonterminal_id) -> int: return self.go[state_id][nonterminal_id]
+	def get_goto(self, state_id, nonterminal_id) -> int: return self.goto_matrix[state_id][nonterminal_id]
 	
 	def get_initial(self, language) -> int: return 0 if language is None else self.initial[language]
 	
 	def get_breadcrumb(self, state_id) -> str: return self.breadcrumbs[state_id]
 	
 	def display(self):
-		size = len(self.action)
+		size = len(self.action_matrix)
 		print('Action and Goto: (%d states)'%size)
 		head = ['','']+self.terminals+['']+self.nonterminals
 		body = []
-		for i, (b, a, g) in enumerate(zip(self.breadcrumbs, self.action, self.go)):
+		for i, (b, a, g) in enumerate(zip(self.breadcrumbs, self.action_matrix, self.goto_matrix)):
 			body.append([i, b, *a, '', *g])
 		pretty.print_grid([head] + body)

@@ -26,16 +26,16 @@ def parse(tables: interfaces.ParserTables, combine, each_token, *, language=None
 	def tos() -> int: return state_stack[-1]
 	def reduce(rule_id):
 		assert rule_id >= 0
-		nonterminal_id, length, message = tables.rule(rule_id)
+		nonterminal_id, length, message = tables.get_rule(rule_id)
 		attribute = attribute_stack[-1] if message is None else combine(message, attribute_stack)
 		if length:
 			del state_stack[-length:]
 			del attribute_stack[-length:]
-		state_stack.append(tables.goto(tos(), nonterminal_id))
+		state_stack.append(tables.get_goto(tos(), nonterminal_id))
 		attribute_stack.append(attribute)
 	def prepare_to_shift(terminal_id) -> int:
 		while True:
-			step = tables.step(tos(), terminal_id)
+			step = tables.get_action(tos(), terminal_id)
 			if step >= 0: break
 			reduce(-step-1) # Bison parsers offset the rule data to save a decrement, but that breaks abstraction.
 		if step == 0: raise ParseError([tables.get_breadcrumb(q) for q in state_stack[1:]], symbol if terminal_id else '<<END>>')

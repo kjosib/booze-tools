@@ -1,7 +1,8 @@
 import unittest
 import os
+import json as standard_json
+import example.json
 
-from example import json
 from boozetools.macroparse import compiler
 
 # See https://json.org/example.html
@@ -33,17 +34,27 @@ GLOSSARY_JSON = """
 class TestJson(unittest.TestCase):
 	
 	def test_00_smoke_test(self):
-		self.assertEqual(25.2, json.parse('25.2'))
-		self.assertEqual(chr(255), json.parse(r'"\u00ff"'))
+		self.assertEqual(25.2, example.json.parse('25.2'))
+		self.assertEqual(chr(255), example.json.parse(r'"\u00ff"'))
 	
 	def test_01_glossary_entry(self):
-		data = json.parse(GLOSSARY_JSON)
+		data = example.json.parse(GLOSSARY_JSON)
 		entry = data['glossary']['GlossDiv']['GlossList']['GlossEntry']
 		self.assertEqual('Standard Generalized Markup Language', entry['GlossTerm'])
 		self.assertEqual(["GML", "XML"], entry['GlossDef']['GlossSeeAlso'])
 
-class TestMacroJson(unittest.TestCase):
+class TestMacroCompiler(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls):
+		example_folder = os.path.dirname(example.json.__file__)
+		automaton = compiler.compile_file(os.path.join(example_folder, 'json.md'))
+		# The transition into and back out of JSON should be non-destructive, but it's worth being sure.
+		serialized = standard_json.dumps(automaton)
+		cls.automaton = standard_json.loads(serialized)
+		pass
 	
 	def test_00_smoke_test(self):
-		example_folder = os.path.dirname(json.__file__)
-		automaton = compiler.compile_file(os.path.join(example_folder, 'json.md'))
+		for k,v in self.automaton.items():
+			print(k)
+			print(v)
+		assert False, "There's still a couple drivers to write."

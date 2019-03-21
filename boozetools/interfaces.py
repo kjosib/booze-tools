@@ -53,9 +53,9 @@ class ParserTables:
 	of reasonable error reporting. Note that rules begin at 1, because 0 is the error action.
 	"""
 	def get_translation(self, symbol) -> int: raise NotImplementedError(type(self, 'Because scanners may be oblivious to the order of terminals in the parse table. Zero is reserved for EOT.'))
-	def step(self, state_id:int, terminal_id) -> int: raise NotImplementedError(type(self))
-	def goto(self, state_id:int, nonterminal_id) -> int: raise NotImplementedError(type(self, 'return a successor state id.'))
-	def rule(self, rule_id:int) -> tuple: raise NotImplementedError(type(self), 'return a (nonterminal_id, length, message) triple.')
+	def get_action(self, state_id:int, terminal_id) -> int: raise NotImplementedError(type(self))
+	def get_goto(self, state_id:int, nonterminal_id) -> int: raise NotImplementedError(type(self, 'return a successor state id.'))
+	def get_rule(self, rule_id:int) -> tuple: raise NotImplementedError(type(self), 'return a (nonterminal_id, length, message) triple.')
 	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language.')
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self))
