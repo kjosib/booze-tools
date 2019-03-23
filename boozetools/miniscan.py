@@ -1,7 +1,7 @@
 """ Hook regular expression patterns up to method calls on a scanner object. """
-from boozetools import miniparse, charclass, algorithms, regular, interfaces
+from . import miniparse, charset, algorithms, regular, interfaces
 
-PRELOAD = {'ASCII': {k: regular.CharClass(cls) for k, cls in charclass.POSIX.items()}}
+PRELOAD = {'ASCII': {k: regular.CharClass(cls) for k, cls in charset.POSIX.items()}}
 
 class Definition(interfaces.ScanRules):
 	def __init__(self, *, minimize=True, mode='ASCII'):
@@ -132,13 +132,13 @@ rex.rule('Atom', 'c')(lambda c: regular.CharClass([c, c + 1]))
 rex.rule('Atom', 'reference')(None)
 rex.rule('Atom', '[ .Class ]')(regular.CharClass)
 rex.rule('Class', 'Conjunct')()
-rex.rule('Class', '.Class && .Conjunct')(charclass.intersect)
+rex.rule('Class', '.Class && .Conjunct')(charset.intersect)
 rex.rule('Conjunct', 'Members')()
-rex.rule('Conjunct', '^ .Members')(charclass.complement)
+rex.rule('Conjunct', '^ .Members')(charset.complement)
 rex.rule('Members', 'Item')()
-rex.rule('Members', 'Members Item')(charclass.union)
-rex.rule('Item', 'c')(charclass.singleton)
-rex.rule('Item', '.c - .c')(charclass.range_class)
+rex.rule('Members', 'Members Item')(charset.union)
+rex.rule('Item', 'c')(charset.singleton)
+rex.rule('Item', '.c - .c')(charset.range_class)
 rex.rule('Item', 'short')(lambda c:c.cls)
 @rex.rule('Item', 'reference')
 def classref(subex: regular.Regular):
@@ -151,7 +151,7 @@ def _BEGIN_():
 	def seq(head, *tail):
 		for t in tail: head = regular.Sequence(head, t)
 		return head
-	def txt(s):return seq(*(regular.CharClass(charclass.singleton(ord(_))) for _ in s))
+	def txt(s):return seq(*(regular.CharClass(charset.singleton(ord(_))) for _ in s))
 	
 	def _metatoken(scanner):return scanner.matched_text(), None
 	def _and_then(condition):
@@ -178,11 +178,11 @@ def _BEGIN_():
 	
 	dot = PRELOAD['ASCII']['DOT'] = regular.CharClass([0, 10, 14])
 	for codepoint, char in [(0, '0'), (27, 'e'), *enumerate('abtnvfr', 7)]: PRELOAD['ASCII'][char] = regular.CharClass(
-		charclass.singleton(codepoint))
+		charset.singleton(codepoint))
 	for codepoint, mnemonic in enumerate('NUL SOH STX ETX EOT ENQ ACK BEL BS TAB LF VT FF CR SO SI DLE DC1 DC2 DC3 DC4 NAK SYN ETB CAN EM SUB ESC FS GS RS US SP'.split()):
-		PRELOAD['ASCII'][mnemonic] = regular.CharClass(charclass.singleton(codepoint))
-	PRELOAD['ASCII']['DEL'] = regular.CharClass(charclass.singleton(127))
-	PRELOAD['ASCII']['ANY'] = regular.CharClass(charclass.UNIVERSAL)
+		PRELOAD['ASCII'][mnemonic] = regular.CharClass(charset.singleton(codepoint))
+	PRELOAD['ASCII']['DEL'] = regular.CharClass(charset.singleton(127))
+	PRELOAD['ASCII']['ANY'] = regular.CharClass(charset.UNIVERSAL)
 	PRELOAD['ASCII']['vertical'] = regular.CharClass([10, 14])
 	PRELOAD['ASCII']['horizontal'] = regular.CharClass([8, 10, 32, 33])
 	for shorthand, longhand in [
@@ -194,11 +194,11 @@ def _BEGIN_():
 	]:
 		PRELOAD['ASCII'][shorthand] = PRELOAD['ASCII'][longhand]
 		PRELOAD['ASCII'][shorthand.upper()] = regular.CharClass(
-			charclass.subtract(dot.cls, PRELOAD['ASCII'][longhand].cls))
+			charset.subtract(dot.cls, PRELOAD['ASCII'][longhand].cls))
 	def ref(x): return PRELOAD['ASCII'][x]
 	
-	eof_charclass = regular.CharClass(charclass.EOF)
-	dollar_charclass = regular.CharClass(charclass.union(charclass.EOF, PRELOAD['ASCII']['vertical'].cls))
+	eof_charclass = regular.CharClass(charset.EOF)
+	dollar_charclass = regular.CharClass(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].cls))
 	META.install_rule(expression=txt('^'), action=_metatoken, bol=(False, True))
 	META.install_rule(expression=txt('^^'), action=_metatoken, bol=(False, True))
 	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=1, action=lambda scanner:('$', dollar_charclass))

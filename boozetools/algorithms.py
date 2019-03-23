@@ -1,5 +1,5 @@
 """ The essential algorithms are given in this file. """
-from boozetools import interfaces
+from . import interfaces
 
 
 class LanguageError(ValueError): pass

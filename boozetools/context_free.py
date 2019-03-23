@@ -1,6 +1,6 @@
 import typing, collections
-from boozetools.foundation import *
-from boozetools import pretty, interfaces
+from .foundation import *
+from . import pretty, interfaces
 
 DOT = '\u25cf'
 

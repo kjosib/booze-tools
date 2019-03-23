@@ -1,19 +1,20 @@
 """
-Parsing literature is rife with different approaches to encode parse tables compactly,
-with all manner of trade-offs between size and access time.
+Parsing literature is rife with different approaches to encode scanner and parser tables
+compactly, with all manner of trade-offs between size and access time.
 
-It may be said that today's fast machines and big memories mean little need to compress scanner
-tables. However, compression can help the tables fit in a cache. Alternatively, the compact
-forms may be used for storage and interchange only. Implementations might reprocess the tables
-for quicker operation despite a bigger memory footprint; this still saves disk space.
+It may be said that today's fast machines and big memories leave little need to compress these
+tables. However, compression can help complex tables fit in cache. Alternatively, compact
+forms may be used for storage and interchange while implementations reprocess the tables
+for quicker operation despite a bigger RAM footprint: this still saves disk space.
 
 Typically, tables used in different contexts have distinct structural characteristics which
 make it more or less effective to compress them in particular ways. This module implements a
-few typical approaches to compressing parser tables.
+few typical approaches to compressing scanner and parser tables. The corresponding ways to
+use them are implemented in the runtime.py module.
 """
 
 import collections
-from boozetools import foundation
+from . import foundation
 
 def multi_append(table:dict, row:dict):
 	"""

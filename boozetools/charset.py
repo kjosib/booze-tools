@@ -1,29 +1,39 @@
 """
-In light of unicode support, it's nonsense to work with uncompressed character classes.
-Two major categories of operation exist for these things.
-The first is logical combination of two character classes to produce a third.
-The second is to expand classes into a specific set of include/exclude booleans for
-a sorted sequence of bounding points.
+Even for the most basic unicode support, it's nonsense to work with uncompressed character sets.
 
-I've chosen to define the character-class data structure as a sorted list of lower bounds
+As a first (effective, but unicode-naive) approach to working with sets of characters in compact
+form, I've chosen to define the character-class data structure as a sorted list of lower bounds
 with implied exclusion below the first listed bound. That is: a character is a member of
 the class exactly when an odd number of lower-bounds in the class are less-than-or-equal-to
 that character's codepoint value. (See the `in_class(...)` function.)
 
-The next segment provides for the manufacture of character classes idiomatically:
-singletons, ranges, and logical combinations (set operations).
+Two major categories of operation exist for these things.
+
+	The first is logical combination of two sets of characters to produce a third.
+	The second is to expand classes into a specific set of include/exclude booleans for
+	a sorted sequence of bounding points.
+	
+	The next segment provides for the manufacture of character classes idiomatically:
+	singletons, ranges, and logical combinations (set operations).
 
 Of note, I treat -1 as the "end-of-file" character to make end-of-file rule processing
 blend in with the rest of the finite-automaton clockwork, but it is a bit special:
 "end-of-file" does not appear in the 'universal set' of characters or the complement
 of any class, so the only way to get it is expressly from an end-of-file rule or end-of-line
-trailing-context.
+trailing-context. This has implications for how set complements should be constructed.
 
 Lower down in the file, I define standard POSIX-type character classes for the ASCII range.
 
 Note that locale-based POSIX character equivalents are not supported in this module.
 Digraphs (e.g. Czech or Spanish "ch") mean the concept works at a higher level than
 the individual code point, and would throw several things out of kilter.
+
+It turns out that true unicode character classes (UCCs) have lots and lots and LOTS of
+codepoint boundaries, so that it's impractical to use the above idea for supporting
+unicode with any sophistication. That calls for a different approach.
+
+Ideally most of the Finite Automaton machinery would be insulated from changes in support
+of Smart Unicode Mode. The challenge is keeping track of
 
 """
 import bisect, operator

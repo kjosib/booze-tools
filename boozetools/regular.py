@@ -1,9 +1,9 @@
 """ Mechanisms for working with regular languages: finite automata and an AST class-hierarchy for regular expressions. """
 
-import typing, bisect, operator
+import typing, bisect
 
-from boozetools.foundation import *
-from boozetools import charclass, pretty, interfaces
+from .foundation import *
+from . import charset, pretty, interfaces
 
 
 class Classifier:
@@ -154,7 +154,7 @@ class NFA:
 				node = self.states[n]
 				if node.rank >= min_rank:
 					for e in node.edges:
-						active.append(list(charclass.expand(e.label, all_bounds)))
+						active.append(list(charset.expand(e.label, all_bounds)))
 						targets.append(e.target)
 			# Now, if active[i][j], then targets[i] participates in class[j].
 			delta, prior = [], None

@@ -1,6 +1,6 @@
 """ No frills. Plenty useful. """
 
-from boozetools import context_free, algorithms
+from . import context_free, algorithms
 
 
 class MiniParse:
