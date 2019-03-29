@@ -1,3 +1,8 @@
+class Classifier:
+	def classify(self, codepoint:int) -> int: raise NotImplementedError(type(self))
+	def cardinality(self) -> int: raise NotImplementedError(type(self))
+	def display(self): raise NotImplementedError(type(self))
+
 class FiniteAutomaton:
 	"""
 	A finite automaton determines which rule matches but knows nothing about the rules themselves.

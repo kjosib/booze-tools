@@ -1,9 +1,10 @@
 import unittest
-import os
+import os, pprint
 import json as standard_json
 import example.json
 
 from boozetools.macroparse import compiler
+from boozetools import runtime
 
 # See https://json.org/example.html
 GLOSSARY_JSON = """
@@ -51,10 +52,9 @@ class TestMacroCompiler(unittest.TestCase):
 		# The transition into and back out of JSON should be non-destructive, but it's worth being sure.
 		serialized = standard_json.dumps(automaton)
 		cls.automaton = standard_json.loads(serialized)
+		scanner_data = cls.automaton['scanner']
+		cls.dfa = runtime.CompactDFA(dfa=scanner_data['dfa'], alphabet=scanner_data['alphabet'])
 		pass
 	
 	def test_00_smoke_test(self):
-		for k,v in self.automaton.items():
-			print(k)
-			print(v)
 		assert False, "There's still a couple drivers to write."

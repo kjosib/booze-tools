@@ -12,7 +12,7 @@ class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
 
-from boozetools import context_free, miniparse, miniscan, algorithms
+from .. import context_free, miniparse, miniscan, algorithms
 
 class DefinitionError(Exception): pass
 

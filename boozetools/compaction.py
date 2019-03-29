@@ -11,6 +11,9 @@ Typically, tables used in different contexts have distinct structural characteri
 make it more or less effective to compress them in particular ways. This module implements a
 few typical approaches to compressing scanner and parser tables. The corresponding ways to
 use them are implemented in the runtime.py module.
+
+As a nod to runtime efficiency, offsets useful for a displacement table are precomputed here
+and provided for later.
 """
 
 import collections
@@ -43,34 +46,35 @@ def modified_aho_corasick_encoding(*, initial:dict, matrix:list, final:dict, jam
 	For the sake of brevity, the "jam state" is implied to consist of nothing but jam-transitions, and
 	is not explicitly stored.
 	"""
-	# To begin, we need to renumber the states according to a breadth-first topology, and also determine
-	# the resulting depth boundaries.
+	# Renumber the states according to a breadth-first topology, and also determine the resulting
+	# depth boundaries. (A topological index would suffice, but this has other nice properties.)
 	assert jam < 0
 	bft = foundation.BreadthFirstTraversal()
 	states = []
 	def renumber(src): states.append([jam if dst == jam else bft.lookup(dst) for dst in matrix[src]])
 	initial = {condition: (bft.lookup(q0), bft.lookup(q1)) for condition, (q0, q1) in initial.items()}
 	bft.execute(renumber)
-	final = {bft.lookup(q): rule_id for q, rule_id in final.items()}
 	depth = bft.depth_list()
 	
 	# Next, we need to construct the compressed structure. For simplicity, this will be three arrays
 	# named for their function and indexed by state number.
-	result = {'default':[], 'index':[], 'data':[], 'initial':initial, 'final':final,}
+	delta = {'default': [], 'index': [], 'data': [],}
+	result = {'delta':delta, 'initial': initial, 'final': [bft.lookup(q) for q in final.keys()], 'rule': list(final.values())}
 	for i, row in enumerate(states):
 		# Find the shortest encoding by reference to shallower states:
 		pointer, best = jam, [k for k,x in enumerate(row) if x != jam]
 		for j in range(i):
-			if depth[j] == depth[i]: break
+			if depth[j] == depth[i]: break # This relies on the depth-first ordering...
 			contender = [k for k,x in enumerate(states[j]) if x != row[k]]
 			if len(contender) < len(best): pointer, best = j, contender
 		# Append the chosen encoding into the structure:
 		if len(best) * 2 < len(row): # If the compression actually saves space on this row:
-			multi_append(result, {'default': pointer, 'index':best, 'data': [row[k] for k in best]})
+			multi_append(delta, {'default': pointer, 'index':best, 'data': [row[k] for k in best]})
 		else: # Otherwise, a dense storage format is indicated by eliding the list of indices.
-			multi_append(result, {'default': jam, 'index':None, 'data': row})
+			multi_append(delta, {'default': jam, 'index':None, 'data': row})
 	# At this point, the DFA is represented in about as terse a format as makes sense.
-	metric = len(result['default']) + sum(map(len, result['data'])) + sum(x is None or len(x)+1 for x in result['index'])
+	metric = 2*len(delta['default']) + sum(map(len, delta['data'])) + sum(x is None or len(x)+1 for x in delta['index'])
+	delta['offset'] = first_fit_decreasing(delta['index'])
 	print('Matrix compressed into %d cells.' % metric)
 	return result
 
@@ -107,16 +111,17 @@ def compress_action_table(matrix:list, essential_errors:set) -> dict:
 			if x < 0: histogram[x] += 1
 		return max(histogram.keys(), key=histogram.get, default=0)
 	
-	result = {'default':[], 'index':[], 'data':[]}
+	delta = {'default':[], 'index':[], 'data':[]}
 	for q, row in enumerate(matrix):
 		reduction = find_default_reduction(row)
 		becomes_default = (reduction, 0)
 		idx = [i for i,x in enumerate(row) if x not in becomes_default and (q,x) not in essential_errors]
 		if len(idx) * 2 < len(row):
-			multi_append(result, {'default':reduction, 'index':idx, 'data':[row[k] for k in idx]})
+			multi_append(delta, {'default':reduction, 'index':idx, 'data':[row[k] for k in idx]})
 		else:
-			multi_append(result, {'default': 0, 'index':None, 'data': row})
-	return result
+			multi_append(delta, {'default': 0, 'index':None, 'data': row})
+	delta['offset'] = first_fit_decreasing(delta['index'])
+	return delta
 
 def compress_goto_table(goto_table:list) -> dict:
 	"""
@@ -160,3 +165,29 @@ def compress_goto_table(goto_table:list) -> dict:
 	state_class = [find_class(row) for row in goto_table]
 	print("GOTO compact size:", sum(map(len, class_list))+len(state_class))
 	return {'state_class': state_class, 'class_list': class_list}
+
+
+def first_fit_decreasing(indices:list) -> list:
+	"""
+	(Aho and Ulman [2]) and (Ziegler [7]) advocate this scheme...
+	This function finds a set of displacements such that no two index[i][j]+displacement[i] are the same.
+	The entry in list `indices` is normally a list of columns within a given row which are considered to
+	have legitimate data in some particular sparse matrix.
+	
+	The result can be used to populate a displacement table from "compressed sparse rows",
+	eliminating a search each time the table gets probed.
+	
+	I've chosen to expand on the idea slightly: If a row is denser than 50%, it makes more sense to store
+	the row as a dense vector. Such rows get `None`/null in their column index and corresponding offset.
+	"""
+	used = set()
+	def first_fit(row:list) -> int:
+		offset = 0
+		while any(r+offset in used for r in row): offset += 1
+		used.update(r+offset for r in row)
+		return offset
+	displacements = [None] * len(indices)
+	for i in sorted([i for i, row in enumerate(indices) if row], key=lambda i: len(indices[i])):
+		displacements[i] = first_fit(indices[i])
+	return displacements
+

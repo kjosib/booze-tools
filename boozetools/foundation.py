@@ -26,7 +26,7 @@ class BreadthFirstTraversal:
 		self.current, self.traversal, self.catalog, self.earliest_predecessor, self.breadcrumbs = None, [], {}, [], []
 	def execute(self, visit):
 		""" visit(key, lookup) should call self.lookup(successor_key, breadcrumb), which returns an integer. """
-		for self.current, k in enumerate(self.traversal): visit(k)
+		for self.current, key in enumerate(self.traversal): visit(key)
 		self.current = None
 	def lookup(self, key, *, breadcrumb=None) -> int:
 		if key not in self.catalog:

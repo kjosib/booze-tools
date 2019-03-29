@@ -1,38 +1,13 @@
 """ Mechanisms for working with regular languages: finite automata and an AST class-hierarchy for regular expressions. """
 
-import typing, bisect
+import typing, operator
 
-from .foundation import *
-from . import charset, pretty, interfaces
+from . import foundation, charset, charclass, pretty, interfaces
 
-
-class Classifier:
-	def classify(self, codepoint:int) -> int: raise NotImplementedError(type(self))
-	def cardinality(self) -> int: raise NotImplementedError(type(self))
-	def display(self): raise NotImplementedError(type(self))
-
-class SimpleClassifier(Classifier):
-	def __init__(self, bounds):
-		self.bounds = tuple(bounds)
-	def cardinality(self): return 1+len(self.bounds)
-	def classify(self, codepoint:int): return bisect.bisect_right(self.bounds, codepoint)
-	def display(self): pretty.print_grid([['-', *self.bounds]])
-
-class MetaClassifier(Classifier):
-	def __init__(self, bounds, classes):
-		self.bounds = tuple(bounds)
-		self.classes = tuple(classes)
-		assert len(self.bounds) + 1 == len(self.classes)
-		assert set(self.classes) == set(range(self.cardinality()))
-	def cardinality(self): return max(self.classes)+1
-	def classify(self, codepoint): return self.classes[bisect.bisect_right(self.bounds, codepoint)]
-	def display(self):
-		bound_repr = ["'"+chr(b) if 32 < b < 127 else b for b in self.bounds]
-		pretty.print_grid([('-', *bound_repr), self.classes, ])
 
 class DFA(interfaces.FiniteAutomaton):
 	"""  """
-	def __init__(self, *, alphabet:Classifier, initial:dict, final:dict, states:list):
+	def __init__(self, *, alphabet:interfaces.Classifier, initial:dict, final:dict, states:list):
 		self.alphabet = alphabet
 		self.width = self.alphabet.cardinality()
 		self.initial = initial
@@ -43,7 +18,7 @@ class DFA(interfaces.FiniteAutomaton):
 	def jam_state(self): return -1
 	def append_state(self, row) -> int:
 		assert len(row) == self.width, [len(row), self.width]
-		return allocate(self.states, row)
+		return foundation.allocate(self.states, row)
 	def get_condition(self, condition_name) -> tuple: return self.initial[condition_name]
 	def get_next_state(self, current_state: int, codepoint: int) -> int: return self.states[current_state][self.alphabet.classify(codepoint)]
 	def get_state_rule_id(self, state_id: int): return self.final.get(state_id)
@@ -59,48 +34,48 @@ class DFA(interfaces.FiniteAutomaton):
 	def minimize_states(self) -> "DFA":
 		""" Let's try Moore's Algorithm: It's easier to get right. """
 		buckets = []
-		P = []
+		partition_id_of_state = []
 		def establish_initial_partitioning():
 			""" Every state goes into a partition numbered according to its finality: """
 			finality = {}
 			for n in range(len(self.states)):
 				rule_id = self.final.get(n)
-				if rule_id not in finality: finality[rule_id] = allocate(buckets, [])
+				if rule_id not in finality: finality[rule_id] = foundation.allocate(buckets, [])
 				b = finality[rule_id]
-				P.append(b)
+				partition_id_of_state.append(b)
 				buckets[b].append(n)
 			pass
-		def translate(q): return (-1 if x < 0 else P[x] for x in self.states[q])
+		def translate(q) -> tuple: return tuple(-1 if x < 0 else partition_id_of_state[x] for x in self.states[q])
 		def refine_partitions() -> bool:
-			verken = False
+			splitting_happened = False
 			for b, bucket in enumerate(buckets):
 				if len(bucket) < 2: continue
-				exemplar = list(translate(bucket[0]))
+				exemplar = translate(bucket[0])
 				same, different = [], []
 				for q in bucket: (same if all(map(operator.eq, exemplar, translate(q))) else different).append(q)
 				if different:
 					buckets[b] = same
-					n = allocate(buckets, different)
-					for q in different: P[q] = n
-					verken = True
-			return verken
+					n = foundation.allocate(buckets, different)
+					for q in different: partition_id_of_state[q] = n
+					splitting_happened = True
+			return splitting_happened
 		def interpretation() -> DFA:
 			return DFA(
 				alphabet=self.alphabet,
-				initial={condition: (P[q0], P[q1]) for condition, (q0, q1) in self.initial.items()},
-				final = {P[q]:rule_id for q,rule_id in self.final.items()},
-				states = [list(translate(bucket[0])) for bucket in buckets],
+				initial={condition: (partition_id_of_state[q0], partition_id_of_state[q1]) for condition, (q0, q1) in self.initial.items()},
+				final = {partition_id_of_state[q]:rule_id for q,rule_id in self.final.items()},
+				states = [translate(bucket[0]) for bucket in buckets],
 			)
 		establish_initial_partitioning()
 		while refine_partitions(): pass
 		return interpretation()
 		
 	def minimize_alphabet(self) -> "DFA":
-		assert isinstance(self.alphabet, SimpleClassifier)
-		ec = EquivalenceClassifier()
+		assert isinstance(self.alphabet, charclass.SimpleClassifier)
+		ec = foundation.EquivalenceClassifier()
 		classes = [ec.classify(column) for column in zip(*self.states)]
 		return DFA(
-			alphabet=MetaClassifier(self.alphabet.bounds, classes),
+			alphabet=charclass.MetaClassifier(self.alphabet.bounds, classes),
 			initial=self.initial,
 			final=self.final,
 			states=list(zip(*ec.exemplars)),
@@ -127,7 +102,7 @@ class NFA:
 		epsilons: set
 		rank: int
 	
-	def new_node(self, rank) -> int: return allocate(self.states, NFA.Node(edges=[], epsilons=set(), rank=rank))
+	def new_node(self, rank) -> int: return foundation.allocate(self.states, NFA.Node(edges=[], epsilons=set(), rank=rank))
 	def condition(self, name):
 		if name not in self.initial: self.initial[name] = (self.new_node(0), self.new_node(0))
 		return self.initial[name]
@@ -137,10 +112,10 @@ class NFA:
 	def link_epsilon(self, src :int, dst :int): self.states[src].epsilons.add(dst)
 	def subset_construction(self) -> DFA:
 		all_bounds = sorted(self.all_bounds|{-1})
-		dfa = DFA(alphabet=SimpleClassifier(all_bounds[1:]), initial={}, final={}, states=[])
+		dfa = DFA(alphabet=charclass.SimpleClassifier(all_bounds[1:]), initial={}, final={}, states=[])
 		def close(ns, min_rank:int):
 			assert all(isinstance(n, int) for n in ns)
-			tc = transitive_closure(ns, lambda n :self.states[n].epsilons)
+			tc = foundation.transitive_closure(ns, lambda n :self.states[n].epsilons)
 			ns = frozenset(n for n in tc if self.states[n].rank >= min_rank)
 			return ns, min((self.states[n].rank for n in ns), default=0)
 		def visit(key):
@@ -166,7 +141,7 @@ class NFA:
 					successor = bft.lookup((subset, subrank)) if subset else -1
 				delta.append(successor)
 			dfa.append_state(delta or [-1]*dfa.width)
-		bft = BreadthFirstTraversal()
+		bft = foundation.BreadthFirstTraversal()
 		def initial(q:int): return close([q], 0)
 		dfa.initial = {k :(bft.lookup(initial(a)), bft.lookup(initial(b))) for k ,(a ,b) in self.initial.items()}
 		bft.execute(visit)

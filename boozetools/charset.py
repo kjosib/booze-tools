@@ -33,7 +33,7 @@ codepoint boundaries, so that it's impractical to use the above idea for support
 unicode with any sophistication. That calls for a different approach.
 
 Ideally most of the Finite Automaton machinery would be insulated from changes in support
-of Smart Unicode Mode. The challenge is keeping track of
+of Smart Unicode Mode. There are certain -- challenges.
 
 """
 import bisect, operator

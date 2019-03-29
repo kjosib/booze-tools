@@ -5,24 +5,24 @@ It extends the language of attributed context-free grammars with additional feat
 The design for this module is still in flux, although most of the main ideas are laid out.
 The concept is a single-file definition of both lexical and syntactic analysis embedded within MarkDown text.
 
-Most components of such a format are straightforward to analyze with available string operations or
-simple applications of standard Python regex machinery. However, b
+Markdown as a container format is straightforward to analyze with available string operations or
+simple applications of standard Python regex machinery. However, the miniscan/miniparse machinery is
+extremely handy for recovering the syntactic structure of actual rules, so that's used here.
 
-========================================
 ========================================
 
 """
-import re
-from boozetools import miniscan, regular, context_free, foundation, algorithms, compaction
-from boozetools.macroparse import grammar
+import re, os
+from .. import miniscan, regular, context_free, foundation, algorithms, compaction
+from . import grammar
 
 class DefinitionError(Exception): pass
 
 def compile_file(pathname) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
-	return compile_string(document)
+	return compile_string(document, os.path.basename(pathname))
 
-def compile_string(document:str) -> dict:
+def compile_string(document:str, filename=None) -> dict:
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
 	# Each major sub-language is line-oriented and interpreted with one of the following five subroutines:
@@ -117,6 +117,7 @@ def compile_string(document:str) -> dict:
 	# Compose and compress the control tables. (Serialization will be straight JSON via standard library.)
 	return {
 		'version': (0, 0, 0),
+		'source': filename,
 		'scanner': scan_table_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions),
 		'parser': parse_table_encoding(ebnf.plain_cfg.lalr_construction(ebnf.start))
 	}
@@ -125,7 +126,7 @@ def scan_table_encoding(dfa:regular.DFA, scan_actions:list) -> dict:
 	dfa.stats()
 	return {
 		'dfa': compaction.modified_aho_corasick_encoding(initial=dfa.initial, matrix=dfa.states, final=dfa.final, jam=dfa.jam_state()),
-		'action': scan_actions,
+		'action': dict(zip(['message', 'parameter', 'trail', 'line_number'], zip(*scan_actions))),
 		'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
 	}
 
