@@ -83,8 +83,8 @@ def compile_string(document:str, filename=None) -> dict:
 		if head == 'productions':
 			ebnf.current_head = None
 			for t in tokens[1:]:
-				if t not in ebnf.start:
-					ebnf.start.append(t)
+				if t not in ebnf.plain_cfg.start:
+					ebnf.plain_cfg.start.append(t)
 			return productions
 		return None
 
@@ -119,7 +119,7 @@ def compile_string(document:str, filename=None) -> dict:
 		'version': (0, 0, 0),
 		'source': filename,
 		'scanner': scan_table_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions),
-		'parser': parse_table_encoding(ebnf.plain_cfg.lalr_construction(ebnf.start))
+		'parser': parse_table_encoding(ebnf.plain_cfg.lalr_construction())
 	}
 
 def scan_table_encoding(dfa:regular.DFA, scan_actions:list) -> dict:

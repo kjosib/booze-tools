@@ -6,8 +6,8 @@ from . import context_free, algorithms, interfaces
 class MiniParse:
 	""" Connects BNF production rules directly to Python functions. No frills. Very useful as-is. """
 	def __init__(self, *start):
-		self.__start = start
 		self.__grammar = context_free.ContextFreeGrammar()
+		self.__grammar.start.extend(start)
 		self.__hfa: context_free.DragonBookTable = None
 		self.__awaiting_action = False
 	
@@ -67,8 +67,8 @@ class MiniParse:
 	def get_hfa(self):
 		if self.__hfa is None:
 			if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the final production rule.')
-			self.__grammar.validate(self.__start)
-			self.__hfa = self.__grammar.lalr_construction(self.__start)
+			self.__grammar.validate()
+			self.__hfa = self.__grammar.lalr_construction()
 		return self.__hfa
 	def parse(self, each_token, *, language=None):
 		return algorithms.parse(self.get_hfa(), MiniParse.combine, each_token, language=language)

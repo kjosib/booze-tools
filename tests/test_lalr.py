@@ -11,9 +11,10 @@ class TestLalr(unittest.TestCase):
 	def setUp(self):
 		print(self._testMethodName)
 		self.g = context_free.ContextFreeGrammar()
+		self.g.start.append('S')
 		self.good = []
 	def tearDown(self):
-		table = self.g.lalr_construction('S')
+		table = self.g.lalr_construction()
 		# table.display()
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):

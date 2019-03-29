@@ -154,7 +154,6 @@ class EBNF_Definition:
 	def __init__(self):
 		self.plain_cfg = context_free.ContextFreeGrammar()
 		self.current_head = None # This bit of state facilitates the feature of beginning a line with an alternation symbol.
-		self.start = [] # The correct start symbol(s) may be specified asynchronously to construction or the rules.
 		self.inferential_start = None # Use this to infer a start symbol if necessary.
 		self.macro_definitions = {} # name -> MacroDefinition
 		self.implementations = {} # canonical symbol -> line number of first elaboration
@@ -251,9 +250,9 @@ class EBNF_Definition:
 		unused_macros = sorted(name+':'+str(definition.line_nr) for name, definition in self.macro_definitions.items() if not definition.actually_used)
 		if unused_macros: self.gripe('The following macro(s) were defined but never used: '+', '.join(unused_macros))
 		if not self.inferential_start: self.gripe("No production rules have been given, so how am I to compile a grammar? (You could give a trivial one...)")
-		if not self.start:
+		if not self.plain_cfg.start:
 			print('Inferring CFG start symbol %r from earliest production because none was given explicitly.'%self.inferential_start)
-			self.start.append(self.inferential_start)
-		self.plain_cfg.validate(self.start)
+			self.plain_cfg.start.append(self.inferential_start)
+		self.plain_cfg.validate()
 		
 			

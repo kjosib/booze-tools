@@ -6,20 +6,41 @@ DOT = '\u25cf'
 
 LEFT, RIGHT, NONASSOC = object(), object(), object()
 
+class Fault(ValueError): pass
+class DuplicateRule(Fault): pass
+class UnreachableSymbols(Fault): pass
+class NonproductiveSymbols(Fault): pass
+
+class Rule(typing.NamedTuple):
+	lhs: str
+	rhs: tuple
+	attribute: object
+	prec_sym: typing.Optional[str]
+
 class ContextFreeGrammar:
-	class Fault(ValueError): pass
-	class DuplicateRule(Fault): pass
-	class UnreachableSymbols(Fault): pass
-	class NonproductiveSymbols(Fault): pass
-	class Rule(typing.NamedTuple):
-		lhs: str
-		rhs: tuple
-		attribute: object
-		prec_sym: typing.Optional[str]
+	"""
+	Formally, a context free grammar consists of:
+		* A set of terminal symbols,
+		* A set of non-terminal symbols, disjoint from the terminals,
+		* A set of production rules (as described at class Rule),
+		* and a start symbol.
 	
+	As a cool and potentially useful hack, I expand the normal definition to allow
+	potentially several "start symbols" to share the same overall definition. This allows
+	a single set of tables to be used (with a different initial state) to parse different
+	languages (or sub-phrases) while sharing common specification elements.
+	
+	Practical languages usually have some ambiguities which are ordinarily resolved with
+	precedence declarations. If explicit declarations are not provided, the grammar is
+	ambiguous -- at least with respect to the power of the table-generation method used.
+	There are ways to deal with ambiguity, but for deterministic parsers the convention
+	is to shift on a shift-reduce conflict (i.e. assume right-associativity) and, in
+	the event of a reduce/reduce conflict, to use the earliest-defined rule.
+	"""
 	def __init__(self):
-		self.rules, self.token_precedence, self.level_assoc = [], {}, []
 		self.symbols = set()
+		self.start = [] # The start symbol(s) may be specified asynchronously to construction or the rules.
+		self.rules, self.token_precedence, self.level_assoc = [], {}, []
 		self.symbol_rule_ids = {}
 	def display(self):
 		head = ['', 'Symbol', 'Produces', 'Using']
@@ -60,22 +81,21 @@ class ContextFreeGrammar:
 		self.symbols.update(rhs)
 		if lhs not in self.symbol_rule_ids: self.symbol_rule_ids[lhs] = []
 		sri = self.symbol_rule_ids[lhs]
-		if any(self.rules[rule_id].rhs == rhs for rule_id in sri): raise ContextFreeGrammar.DuplicateRule(lhs, rhs)
-		sri.append(allocate(self.rules, ContextFreeGrammar.Rule(lhs, rhs, attribute, prec_sym)))
+		if any(self.rules[rule_id].rhs == rhs for rule_id in sri): raise DuplicateRule(lhs, rhs)
+		sri.append(allocate(self.rules, Rule(lhs, rhs, attribute, prec_sym)))
 	
-	def validate(self, start:(str, list, tuple)):
-		if isinstance(start, str): start = [start]
+	def validate(self):
 		produces = collections.defaultdict(set)  # nt -> set[t]
 		produced_by = collections.defaultdict(set)
 		for rule in self.rules:
 			assert rule.attribute is not None or len(rule.rhs) == 1
 			produces[rule.lhs].update(rule.rhs)
 			for symbol in rule.rhs: produced_by[symbol].add(rule.lhs)
-		unreachable = self.symbols - transitive_closure(start, produces.get)
-		if unreachable: raise ContextFreeGrammar.UnreachableSymbols(unreachable)
+		unreachable = self.symbols - transitive_closure(self.start, produces.get)
+		if unreachable: raise UnreachableSymbols(unreachable)
 		nonterminals = set(produces.keys())
 		nonproductive = self.symbols - transitive_closure(self.symbols-nonterminals, produced_by.get)
-		if nonproductive: raise ContextFreeGrammar.NonproductiveSymbols(nonproductive)
+		if nonproductive: raise NonproductiveSymbols(nonproductive)
 		pass
 	
 	def assoc(self, direction, symbols):
@@ -114,15 +134,14 @@ class ContextFreeGrammar:
 			if symbol in self.token_precedence:
 				return symbol
 
-	def lalr_construction(self, start: (str, list, tuple), *, strict:bool=False) -> 'DragonBookTable':
+	def lalr_construction(self, *, strict:bool=False) -> 'DragonBookTable':
 		class State(typing.NamedTuple):
 			shifts: dict
 			complete: set  # rule_id
 			follow: dict  # rule_id -> set_id
 		
 		##### Start by arranging most of the grammar data in a convenient form:
-		if isinstance(start, str): start = [start]
-		assert start
+		assert self.start
 		RHS, unit_rules = [], set()
 		for rule_id, rule in enumerate(self.rules):
 			RHS.append(rule.rhs)
@@ -176,7 +195,7 @@ class ContextFreeGrammar:
 				for rule_id in state.complete:
 					if rule_id < len(self.rules):
 						link(src=state.follow[rule_id], dst=q)
-			for rule_id, language in enumerate(start, len(self.rules)):
+			for rule_id, language in enumerate(self.start, len(self.rules)):
 				q = initial[language]
 				final = hfa[q].shifts[language]
 				token_sets[final].add(end)
@@ -194,7 +213,7 @@ class ContextFreeGrammar:
 		
 		hfa = []
 		bft = BreadthFirstTraversal()
-		initial = {language: bft.lookup(front([allocate(RHS, [language])])) for language in start}
+		initial = {language: bft.lookup(front([allocate(RHS, [language])])) for language in self.start}
 		bft.execute(build_state)
 		
 		token_sets = [set() for _ in range(len(hfa))]
@@ -210,7 +229,7 @@ class ContextFreeGrammar:
 					trail.append(crumb)
 					cursor = bft.earliest_predecessor[cursor]
 				else: break
-			print('==============\nIn language %r, consider:' % start[cursor])
+			print('==============\nIn language %r, consider:' % self.start[cursor])
 			print('\t'+' '.join(reversed(trail)),DOT,lookahead)
 			for x in options:
 				if x > 0:
