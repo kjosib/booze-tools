@@ -13,19 +13,21 @@ class Definition(interfaces.ScanRules):
 		self.__minimize = minimize
 		self.__awaiting_action = False
 	
-	def initial_condition(self) -> str: pass
+	def default_initial_condition(self) -> str: pass
 	def get_trailing_context(self, rule_id: int): return self.__trails[rule_id]
-	def get_rule_action(self, rule_id: int) -> object: return self.__actions[rule_id]
 	
 	def get_dfa(self) -> interfaces.FiniteAutomaton:
 		if self.__dfa is None:
-			if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the final pattern!')
+			if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the final pattern!')
 			self.__dfa = self.__nfa.subset_construction()
 			if self.__minimize: self.__dfa = self.__dfa.minimize_states().minimize_alphabet()
 		return self.__dfa
 	
-	def scan(self, text, *, start=None, env=None): return MiniScanner(definition=self, text=text, start=start, env=env)
-	
+	def scan(self, text, *, start=None, env=None):
+		scanner = algorithms.Scanner(text=text, automaton=self.get_dfa(), rulebase=self, start=start)
+		scanner.env = env
+		return scanner
+		
 	def install_subexpression(self, name:str, expression: regular.Regular):
 		assert isinstance(name, str) and name not in self.__subexpressions and len(name) > 1
 		assert isinstance(expression, regular.Regular)
@@ -54,7 +56,7 @@ class Definition(interfaces.ScanRules):
 		@scanner_definition.on(r'[A-Za-z_]+')
 		def word(scanner): return ('word', scanner.matched_text()) # Return a token.
 		"""
-		if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the previous pattern!')
+		if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the previous pattern!')
 		self.__awaiting_action = True
 		bol, expression, trail = analyze_pattern(pattern, self.__subexpressions)
 		def decorator(fn):
@@ -65,12 +67,17 @@ class Definition(interfaces.ScanRules):
 			return fn
 		return decorator
 	def condition(self, *condition): return ConditionContext(self, *condition)
-	
+	def invoke(self, scan_state:interfaces.ScanState, rule_id:int):
+		action = self.__actions[rule_id]
+		if callable(action): return action(scan_state)
+		if isinstance(action, str): return action, scan_state.matched_text()
+		assert action is None
+
 def analyze_pattern(pattern:str, env):
 	try: bol, expression, trailing_context = rex.parse(META.scan(pattern, env=env))
-	except algorithms.ParseError as e:
+	except interfaces.ParseError as e:
 		sequence = [token[0] for token in META.scan(pattern, env=env)]
-		raise algorithms.MetaError('Broken regular expression pattern', pattern, 'scanned as', sequence) from e
+		raise interfaces.MetaError('Broken regular expression pattern', pattern, 'scanned as', sequence) from e
 	assert isinstance(expression, regular.Regular)
 	if not trailing_context: trail = None
 	else:
@@ -79,7 +86,7 @@ def analyze_pattern(pattern:str, env):
 		expression = regular.Sequence(expression, trailing_context)
 		if trail: trail = -trail
 		elif stem: trail = stem
-		else: raise algorithms.SemanticError(pattern, 'Variable stem and variable trailing context are not presently supported in the same pattern.')
+		else: raise interfaces.SemanticError(pattern, 'Variable stem and variable trailing context are not presently supported in the same pattern.')
 	return bol, expression, trail
 
 class ConditionContext:
@@ -92,15 +99,6 @@ class ConditionContext:
 	def on(self, pattern, *, rank=0): return self.__definition.on(pattern, condition=self.__condition, rank=rank)
 	def install_rule(self, **kwargs): return self.__definition.install_rule(condition=self.__condition, **kwargs)
 
-class MiniScanner(algorithms.Scanner):
-	def __init__(self, *, text: str, definition:Definition, start=None, env=None):
-		self.__definition = definition
-		self.env = env
-		super().__init__(text=text, automaton=definition.get_dfa(), rulebase=definition, start=start)
-	def invoke(self, action):
-		if callable(action): return action(self)
-		if isinstance(action, str): return action, self.matched_text()
-		assert action is None
 
 #########################
 # A pattern parser is easy to build using the miniparse module:
@@ -143,7 +141,7 @@ rex.rule('Item', 'short')(lambda c:c.cls)
 @rex.rule('Item', 'reference')
 def classref(subex: regular.Regular):
 	if isinstance(subex, regular.CharClass): return subex.cls
-	else: raise algorithms.SemanticError('Reference is not to a character class, and so cannot be used within one.')
+	else: raise interfaces.SemanticError('Reference is not to a character class, and so cannot be used within one.')
 
 META = Definition()
 def _BEGIN_():

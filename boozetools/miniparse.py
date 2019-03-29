@@ -1,6 +1,6 @@
 """ No frills. Plenty useful. """
 
-from . import context_free, algorithms
+from . import context_free, algorithms, interfaces
 
 
 class MiniParse:
@@ -37,7 +37,7 @@ class MiniParse:
 			def add(a,b): return a+b
 		"""
 		assert self.__hfa is None
-		if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the prior production rule.')
+		if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the prior production rule.')
 		self.__awaiting_action = True
 		rhs, offsets = MiniParse.__analyze(rhs)
 		def decorate(fn=None):
@@ -55,18 +55,18 @@ class MiniParse:
 		"""
 		Facilitates those "X => A | B | C | D" type rules you often find in real grammars.
 		"""
-		if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the prior production rule.')
+		if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the prior production rule.')
 		for branch in alternatives:
 			rhs, offsets = MiniParse.__analyze(branch)
 			if len(rhs) == 1: message = None  # Unit/renaming rule
 			elif len(offsets) == 1: message = ((lambda x: x), offsets)  # Bracketing rule
-			else: raise algorithms.MetaError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.' % branch)
+			else: raise interfaces.MetaError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.' % branch)
 			self.__grammar.rule(lhs, rhs, message, None)
 	
 	def display(self): self.__grammar.display()
 	def get_hfa(self):
 		if self.__hfa is None:
-			if self.__awaiting_action: raise algorithms.MetaError('You forgot to provide the action for the final production rule.')
+			if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the final production rule.')
 			self.__grammar.validate(self.__start)
 			self.__hfa = self.__grammar.lalr_construction(self.__start)
 		return self.__hfa

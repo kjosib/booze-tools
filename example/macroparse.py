@@ -19,7 +19,13 @@ parser object is not any major inconvenience.
 
 """
 
+from boozetools import interfaces
+
 # JSON -- Scanner:
+
+class ScanJSON:
+	def on_integer(self, scanner:interfaces.ScanState, parameter):
+		return 'number', int(scanner.matched_text())
 
 # JSON -- Parser:
 

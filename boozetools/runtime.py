@@ -2,8 +2,8 @@
 This module is the dual of `compaction.py`:
 It provides a runtime interface to compacted scanner and parser tables.
 """
-
-from . import interfaces, charclass
+from boozetools.interfaces import ScanState
+from . import interfaces, charclass, algorithms
 
 def sparse_table_function(*, index, data, offset) -> callable:
 	"""
@@ -47,7 +47,7 @@ def scanner_delta_function(delta) -> callable:
 	def fn(state_id:int, symbol_id:int) -> int:
 		if state_id<0: return state_id
 		q = probe(state_id, symbol_id)
-		return fn(default[q], symbol_id) if q is None else q
+		return fn(default[state_id], symbol_id) if q is None else q
 	return fn
 
 def parser_action_function(delta) -> callable:
@@ -60,7 +60,9 @@ def parser_action_function(delta) -> callable:
 
 
 class CompactDFA(interfaces.FiniteAutomaton):
-	
+	"""
+	This sets up using information
+	"""
 	def __init__(self, *, dfa:dict, alphabet:dict):
 		self.classifier = charclass.MetaClassifier(**alphabet)
 		self.delta = scanner_delta_function(dfa['delta'])
@@ -68,12 +70,25 @@ class CompactDFA(interfaces.FiniteAutomaton):
 		self.final = dict(zip(dfa['final'], dfa['rule']))
 	
 	def jam_state(self): return -1
-	
-	def get_condition(self, condition_name) -> tuple:
-		pass
-	
+	def get_condition(self, condition_name) -> tuple: return self.initial[condition_name]
+	def get_state_rule_id(self, state_id: int) -> int: return self.final.get(state_id)
+
 	def get_next_state(self, current_state: int, codepoint: int) -> int:
-		pass
+		return self.delta(current_state, self.classifier.classify(codepoint))
 	
-	def get_state_rule_id(self, state_id: int) -> int:
-		pass
+	
+	
+class SymbolicRules(interfaces.ScanRules):
+	def __init__(self, *, action:dict, driver:object):
+		self._message     = action['message']
+		self._parameter   = action['parameter']
+		self._trail       = action['trail']
+		self._line_number = action['line_number']
+		self._driver      = driver
+		
+	def get_trailing_context(self, rule_id: int): return self._trail[rule_id]
+	
+	def invoke(self, scan_state: ScanState, rule_id:int):
+		method = getattr(self._driver, 'on_'+self._message[rule_id])
+		method(scan_state, self._parameter[rule_id])
+		

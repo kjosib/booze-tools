@@ -1,18 +1,10 @@
 import unittest
 
-from boozetools import algorithms, regular, interfaces
+from boozetools import regular, interfaces, algorithms
 
-
-class PassiveScanner(algorithms.Scanner):
-	def invoke(self, action): return action, self.matched_text()
-
-class MockRulebase(interfaces.ScanRules):
-	
-	def initial_condition(self): return None
-	
+class MockScanRules(interfaces.ScanRules):
+	def invoke(self, scan_state, action): return action, scan_state.matched_text()
 	def get_trailing_context(self, rule_id: int): return None
-	
-	def get_rule_action(self, rule_id: int) -> object: return 1
 
 class TestNFA(unittest.TestCase):
 	def test_00_new_node(self):
@@ -40,10 +32,13 @@ class TestNFA(unittest.TestCase):
 		nfa.final[qf] = 1
 		nfa.link(q0, qf, [65, 91, 97, 123])
 		nfa.link_epsilon(q1, q0)
+		def assertion():
+			tokens = list(algorithms.Scanner(text='j', automaton=dfa, rulebase=MockScanRules(), start=None))
+			self.assertEqual([(1,'j')], tokens)
 		dfa = nfa.subset_construction()
-		self.assertEqual([(1,'j')], list(PassiveScanner(text='j', automaton=dfa, rulebase=MockRulebase())))
+		assertion()
 		dfa = dfa.minimize_states().minimize_alphabet()
-		self.assertEqual([(1,'j')], list(PassiveScanner(text='j', automaton=dfa, rulebase=MockRulebase())))
+		assertion()
 
 class TestAST(unittest.TestCase):
 	def test_00_lengths_behave_correctly(self):

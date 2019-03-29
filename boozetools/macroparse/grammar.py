@@ -12,7 +12,7 @@ class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
 
-from .. import context_free, miniparse, miniscan, algorithms
+from .. import context_free, miniparse, miniscan, interfaces
 
 class DefinitionError(Exception): pass
 
@@ -168,10 +168,10 @@ class EBNF_Definition:
 		self.current_line_nr = line_nr
 		metascan = LEX.scan(line)
 		try: head, rewrites = PRODUCTION.parse(metascan)
-		except algorithms.ScanError as e:
+		except interfaces.ScanError as e:
 			column = e.args[0]
 			self.gripe('The MacroParse MetaScanner got confused right...\n\t'+illustrate_position(line, column))
-		except algorithms.ParseError as e:
+		except interfaces.ParseError as e:
 			self.gripe('The MacroParse MetaParser got confused. Stack condition was\n\t%r %s %r\nActual point of failure was:\n\t%s'%(e.args[0],context_free.DOT, e.args[1], illustrate_position(line, metascan.current_position())))
 		del metascan
 		# Set the current head field, or use it unchanged if not specified on this line:

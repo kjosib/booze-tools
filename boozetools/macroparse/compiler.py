@@ -13,7 +13,7 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 
 """
 import re, os
-from .. import miniscan, regular, context_free, foundation, algorithms, compaction
+from .. import miniscan, regular, context_free, foundation, interfaces, compaction
 from . import grammar
 
 class DefinitionError(Exception): pass
@@ -44,7 +44,7 @@ def compile_string(document:str, filename=None) -> dict:
 		pattern, action, parameter, rank_string = m.groups()
 		rank = int(rank_string) if rank_string else 0
 		try: bol, expression, trail = miniscan.analyze_pattern(pattern, env)
-		except algorithms.LanguageError as e: raise DefinitionError('Malformed pattern on line %d.'%line_number) from e
+		except interfaces.LanguageError as e: raise DefinitionError('Malformed pattern on line %d.'%line_number) from e
 		rule_id = foundation.allocate(scan_actions, (action, parameter, trail, line_number))
 		src = nfa.new_node(rank)
 		dst = nfa.new_node(rank)

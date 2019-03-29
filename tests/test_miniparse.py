@@ -1,7 +1,7 @@
 """ A run-down of basic features, I suppose... """
 import unittest
 import operator
-from boozetools import miniparse, algorithms
+from boozetools import miniparse, interfaces
 
 
 class TestMiniParse(unittest.TestCase):
@@ -40,5 +40,5 @@ class TestMiniParse(unittest.TestCase):
 	def test_02_forgotten_action(self):
 		b = miniparse.MiniParse('S')
 		b.rule('S', 'a B')
-		with self.assertRaises(algorithms.MetaError):
+		with self.assertRaises(interfaces.MetaError):
 			b.rule('B', 'b c')

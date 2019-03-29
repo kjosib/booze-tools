@@ -2,13 +2,6 @@
 from . import interfaces
 
 
-class LanguageError(ValueError): pass
-class ScanError(LanguageError): pass
-class ParseError(LanguageError): pass
-class SemanticError(LanguageError): pass
-class MetaError(LanguageError):
-	""" This gets raised if there's something wrong in the definition of a parser or scanner. """
-	pass
 
 def parse(tables: interfaces.ParserTables, combine, each_token, *, language=None, interactive=False):
 	"""
@@ -38,7 +31,7 @@ def parse(tables: interfaces.ParserTables, combine, each_token, *, language=None
 			step = tables.get_action(tos(), terminal_id)
 			if step >= 0: break
 			reduce(-step-1) # Bison parsers offset the rule data to save a decrement, but that breaks abstraction.
-		if step == 0: raise ParseError([tables.get_breadcrumb(q) for q in state_stack[1:]], symbol if terminal_id else '<<END>>')
+		if step == 0: raise interfaces.ParseError([tables.get_breadcrumb(q) for q in state_stack[1:]], symbol if terminal_id else '<<END>>')
 		return step
 	for symbol, attribute in each_token:
 		state_stack.append(prepare_to_shift(tables.get_translation(symbol)))
@@ -51,7 +44,7 @@ def parse(tables: interfaces.ParserTables, combine, each_token, *, language=None
 	prepare_to_shift(0)
 	return attribute_stack[0]
 
-class Scanner:
+class Scanner(interfaces.ScanState):
 	"""
 	This is the standard generic finite-automaton-based scanner, with support for backtracking,
 	beginning-of-line anchors, and (non-variable) trailing context.
@@ -60,16 +53,12 @@ class Scanner:
 	also to override the invoke(...) and perhaps unmatched(...) methods to return whatever tokens
 	should come out.
 	
-	As a convenience, scan-context stack operations are provided here. There is no "reject" action,
-	but a powerful and fast alternative is built into the DFA generator in the form of rule priority
-	ranks. The longest-match heuristic breaks ties among the highest ranked rules that match.
 	"""
-	def __init__(self, *, text:str, automaton: interfaces.FiniteAutomaton, rulebase: interfaces.ScanRules, start=None):
+	def __init__(self, *, text:str, automaton: interfaces.FiniteAutomaton, rulebase: interfaces.ScanRules, start):
 		if not isinstance(text, str): raise ValueError('text argument should be a string, not a ', type(text))
 		self.__text = text
 		self.__automaton = automaton
 		self.__rulebase = rulebase
-		if start is None: start = rulebase.initial_condition()
 		self.__condition = automaton.get_condition(start)
 		self.__stack = []
 		self.__start, self.__mark, self.__bol = None, None, None
@@ -80,12 +69,6 @@ class Scanner:
 		self.__stack.append(self.__condition)
 		self.enter(condition)
 	
-	def unmatched(self, char):
-		""" By default, this raises an exception. You may wish to override it in your application. """
-		raise ScanError(self.__start, char)
-	def invoke(self, action):
-		""" Override this according to your application. """
-		raise NotImplementedError(type(self))
 	def matched_text(self) -> str:
 		""" As advertised. """
 		return self.__text[self.__start:self.__mark]
@@ -115,20 +98,19 @@ class Scanner:
 				if q_rule is not None: mark, rule_id = cursor, q_rule
 			if rule_id is None:
 				self.__mark = self.__start + 1
-				token = self.unmatched(text[self.__start])
+				token = rulebase.unmatched(self, text[self.__start])
 			else:
 				self.__mark = mark
 				trail = rulebase.get_trailing_context(rule_id)
 				if trail is None: self.__bol = text[mark-1] in '\r\n'
 				else: self.less(trail)
-				action = rulebase.get_rule_action(rule_id)
-				token = self.invoke(action)
+				token = rulebase.invoke(self, rule_id)
 			if token is not None: yield token
 			self.__start = self.__mark
 		# Now determine if an end-of-file rule needs to execute:
 		q = automaton.get_next_state(self.__condition[self.__bol], -1)
 		if q>=0:
-			token = self.invoke(automaton.get_state_rule_id(q))
+			token = rulebase.invoke(self, automaton.get_state_rule_id(q))
 			if token is not None: yield token
 	def current_position(self) -> int:
 		""" As advertised. This was motivated by a desire to produce helpful error messages. """
