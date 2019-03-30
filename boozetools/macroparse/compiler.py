@@ -28,7 +28,7 @@ def compile_string(document:str, filename=None) -> dict:
 	# Each major sub-language is line-oriented and interpreted with one of the following five subroutines:
 
 	def definitions():
-		name, regex = s.split(None, 1)
+		name, regex = current_line_text.split(None, 1)
 		if name in env: raise DefinitionError('You cannot redefine named subexpression %r at line %d.'%(name, line_number))
 		if not re.fullmatch(r'[A-Za-z][A-Za-z_]+', name): raise DefinitionError('Subexpression %r ought to obey the rule at line %d.'%(name, line_number))
 		env[name] = miniscan.rex.parse(miniscan.META.scan(regex, env=env), language='Regular')
@@ -39,7 +39,7 @@ def compile_string(document:str, filename=None) -> dict:
 		pass
 	
 	def patterns():
-		m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(\s+[A-Za-z_]+)?(?:\s+:(0|[1-9][0-9]*))?', s)
+		m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(\s+[A-Za-z_]+)?(?:\s+:(0|[1-9][0-9]*))?', current_line_text)
 		if not m: raise DefinitionError('Unable to analyze overall pattern/action/parameter/(rank) structure at line %d.'%line_number)
 		pattern, action, parameter, rank_string = m.groups()
 		rank = int(rank_string) if rank_string else 0
@@ -59,13 +59,13 @@ def compile_string(document:str, filename=None) -> dict:
 		pass
 	
 	def productions():
-		ebnf.read_one_line(s, line_number)
+		ebnf.read_one_line(current_line_text, line_number)
 		pass
 	
 	def decide_section():
 		# Looks at a header line to see which parsing mode/section to shift into based on a leading keyword,
 		# and also performs any clerical duties associated with said shift.
-		tokens = ''.join([c if c.isalnum() else ' ' for c in s]).split()
+		tokens = ''.join([c if c.isalnum() or c=='_' else ' ' for c in current_line_text]).split()
 		if not tokens: return None
 		head = tokens[0].lower()
 		if head == 'definitions': return definitions
@@ -101,14 +101,14 @@ def compile_string(document:str, filename=None) -> dict:
 	# Here begins the outermost layer of grammar definition parsing, which is to comprehend the
 	# structure of a supplied mark-down document just enough to extract headers and code-blocks.
 	section, in_code, line_number = None, False, 0
-	for s in document.splitlines(keepends=False):
+	for current_line_text in document.splitlines(keepends=False):
 		line_number += 1
 		if in_code:
-			s = s.strip()
-			if '```' in s: in_code = False
-			elif s and section: section()
-		elif s.startswith('#'): section = decide_section()
-		elif s.strip().startswith('```'): in_code = True
+			current_line_text = current_line_text.strip()
+			if '```' in current_line_text: in_code = False
+			elif current_line_text and section: section()
+		elif current_line_text.startswith('#'): section = decide_section()
+		elif current_line_text.strip().startswith('```'): in_code = True
 		else: continue
 	
 	# Validate everything possible:

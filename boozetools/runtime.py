@@ -70,7 +70,9 @@ class CompactDFA(interfaces.FiniteAutomaton):
 		self.final = dict(zip(dfa['final'], dfa['rule']))
 	
 	def jam_state(self): return -1
-	def get_condition(self, condition_name) -> tuple: return self.initial[condition_name]
+	def get_condition(self, condition_name) -> tuple:
+		try: return self.initial[condition_name]
+		except KeyError: raise KeyError(condition_name, set(self.initial.keys()))
 	def get_state_rule_id(self, state_id: int) -> int: return self.final.get(state_id)
 
 	def get_next_state(self, current_state: int, codepoint: int) -> int:
@@ -90,5 +92,5 @@ class SymbolicRules(interfaces.ScanRules):
 	
 	def invoke(self, scan_state: ScanState, rule_id:int):
 		method = getattr(self._driver, 'on_'+self._message[rule_id])
-		method(scan_state, self._parameter[rule_id])
+		return method(scan_state, self._parameter[rule_id])
 		

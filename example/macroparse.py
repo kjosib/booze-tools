@@ -24,8 +24,25 @@ from boozetools import interfaces
 # JSON -- Scanner:
 
 class ScanJSON:
-	def on_integer(self, scanner:interfaces.ScanState, parameter):
-		return 'number', int(scanner.matched_text())
+	RESERVED = {'true': True, 'false':False, 'null':None}
+	ESCAPES = {'b': 8, 't': 9, 'n': 10, 'f': 12, 'r': 13, }
+	
+	def on_ignore_whitespace(self, scanner:interfaces.ScanState, parameter): pass
+	def on_punctuation(self, scanner:interfaces.ScanState, parameter): return scanner.matched_text(), None
+	def on_integer(self, scanner:interfaces.ScanState, parameter): return 'number', int(scanner.matched_text())
+	def on_float(self, scanner:interfaces.ScanState, parameter): return 'number', float(scanner.matched_text())
+	def on_reserved_word(self, scanner:interfaces.ScanState, parameter): return scanner.matched_text(), self.RESERVED[scanner.matched_text()]
+	def on_enter_string(self, scanner:interfaces.ScanState, parameter):
+		scanner.enter('in_string')
+		return scanner.matched_text(), None
+	def on_stringy_bit(self, scanner:interfaces.ScanState, parameter): return 'character', scanner.matched_text()
+	def on_escaped_literal(self, scanner:interfaces.ScanState, parameter): return 'character', scanner.matched_text()[1]
+	def on_shorthand_escape(self, scanner:interfaces.ScanState, parameter): return 'character', chr(self.ESCAPES[scanner.matched_text()[1]])
+	def on_unicode_escape(self, scanner:interfaces.ScanState, parameter): return 'character', chr(int(scanner.matched_text()[2:],16))
+	def on_leave_string(self, scanner:interfaces.ScanState, parameter):
+		scanner.enter('INITIAL')
+		return scanner.matched_text(), None
+	
 
 # JSON -- Parser:
 

@@ -32,17 +32,24 @@ GLOSSARY_JSON = """
 }
 """
 
-class TestJson():
+def parse_tester(self:unittest.TestCase, parse):
+	# Smoke Test
+	with self.subTest(text='25.2'): self.assertEqual(25.2, parse('25.2'))
+	with self.subTest(text=r'"\u00ff"'): self.assertEqual(chr(255), parse(r'"\u00ff"'))
 	
-	def test_00_smoke_test(self):
-		self.assertEqual(25.2, example.json.parse('25.2'))
-		self.assertEqual(chr(255), example.json.parse(r'"\u00ff"'))
-	
-	def test_01_glossary_entry(self):
-		data = example.json.parse(GLOSSARY_JSON)
+	# Glossary Entry
+	with self.subTest(text='[[glossary entry]]'):
+		data = parse(GLOSSARY_JSON)
 		entry = data['glossary']['GlossDiv']['GlossList']['GlossEntry']
 		self.assertEqual('Standard Generalized Markup Language', entry['GlossTerm'])
 		self.assertEqual(["GML", "XML"], entry['GlossDef']['GlossSeeAlso'])
+
+
+class TestJson(unittest.TestCase):
+	
+	def test_json_miniparser(self):
+		parse_tester(self, example.json.parse)
+	
 
 class TestMacroCompiler(unittest.TestCase):
 	@classmethod
@@ -58,12 +65,10 @@ class TestMacroCompiler(unittest.TestCase):
 		parser_data = cls.automaton['parser']
 		pass
 	
-	def test_00_test_compiled_scanner(self):
-		tokens = list(algorithms.Scanner(text=GLOSSARY_JSON, automaton=self.dfa, rulebase=self.scan_rules, start='INITIAL'))
-		
+	def test_00_macroparse_compiled_scanner(self):
+		def parse(text):
+			tokens = list(algorithms.Scanner(text=text, automaton=self.dfa, rulebase=self.scan_rules, start='INITIAL'))
+			assert len(tokens)
+			return example.json.grammar.parse(tokens)
+		parse_tester(self, parse)
 
-	def test_01_glossary_entry(self):
-		data = self.parse(GLOSSARY_JSON)
-		entry = data['glossary']['GlossDiv']['GlossList']['GlossEntry']
-		self.assertEqual('Standard Generalized Markup Language', entry['GlossTerm'])
-		self.assertEqual(["GML", "XML"], entry['GlossDef']['GlossSeeAlso'])
