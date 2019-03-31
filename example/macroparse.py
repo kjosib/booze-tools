@@ -18,7 +18,7 @@ from boozetools import interfaces
 
 # JSON -- Scanner:
 
-class ScanJSON:
+class ExampleJSON:
 	"""
 	This is the application driver for the JSON sample.
 	As you can see, it contains methods named for the messages in the scanner definition.
@@ -37,22 +37,26 @@ class ScanJSON:
 	RESERVED = {'true': True, 'false':False, 'null':None}
 	ESCAPES = {'b': 8, 't': 9, 'n': 10, 'f': 12, 'r': 13, }
 	
-	def on_ignore_whitespace(self, yy:interfaces.ScanState, parameter): pass
-	def on_punctuation(self, yy:interfaces.ScanState, parameter): return yy.matched_text(), None
-	def on_integer(self, yy:interfaces.ScanState, parameter): return 'number', int(yy.matched_text())
-	def on_float(self, yy:interfaces.ScanState, parameter): return 'number', float(yy.matched_text())
-	def on_reserved_word(self, yy:interfaces.ScanState, parameter): return yy.matched_text(), self.RESERVED[yy.matched_text()]
-	def on_enter_string(self, yy:interfaces.ScanState, parameter):
+	def scan_ignore_whitespace(self, yy:interfaces.ScanState, parameter): pass
+	def scan_punctuation(self, yy:interfaces.ScanState, parameter): return yy.matched_text(), None
+	def scan_integer(self, yy:interfaces.ScanState, parameter): return 'number', int(yy.matched_text())
+	def scan_float(self, yy:interfaces.ScanState, parameter): return 'number', float(yy.matched_text())
+	def scan_reserved_word(self, yy:interfaces.ScanState, parameter): return yy.matched_text(), self.RESERVED[yy.matched_text()]
+	def scan_enter_string(self, yy:interfaces.ScanState, parameter):
 		yy.enter('in_string')
 		return yy.matched_text(), None
-	def on_stringy_bit(self, yy:interfaces.ScanState, parameter): return 'character', yy.matched_text()
-	def on_escaped_literal(self, yy:interfaces.ScanState, parameter): return 'character', yy.matched_text()[1]
-	def on_shorthand_escape(self, yy:interfaces.ScanState, parameter): return 'character', chr(self.ESCAPES[yy.matched_text()[1]])
-	def on_unicode_escape(self, yy:interfaces.ScanState, parameter): return 'character', chr(int(yy.matched_text()[2:],16))
-	def on_leave_string(self, yy:interfaces.ScanState, parameter):
+	def scan_stringy_bit(self, yy:interfaces.ScanState, parameter): return 'character', yy.matched_text()
+	def scan_escaped_literal(self, yy:interfaces.ScanState, parameter): return 'character', yy.matched_text()[1]
+	def scan_shorthand_escape(self, yy:interfaces.ScanState, parameter): return 'character', chr(self.ESCAPES[yy.matched_text()[1]])
+	def scan_unicode_escape(self, yy:interfaces.ScanState, parameter): return 'character', chr(int(yy.matched_text()[2:],16))
+	def scan_leave_string(self, yy:interfaces.ScanState, parameter):
 		yy.enter('INITIAL')
 		return yy.matched_text(), None
 	
-
-# JSON -- Parser:
-
+	def parse_empty(self): return []
+	def parse_first(self, item): return [item]
+	def parse_append(self, aList, anItem):
+		aList.append(anItem)
+		return aList
+	def parse_object(self, kv_pairs): return dict(kv_pairs)
+	def parse_string(self, parts): return ''.join(parts)

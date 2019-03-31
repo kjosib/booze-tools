@@ -159,24 +159,48 @@ or a `key_value_pair` as appropriate. If you're working in a dynamic language, t
 any trouble at all. In one with strict static typing, you'll doubtless have some sort
 of "parse stack entry" type defined: it needs a variant for "list-of-entries".
 
-
-Last but not least appears the context-free portion of the grammar for JSON syntax:
+Last but not least appears the context-free portion of the grammar for JSON syntax, followed
+by more notes about the features and syntax:
 
 ```
 value => string | number | object | array | true | false | null
 
 object ::= '{' .list_of(key_value_pair) '}' :object
 
-array = '[' .list_of(value) ']' :array
+array = '[' .list_of(value) ']'
 
-key_value_pair -> .string ':' .value :pair
+key_value_pair -> .string ':' .value
 
-string : '"' .text '"'
+string : '"' .text '"' :string
 
 text ==> :empty
   | text character :append
 
 ```
+Here, `value` is just a renaming abstraction. These come at zero-cost in run-time or storage,
+because the parse table generator is just smart that way.
+
+The period/dot `.` is prepended to a symbol to make it significant to the semantic action
+at the end of the rule.
+
+Semantic actions are prepended with the colon `:`. In this case, the application driver would
+need something like `parse_object(...)` and `parse_string(...)` methods, each
+taking as many arguments as selected symbols. The parse engine is responsible to select
+only the indicated symbols as relevant to your implementation function.
+
+The rule for `array` is an example of a bracketing rule like `E -> '(' .E ')'`, without
+an explicit semantic action. In a case like this, the brackets are dropped out and the
+right thing happens in the parser. In this example, it's necessary that the `:empty`,
+`:first`, and `:append` actions are implemented to build something suitable as an array.
+
+In a production rule, if nothing is marked (dotted) explicitly, then everything is
+selected implicitly. An example of this shortcut is shown in the rules for `text`.
+
+Notice that the production rule for `key_value_pair` lacks an explicit action, but has
+more than one selected symbol. In this case, the semantic result is just the tuple of
+selected symbols. Rather, that's what the supplied Python runtime does with this. Another
+host language might need its hand held.
+
 
 # Notes:
 

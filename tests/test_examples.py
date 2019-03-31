@@ -1,5 +1,5 @@
 import unittest
-import os, pprint
+import os
 import json as standard_json
 import example.json, example.macroparse
 
@@ -61,14 +61,23 @@ class TestMacroCompiler(unittest.TestCase):
 		cls.automaton = standard_json.loads(serialized)
 		scanner_data = cls.automaton['scanner']
 		cls.dfa = runtime.CompactDFA(dfa=scanner_data['dfa'], alphabet=scanner_data['alphabet'])
-		cls.scan_rules = runtime.SymbolicRules(action=scanner_data['action'], driver=example.macroparse.ScanJSON())
-		parser_data = cls.automaton['parser']
+		cls.scan_rules = runtime.SymbolicScanRules(action=scanner_data['action'], driver=example.macroparse.ExampleJSON())
 		pass
+	
+	def macroscan_json(self, text):
+		return algorithms.Scanner(text=text, automaton=self.dfa, rulebase=self.scan_rules, start='INITIAL')
 	
 	def test_00_macroparse_compiled_scanner(self):
 		def parse(text):
-			tokens = list(algorithms.Scanner(text=text, automaton=self.dfa, rulebase=self.scan_rules, start='INITIAL'))
+			tokens = list(self.macroscan_json(text))
 			assert len(tokens)
 			return example.json.grammar.parse(tokens)
 		parse_tester(self, parse)
+	
+	def test_01_macroparse_compiled_parser(self):
+		parser_data = self.automaton['parser']
+		spt = runtime.SymbolicParserTables(parser_data)
+		combine = runtime.symbolic_reducer(example.macroparse.ExampleJSON())
+		parse_tester(self, lambda text: algorithms.parse(spt, combine, self.macroscan_json(text)))
+		pass
 

@@ -29,6 +29,14 @@ def multi_append(table:dict, row:dict):
 	"""
 	for key, value in row.items(): table[key].append(value)
 
+def most_common_member(row):
+	""" Return the most-common element in the array; break ties arbitrarily. """
+	return collections.Counter(row).most_common(1)[0][0]
+
+def is_homogenous(row):
+	return len(row) < 2 or all(r == row[0] for r in row)
+	
+
 def modified_aho_corasick_encoding(*, initial:dict, matrix:list, final:dict, jam:int) -> dict:
 	"""
 	Alfred V. Aho and Margaret J. Corasick discovered a truly wonderful algorithm for a particular class
@@ -39,16 +47,20 @@ def modified_aho_corasick_encoding(*, initial:dict, matrix:list, final:dict, jam
 	the failure pointers always point to a node at least one edge less deep into the TRIE.
 	
 	That structure provides the inspiration for a fast, compact encoding of an arbitrary DFA. The key
-	idea is to find, for each state, the shallower state with the most transitions in common.
-	It is then sufficient to store the identity of that "fail-over" state and a sparse list
-	of exceptions. If the sparse list results in expansion, a dense row may be stored instead.
+	idea is to find, for each state, the least-cost "default transition", defined according to how much
+	storage gets used under the rules for that case. We begin with the most common transition within
+	the row, but then scan over prior states looking for a good template: a "shallower" state with
+	many transitions in common. It is then sufficient to store the identity of that default pointer
+	and a sparse list of exceptions. If the sparse list results in expansion, a dense row may be stored
+	instead. If the exceptions are all identical, they may be stored as a single integer rather than a list.
 	
-	For the sake of brevity, the "jam state" is implied to consist of nothing but jam-transitions, and
-	is not explicitly stored.
+	Upon further reflection: sometime states at the same distance-from-root have the most in common.
+	A probe takes constant amortized time as long as the fail-over path length is restricted to a constant
+	multiple of the node's depth. That constant probably need not be more than one for excellent results.
 	"""
 	# Renumber the states according to a breadth-first topology, and also determine the resulting
 	# depth boundaries. (A topological index would suffice, but this has other nice properties.)
-	assert jam < 0
+	assert jam == -1
 	bft = foundation.BreadthFirstTraversal()
 	states = []
 	def renumber(src): states.append([jam if dst == jam else bft.lookup(dst) for dst in matrix[src]])
@@ -60,22 +72,32 @@ def modified_aho_corasick_encoding(*, initial:dict, matrix:list, final:dict, jam
 	# named for their function and indexed by state number.
 	delta = {'default': [], 'index': [], 'data': [],}
 	result = {'delta':delta, 'initial': initial, 'final': [bft.lookup(q) for q in final.keys()], 'rule': list(final.values())}
+	failover_path_length = []
+	metric = 0
 	for i, row in enumerate(states):
-		# Find the shortest encoding by reference to shallower states:
-		pointer, best = jam, [k for k,x in enumerate(row) if x != jam]
+		# Find the shortest encoding, possibly by reference to earlier states:
+		default = most_common_member(row)
+		index = [k for k,x in enumerate(row) if x != default]
+		data = [row[k] for k in index]
+		cost = len(index) + (1 if is_homogenous(data) else len(data))
 		for j in range(i):
-			if depth[j] == depth[i]: break # This relies on the depth-first ordering...
-			contender = [k for k,x in enumerate(states[j]) if x != row[k]]
-			if len(contender) < len(best): pointer, best = j, contender
+			if failover_path_length[j]<=depth[i]:
+				try_index = [k for k,x in enumerate(states[j]) if x != row[k]]
+				try_data = [row[k] for k in try_index]
+				try_cost = len(try_index) + (1 if is_homogenous(try_data) else len(try_data))
+				if try_cost < cost: default, index, data, cost = -2-j, try_index, try_data, try_cost
 		# Append the chosen encoding into the structure:
-		if len(best) * 2 < len(row): # If the compression actually saves space on this row:
-			multi_append(delta, {'default': pointer, 'index':best, 'data': [row[k] for k in best]})
+		if cost < len(row): # If the compression actually saves space on this row:
+			if is_homogenous(data): data = data[0] if data else default
+			multi_append(delta, {'default': default, 'index':index, 'data': data})
+			failover_path_length.append(0 if default > -2 else 1+failover_path_length[-2-default])
 		else: # Otherwise, a dense storage format is indicated by eliding the list of indices.
 			multi_append(delta, {'default': jam, 'index':None, 'data': row})
+			cost = len(row)
+			failover_path_length.append(0)
+		metric += cost
 	# At this point, the DFA is represented in about as terse a format as makes sense.
-	metric = 2*len(delta['default']) + sum(map(len, delta['data'])) + sum(x is None or len(x)+1 for x in delta['index'])
-	delta['offset'] = first_fit_decreasing(delta['index'])
-	print('Matrix compressed into %d cells.' % metric)
+	print('Matrix compressed into %d cells with at most %d probes per character scanned.' % (metric+len(delta['default']), 1+max(failover_path_length)))
 	return result
 
 def compress_action_table(matrix:list, essential_errors:set) -> dict:
@@ -106,10 +128,8 @@ def compress_action_table(matrix:list, essential_errors:set) -> dict:
 	The encoding of actions here is the same as is used in context_free.DragonBookTable.
 	"""
 	def find_default_reduction(row:list) -> int:
-		histogram = collections.Counter()
-		for x in row:
-			if x < 0: histogram[x] += 1
-		return max(histogram.keys(), key=histogram.get, default=0)
+		rs = [x for x in row if x < 0]
+		return most_common_member(rs) if rs else 0
 	
 	delta = {'default':[], 'index':[], 'data':[]}
 	for q, row in enumerate(matrix):
@@ -120,7 +140,6 @@ def compress_action_table(matrix:list, essential_errors:set) -> dict:
 			multi_append(delta, {'default':reduction, 'index':idx, 'data':[row[k] for k in idx]})
 		else:
 			multi_append(delta, {'default': 0, 'index':None, 'data': row})
-	delta['offset'] = first_fit_decreasing(delta['index'])
 	return delta
 
 def compress_goto_table(goto_table:list) -> dict:
@@ -166,28 +185,4 @@ def compress_goto_table(goto_table:list) -> dict:
 	print("GOTO compact size:", sum(map(len, class_list))+len(state_class))
 	return {'state_class': state_class, 'class_list': class_list}
 
-
-def first_fit_decreasing(indices:list) -> list:
-	"""
-	(Aho and Ulman [2]) and (Ziegler [7]) advocate this scheme...
-	This function finds a set of displacements such that no two index[i][j]+displacement[i] are the same.
-	The entry in list `indices` is normally a list of columns within a given row which are considered to
-	have legitimate data in some particular sparse matrix.
-	
-	The result can be used to populate a displacement table from "compressed sparse rows",
-	eliminating a search each time the table gets probed.
-	
-	I've chosen to expand on the idea slightly: If a row is denser than 50%, it makes more sense to store
-	the row as a dense vector. Such rows get `None`/null in their column index and corresponding offset.
-	"""
-	used = set()
-	def first_fit(row:list) -> int:
-		offset = 0
-		while any(r+offset in used for r in row): offset += 1
-		used.update(r+offset for r in row)
-		return offset
-	displacements = [None] * len(indices)
-	for i in sorted([i for i, row in enumerate(indices) if row], key=lambda i: len(indices[i])):
-		displacements[i] = first_fit(indices[i])
-	return displacements
 

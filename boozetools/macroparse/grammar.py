@@ -201,7 +201,7 @@ class EBNF_Definition:
 		and then enters that into self.plain_bnf as an option for `head`.
 		"""
 		raw_bnf = [self.__desugar(E, rewrite, i, bindings) for i, E in enumerate(rewrite.elements)]
-		raw_message = None if rewrite.message is None else rewrite.message.canonical_symbol(bindings)
+		raw_message = None if rewrite.message is None else rewrite.message.name
 		if len(raw_bnf) == 1 and raw_message is None: attribute = None
 		else:
 			offsets = rewrite.prefix_capture(len(raw_bnf))
