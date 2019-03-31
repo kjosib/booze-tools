@@ -8,7 +8,7 @@ is also a valid [markdown](https://en.wikipedia.org/wiki/Markdown) document,
 and *this* markdown document (the one you are reading right now) is a valid
 `MacroParse` syntax description.
 
-* A stripped, "just-the-facts" version of this file is at [json_stripped.py](json_stripped.py).
+* A stripped, "just-the-facts" version of this file is at [json_stripped.md](json_stripped.md).
 
 The header and code-block structures indicate the major
 components of the definition. Normal text (like this paragraph)
