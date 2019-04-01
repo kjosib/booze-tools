@@ -10,6 +10,11 @@ and *this* markdown document (the one you are reading right now) is a valid
 
 * A stripped, "just-the-facts" version of this file is at [json_stripped.md](json_stripped.md).
 
+In `MacroParse` the semantic actions are deliberately independent of the grammar definition.
+This file contains symbolic names for those actions, and then a driver may be written to implement
+the actions in any host language. Example drivers in Python are provided at
+[drivers.py](drivers.py) in this folder.
+
 The header and code-block structures indicate the major
 components of the definition. Normal text (like this paragraph)
 is ignored by the `MacroParse` compiler, but presumably useful for people to read

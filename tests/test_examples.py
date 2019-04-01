@@ -1,7 +1,7 @@
 import unittest
 import os
 import json as standard_json
-import example.json, example.macroparse
+import example.json, example.drivers
 
 from boozetools.macroparse import compiler
 from boozetools import runtime, algorithms
@@ -61,7 +61,7 @@ class TestMacroCompiler(unittest.TestCase):
 		cls.automaton = standard_json.loads(serialized)
 		scanner_data = cls.automaton['scanner']
 		cls.dfa = runtime.CompactDFA(dfa=scanner_data['dfa'], alphabet=scanner_data['alphabet'])
-		cls.scan_rules = runtime.SymbolicScanRules(action=scanner_data['action'], driver=example.macroparse.ExampleJSON())
+		cls.scan_rules = runtime.SymbolicScanRules(action=scanner_data['action'], driver=example.drivers.ExampleJSON())
 		pass
 	
 	def macroscan_json(self, text):
@@ -77,7 +77,7 @@ class TestMacroCompiler(unittest.TestCase):
 	def test_01_macroparse_compiled_parser(self):
 		parser_data = self.automaton['parser']
 		spt = runtime.SymbolicParserTables(parser_data)
-		combine = runtime.symbolic_reducer(example.macroparse.ExampleJSON())
+		combine = runtime.symbolic_reducer(example.drivers.ExampleJSON())
 		parse_tester(self, lambda text: algorithms.parse(spt, combine, self.macroscan_json(text)))
 		pass
 
