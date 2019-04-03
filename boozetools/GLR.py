@@ -22,11 +22,11 @@ class GLR_State():
 		self.core = frozenset(core)
 		self.extension = set() # all active parse items; initially empty; facilitates the subset constructions.
 		self.shifts = {} # Keys are symbols, values are state IDs.
-		self.reductions = {} # Keys refer to productions, values are about look-ahead.
+		self.reductions = {} # Keys refer to productions, values are about look-ahead, defined by the table generator.
 
 class HandleFindingAutomaton(typing.NamedTuple):
-	grammar: context_free.ContextFreeGrammar # This mainly for the rule set
-	start: dict # keys are start symbols.
+	grammar: context_free.ContextFreeGrammar # Because what good is a parse table without most of the grammar also?
+	states: list #
 
 
 def glr0_construction(grammar:context_free.ContextFreeGrammar, start: (str, list, tuple)) -> HandleFindingAutomaton:
