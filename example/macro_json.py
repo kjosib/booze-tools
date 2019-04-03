@@ -1,6 +1,6 @@
 """
-This module contains the example drivers for applications of the sample MacroParse grammars also found
-herein. They are exercised in the testing framework.
+This module contains an example driver for the sample MacroParse JSON grammar found
+[herein](json.md). It is exercised in the [testing framework](../tests/test_examples.py).
 
 One way or another, it's necessary to bind the messages of a definition to a set of functions and their
 shared context per-scan/parse. The way that seems most natural in Python is to let a class definition
@@ -9,14 +9,9 @@ provide the implementation for the messages named in the scanner and parser spec
 If the Python method names are kept distinct (as by using a different prefix for scan and parse actions)
 then the same object can provide a sensible context and driver for both scanning and parsing. This
 greatly facilitates any sort of context-dependent ad-hockery that your subject language might demand.
-
-The expectation for parse reductions is natural and obvious: These are functions from a selection of
-semantic-values to a newer, larger semantic value. The arguments and return values correspond to these.
 """
 
 from boozetools import interfaces
-
-# JSON -- Scanner:
 
 class ExampleJSON:
 	"""

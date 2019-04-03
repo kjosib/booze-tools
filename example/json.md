@@ -13,7 +13,7 @@ and *this* markdown document (the one you are reading right now) is a valid
 In `MacroParse` the semantic actions are deliberately independent of the grammar definition.
 This file contains symbolic names for those actions, and then a driver may be written to implement
 the actions in any host language. Example drivers in Python are provided at
-[drivers.py](drivers.py) in this folder.
+[drivers.py](macro_json.py) in this folder.
 
 The header and code-block structures indicate the major
 components of the definition. Normal text (like this paragraph)

@@ -3,7 +3,7 @@ This module is the dual of `compaction.py`:
 It provides a runtime interface to compacted scanner and parser tables.
 """
 from boozetools.interfaces import ScanState
-from . import interfaces, charclass
+from . import interfaces, charclass, algorithms
 
 def sparse_table_function(*, index, data) -> callable:
 	"""
@@ -122,4 +122,22 @@ def symbolic_reducer(driver):
 		elif len(view) == 1: return attribute_stack[view[0]] # Bracketing rule
 		else: return tuple(attribute_stack[x] for x in view) # Tuple Collection Rule
 	return combine
+
+def the_usual_parser(tables, scan_driver, parse_driver, *, start='INITIAL', language=None, interactive=False):
+	"""
+	This generates a function for parsing texts based on a set of tables and supplied drivers.
+	:param tables: Generally the output of boozetools.macroparse.compiler.compile_file, but maybe deserialized.
+	:param scan_driver: needs .scan_foo(...) methods.
+	:param parse_driver: needs .parse_foo(...) methods. This may be the same object as scan_driver.
+	:param start: Optionally, the start-state for the scanner DFA.
+	:param language: Optionally, the start-symbol for the parser.
+	:param interactive: True if you want the parser to opportunistically reduce whenever lookahead would not matter.
+	:return: a callable object.
+	"""
+	scanner_tables = tables['scanner']
+	dfa = CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet'])
+	scan_rules = SymbolicScanRules(action=scanner_tables['action'], driver=scan_driver)
+	hfa = SymbolicParserTables(tables['parser'])
+	combine = symbolic_reducer(parse_driver)
+	return lambda text: algorithms.parse(hfa, combine, algorithms.Scanner(text=text, automaton=dfa, rulebase=scan_rules, start=start), language=language, interactive=interactive)
 	

@@ -14,7 +14,7 @@ For now there are three major components. Eventually there will be more. These a
     * still needs more example applications to exercise the remaining features -- which are coming soonish.
 
 Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/wiki).
-A worked example of the MiniFoo is in [/example/json.py](https://github.com/kjosib/booze-tools/tree/master/example/json.py).
+A worked example of the MiniFoo is in [/example/mini_json.py](https://github.com/kjosib/booze-tools/tree/master/example/mini_json.py).
 
 The `dev` branch currently has two major focuses: proper packaging for distribution on PYPI, and
 improving the MacroParse module.

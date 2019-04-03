@@ -1,7 +1,7 @@
 import unittest
 import os
 import json as standard_json
-import example.json, example.drivers
+import example.mini_json, example.macro_json
 
 from boozetools.macroparse import compiler
 from boozetools import runtime, algorithms
@@ -48,20 +48,20 @@ def parse_tester(self:unittest.TestCase, parse):
 class TestJson(unittest.TestCase):
 	
 	def test_json_miniparser(self):
-		parse_tester(self, example.json.parse)
+		parse_tester(self, example.mini_json.parse)
 	
 
 class TestMacroCompiler(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
-		example_folder = os.path.dirname(example.json.__file__)
+		example_folder = os.path.dirname(example.mini_json.__file__)
 		automaton = compiler.compile_file(os.path.join(example_folder, 'json.md'))
 		# The transition into and back out of JSON should be non-destructive, but it's worth being sure.
 		serialized = standard_json.dumps(automaton)
 		cls.automaton = standard_json.loads(serialized)
 		scanner_data = cls.automaton['scanner']
 		cls.dfa = runtime.CompactDFA(dfa=scanner_data['dfa'], alphabet=scanner_data['alphabet'])
-		cls.scan_rules = runtime.SymbolicScanRules(action=scanner_data['action'], driver=example.drivers.ExampleJSON())
+		cls.scan_rules = runtime.SymbolicScanRules(action=scanner_data['action'], driver=example.macro_json.ExampleJSON())
 		pass
 	
 	def macroscan_json(self, text):
@@ -71,13 +71,13 @@ class TestMacroCompiler(unittest.TestCase):
 		def parse(text):
 			tokens = list(self.macroscan_json(text))
 			assert len(tokens)
-			return example.json.grammar.parse(tokens)
+			return example.mini_json.grammar.parse(tokens)
 		parse_tester(self, parse)
 	
 	def test_01_macroparse_compiled_parser(self):
 		parser_data = self.automaton['parser']
 		spt = runtime.SymbolicParserTables(parser_data)
-		combine = runtime.symbolic_reducer(example.drivers.ExampleJSON())
+		combine = runtime.symbolic_reducer(example.macro_json.ExampleJSON())
 		parse_tester(self, lambda text: algorithms.parse(spt, combine, self.macroscan_json(text)))
 		pass
 
