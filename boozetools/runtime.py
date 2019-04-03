@@ -118,7 +118,7 @@ def symbolic_reducer(driver):
 	""" Build a reduction function for the parse engine out of an arbitrary Python object. """
 	def combine(message, attribute_stack):
 		method, view = message
-		if method is not None: return getattr(driver, method)(*(attribute_stack[x] for x in view))
+		if method is not None:return getattr(driver, method)(*(attribute_stack[x] for x in view))
 		elif len(view) == 1: return attribute_stack[view[0]] # Bracketing rule
 		else: return tuple(attribute_stack[x] for x in view) # Tuple Collection Rule
 	return combine

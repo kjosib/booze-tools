@@ -11,8 +11,8 @@ For a rather more verbose tutorial introduction to most of `MacroParse`, please
 see [json.md](json.md) in this folder.
 
 # Precedence
-Unlike Bison, highest-precedence comes first. After all, that's the way you learned it in
-grade school!
+Unlike Bison or Yacc, highest-precedence comes first. After all, that's the way
+you learned it in grade school!
 ```
 %right '^'
 %left '*' '/'
@@ -23,9 +23,9 @@ You can also use `%nonassoc` in the usual way, but this example does not require
 # Productions START
 The productions for this are pretty normal.
 ```
-START -> .E           :evaluate
-      | .var '=' .E   :assign
-      | '?'           :help
+START -> .E                :evaluate
+      | .variable '=' .E   :assign
+      | '?'                :help
 
 E -> '(' .E ')'
   | .E '+' .E   :add
@@ -38,19 +38,19 @@ E -> '(' .E ')'
   | number
 ```
 ## Definitions
-These, and some of the patterns, are snarfed out of the JSON definition. Maybe there's room for
-an include-library of common tokens and subexpressions?
+In contrast to the JSON example, this scanner does not attempt to recognize negative numbers.
+This allows expressions like `3-1i` (without whitespace) to function properly.
 ```
-wholeNumber     [1-9]\d*
-signedInteger   -?(0|{wholeNumber})
-fractionalPart  \.\d+
+mantissa        (0|[1-9]\d*)(\.\d+)?
 exponent        [Ee][-+]?\d+
+real            {mantissa}{exponent}? 
 ```
 ## Patterns
-Again, nothing fancy:
+Nothing fancy here, but the observant will note that complex numbers are supported.
 ```
-{signedInteger}{fractionalPart}?{exponent}?   :number
-{alpha}{word}*                                :variable
-\s+                                           :ignore_whitespace
-{punct}                                       :punctuation
+{real}             :real
+{real}[iI]         :imaginary
+{alpha}{word}*     :variable
+\s+                :ignore_whitespace
+{punct}            :punctuation
 ```

@@ -1,4 +1,4 @@
-"""
+"""========================================================================================================
 This is a sample desktop-calculator program to demonstrate using a MacroParse language definition
 in a proper application. It is not the only way, and it is not the most efficient way, but it does
 exercise the bits.
@@ -13,7 +13,7 @@ variables with the '=' sign.
 
 """
 import operator, math, os
-from boozetools import runtime, algorithms, interfaces
+from boozetools import runtime, interfaces
 from boozetools.macroparse import compiler
 
 class CalculatorDriver:
@@ -21,7 +21,7 @@ class CalculatorDriver:
 	This is relatively simple, but it does demonstrate a persistent memory.
 	"""
 	def __init__(self):
-		self.memory = {'e':math.e, 'pi':math.pi} # Pre-load few useful values...
+		self.memory = {'e':math.e, 'pi':math.pi, 'i':1j} # Pre-load few useful values...
 		self.parse_add = operator.add
 		self.parse_subtract = operator.sub
 		self.parse_multiply = operator.mul
@@ -29,14 +29,18 @@ class CalculatorDriver:
 		self.parse_power = operator.pow
 		self.parse_negate = operator.neg
 		self.parse_lookup = self.memory.__getitem__
-		self.parse_evaluate = print
 	def scan_ignore_whitespace(self, yy:interfaces.ScanState, parameter): pass
 	def scan_punctuation(self, yy:interfaces.ScanState, parameter): return yy.matched_text(), None
-	def scan_float(self, yy:interfaces.ScanState, parameter): return 'number', float(yy.matched_text())
+	def scan_real(self, yy:interfaces.ScanState, parameter): return 'number', float(yy.matched_text())
+	def scan_imaginary(self, yy:interfaces.ScanState, parameter): return 'number', float(yy.matched_text()[:-1])*1j
 	def scan_variable(self, yy:interfaces.ScanState, parameter): return 'variable', yy.matched_text()
+	def parse_evaluate(self, value):
+		print(" -->",value)
+		return value
 	def parse_assign(self, name, value):
 		self.memory[name] = value
 		print(name, '=', value)
+		return value
 	def parse_help(self, _):
 		print(__doc__)
 		print(self.memory)
@@ -47,9 +51,11 @@ parse = runtime.the_usual_parser(tables, driver, driver)
 
 def main():
 	import sys
-	print(__doc__)
+	driver.parse_help(None)
 	for line in sys.stdin:
 		if line.strip().lower() == 'quit': break
-		if line.strip(): parse(line.strip())
+		if line.strip():
+			try: parse(line.strip())
+			except KeyError: print("-- OCH! No such variable. --")
 	
 if __name__ == '__main__': main()

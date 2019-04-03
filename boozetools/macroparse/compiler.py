@@ -54,13 +54,9 @@ def compile_string(document:str, filename=None) -> dict:
 		expression.encode(src, dst, nfa, rank)
 		pass
 	
-	def precedence():
-		assert False, 'Code for this block is not designed yet.'
-		pass
+	def precedence(): ebnf.read_precedence_line(current_line_text, line_number)
 	
-	def productions():
-		ebnf.read_one_line(current_line_text, line_number)
-		pass
+	def productions(): ebnf.read_production_line(current_line_text, line_number)
 	
 	def decide_section():
 		# Looks at a header line to see which parsing mode/section to shift into based on a leading keyword,

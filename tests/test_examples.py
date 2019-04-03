@@ -1,7 +1,7 @@
 import unittest
 import os
 import json as standard_json
-import example.mini_json, example.macro_json
+import example.mini_json, example.macro_json, example.calculator
 
 from boozetools.macroparse import compiler
 from boozetools import runtime, algorithms
@@ -45,13 +45,13 @@ def parse_tester(self:unittest.TestCase, parse):
 		self.assertEqual(["GML", "XML"], entry['GlossDef']['GlossSeeAlso'])
 
 
-class TestJson(unittest.TestCase):
+class TestMiniJson(unittest.TestCase):
 	
 	def test_json_miniparser(self):
 		parse_tester(self, example.mini_json.parse)
 	
 
-class TestMacroCompiler(unittest.TestCase):
+class TestMacroJson(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
 		example_folder = os.path.dirname(example.mini_json.__file__)
@@ -81,3 +81,25 @@ class TestMacroCompiler(unittest.TestCase):
 		parse_tester(self, lambda text: algorithms.parse(spt, combine, self.macroscan_json(text)))
 		pass
 
+class TestCalculator(unittest.TestCase):
+	def test_00_simple_operations(self):
+		for text, expect in [
+			('12.5', 12.5),
+			('-12.5', -12.5),
+			('3+ 4', 7),
+			('3+-4', -1),
+			('3+4+5', 12),
+			('3*4+5', 17),
+			('3+4*5', 23),
+			('(3+4)*5', 35),
+			('3^3', 27),
+			('3^3^3', 7625597484987),
+			('(3^3)^3', 19683),
+			('a=3', 3),
+			('b=4', 4),
+			('a^2 + b^2 - 25', 0),
+			('e^(i*pi)', -1),
+			('3i-2', -2+3j),
+		]:
+			with self.subTest(text=text):
+				self.assertAlmostEqual(example.calculator.parse(text), expect)

@@ -76,13 +76,13 @@ Doing macros for real is a little more complicated and will be dealt with furthe
 """
 def list_of(what, sep):
 	head = 'list_of(%r,%r)'%(what,sep)
-	PRODUCTION.rule(head, '.%s'%what)(FIRST)
-	PRODUCTION.rule(head, '.%s %s .%s'%(head, sep, what) )(APPEND)
+	METAGRAMMAR.rule(head, '.%s' % what)(FIRST)
+	METAGRAMMAR.rule(head, '.%s %s .%s' % (head, sep, what))(APPEND)
 	return head
 def one_or_more(what):
 	head = 'one_or_more(%r)' % (what)
-	PRODUCTION.rule(head, '.%s' % what)(FIRST)
-	PRODUCTION.rule(head, '.%s .%s' % (head, what))(APPEND)
+	METAGRAMMAR.rule(head, '.%s' % what)(FIRST)
+	METAGRAMMAR.rule(head, '.%s .%s' % (head, what))(APPEND)
 	return head
 def FIRST(element): return [element]
 def APPEND(the_list, element):
@@ -91,36 +91,41 @@ def APPEND(the_list, element):
 
 
 ### The MacroParse metagrammar for individual production lines is as follows.
-PRODUCTION = miniparse.MiniParse('production')
+METAGRAMMAR = miniparse.MiniParse('production', 'precedence')
 
-PRODUCTION.rule('production', '.head .'+list_of('rewrite', '|'))(None)
+METAGRAMMAR.rule('production', '.head .' + list_of('rewrite', '|'))(None)
 
-PRODUCTION.rule('head', '|')(None) # "use prior" is represented by a null "head".
-PRODUCTION.rule('head', '.name arrow',)(None) # This will come across as a string.
-PRODUCTION.rule('head', '.name ( .%s ) arrow'%list_of('name', ','))(None) # Represent macro heads with (name, args) tuples.
+METAGRAMMAR.rule('head', '|')(None) # "use prior" is represented by a null "head".
+METAGRAMMAR.rule('head', '.name arrow', )(None) # This will come across as a string.
+METAGRAMMAR.rule('head', '.name ( .%s ) arrow' % list_of('name', ','))(None) # Represent macro heads with (name, args) tuples.
 
 ELEMENTS = one_or_more('element')
-PRODUCTION.rule('rewrite', ELEMENTS)(Rewrite)
-PRODUCTION.rule('rewrite', '.'+ELEMENTS+' pragma_precsym .terminal')(Rewrite)
+METAGRAMMAR.rule('rewrite', ELEMENTS)(Rewrite)
+METAGRAMMAR.rule('rewrite', '.' + ELEMENTS + ' pragma_precsym .terminal')(Rewrite)
 
-PRODUCTION.renaming('terminal', 'name', 'literal')
+METAGRAMMAR.renaming('terminal', 'name', 'literal')
 
-PRODUCTION.renaming('element', 'positional_element')
-@PRODUCTION.rule('element', 'capture .positional_element')
+METAGRAMMAR.renaming('element', 'positional_element')
+@METAGRAMMAR.rule('element', 'capture .positional_element')
 def capture(positional_element:Element) -> Element:
 	positional_element.capture = True
 	return positional_element
 
-PRODUCTION.renaming('positional_element', 'actual_parameter')
-PRODUCTION.rule('positional_element', 'message')(Action)
+METAGRAMMAR.renaming('positional_element', 'actual_parameter')
+METAGRAMMAR.rule('positional_element', 'message')(Action)
 
-PRODUCTION.renaming('actual_parameter', 'symbol') # alternation brackets should not nest directly...
-PRODUCTION.rule('actual_parameter', '[ .'+one_or_more('symbol')+' ]')(InlineRenaming)
+METAGRAMMAR.renaming('actual_parameter', 'symbol') # alternation brackets should not nest directly...
+METAGRAMMAR.rule('actual_parameter', '[ .' + one_or_more('symbol') + ' ]')(InlineRenaming)
 
-PRODUCTION.rule('symbol', 'name')(Symbol)    # Normal symbol
-PRODUCTION.rule('symbol', 'literal')(Symbol) # Also a normal symbol with a funny name
-PRODUCTION.rule('symbol', '.name ( .'+list_of('actual_parameter', ',')+' )')(MacroCall)
+METAGRAMMAR.rule('symbol', 'name')(Symbol)    # Normal symbol
+METAGRAMMAR.rule('symbol', 'literal')(Symbol) # Also a normal symbol with a funny name
+METAGRAMMAR.rule('symbol', '.name ( .' + list_of('actual_parameter', ',') + ' )')(MacroCall)
 
+METAGRAMMAR.rule('precedence', '.associativity .'+one_or_more('terminal'))(None)
+
+METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x:context_free.LEFT)
+METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x:context_free.RIGHT)
+METAGRAMMAR.rule('associativity', 'pragma_nonassoc')(lambda x:context_free.NONASSOC)
 
 ### The lexeme definitions for production rule lines are as follows:
 LEX = miniscan.Definition()
@@ -161,18 +166,25 @@ class EBNF_Definition:
 	
 	def gripe(self, message): raise DefinitionError('At line %d: %s.'%(self.current_line_nr, message))
 	
-	def read_one_line(self, line:str, line_nr:int):
-		""" This is the main interface to defining grammars. Call this repeatedly for each line of the grammar. """
+	def __parse(self, line:str, line_nr:int, language:str):
+		""" Factoring out the commonalities of half-decent error reporting... """
 		assert isinstance(line_nr, int), type(line_nr)
 		self.current_line_nr = line_nr
 		metascan = LEX.scan(line)
-		try: head, rewrites = PRODUCTION.parse(metascan)
+		try: return METAGRAMMAR.parse(metascan, language=language)
 		except interfaces.ScanError as e:
 			column = e.args[0]
 			self.gripe('The MacroParse MetaScanner got confused right...\n\t'+illustrate_position(line, column))
 		except interfaces.ParseError as e:
 			self.gripe('The MacroParse MetaParser got confused. Stack condition was\n\t%r %s %r\nActual point of failure was:\n\t%s'%(e.args[0],context_free.DOT, e.args[1], illustrate_position(line, metascan.current_position())))
-		del metascan
+			
+	def read_precedence_line(self, line:str, line_nr:int):
+		direction, symbols = self.__parse(line, line_nr, 'precedence')
+		self.plain_cfg.assoc(direction, symbols)
+
+	def read_production_line(self, line:str, line_nr:int):
+		""" This is the main interface to defining grammars. Call this repeatedly for each line of the grammar. """
+		head, rewrites = self.__parse(line, line_nr, 'production')
 		# Set the current head field, or use it unchanged if not specified on this line:
 		if head is None:
 			if self.current_head is None:
