@@ -47,7 +47,7 @@ class CalculatorDriver:
 
 tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'))
 driver = CalculatorDriver()
-parse = runtime.the_usual_parser(tables, driver, driver)
+parse = runtime.the_simple_case(tables, driver, driver)
 
 def main():
 	import sys
@@ -57,5 +57,6 @@ def main():
 		if line.strip():
 			try: parse(line.strip())
 			except KeyError: print("-- OCH! No such variable. --")
+			except interfaces.LanguageError: print('-- Not quite sure what that means. Sorry. --')
 	
 if __name__ == '__main__': main()
