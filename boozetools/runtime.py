@@ -37,6 +37,7 @@ def scanner_delta_function(*, index, data, default) -> callable:
 	return fn
 
 def parser_action_function(*, index, data, default) -> callable:
+	""" This part adds the "default reductions" layer atop the now-sparse action table. """
 	probe = sparse_table_function(index=index, data=data)
 	def fn(state_id:int, symbol_id:int) -> int:
 		q = probe(state_id, symbol_id)
@@ -44,7 +45,7 @@ def parser_action_function(*, index, data, default) -> callable:
 	return fn
 
 def parser_goto_function(*, state_class, class_list ) -> callable:
-	""" The compressed goto function is good, fast, and cheap: """
+	""" The compressed goto function is good, fast, and cheap. """
 	def probe(state_id:int, nonterminal_id:int):
 		cls = state_class[state_id]
 		return 0-cls if cls < 0 else class_list[cls][nonterminal_id]
@@ -52,7 +53,10 @@ def parser_goto_function(*, state_class, class_list ) -> callable:
 
 class CompactDFA(interfaces.FiniteAutomaton):
 	"""
-	This sets up using information
+	This implements the FiniteAutomaton interface (for use with the generic scanner algorithm)
+	by reference to a set of scanner tables that have been built using the MacroParse machinery.
+	It's not the whole story; SymbolicScanRules (defined below) are involved in binding the
+	action specifications to a specific context object.
 	"""
 	def __init__(self, *, dfa:dict, alphabet:dict):
 		self.classifier = charclass.MetaClassifier(**alphabet)
@@ -70,6 +74,10 @@ class CompactDFA(interfaces.FiniteAutomaton):
 		return self.delta(current_state, self.classifier.classify(codepoint))
 
 class SymbolicScanRules(interfaces.ScanRules):
+	"""
+	This binds symbolic scan-action specifications to a specific "driver" or context object.
+	It cannot act alone, but works in concert with the CompactDFA (above) and the generic scan algorithm.
+	"""
 	def __init__(self, *, action:dict, driver:object):
 		self._parameter   = action['parameter']
 		self._trail       = action['trail']
@@ -82,11 +90,18 @@ class SymbolicScanRules(interfaces.ScanRules):
 		return self.__methods[rule_id](scan_state, self._parameter[rule_id])
 
 def mangle(message):
+	""" Describes the relation between parse action symbols (from parse rule data) to driver method names. """
 	if message is None: return None
 	if message.startswith(':'): return 'action_'+message[1:]
 	return 'parse_'+message
 
 class SymbolicParserTables(interfaces.ParserTables):
+	"""
+	This implements the ParserTables interface (for use with the generic parse algorithm)
+	by reference to a set of parser tables that have been built using the MacroParse machinery.
+	It's not the whole story: the function `symbolic_reducer(driver)` is involved to build a
+	"combiner" function which the parse algorithm then uses for semantic reductions.
+	"""
 	def __init__(self, parser:dict):
 		action_ = parser['action']
 		self.get_action = parser_action_function(**action_)
@@ -115,7 +130,8 @@ class SymbolicParserTables(interfaces.ParserTables):
 	def interactive_step(self, state_id: int) -> int: assert False, 'See the constructor.'
 
 def symbolic_reducer(driver):
-	""" Build a reduction function for the parse engine out of an arbitrary Python object. """
+	""" Build a reduction function (combiner) for the parse engine out of an arbitrary Python object. """
+	# This is probably reasonably quick as-is, but you're welcome to profile it.
 	def combine(message, attribute_stack):
 		method, view = message
 		if method is not None:return getattr(driver, method)(*(attribute_stack[x] for x in view))
@@ -123,9 +139,14 @@ def symbolic_reducer(driver):
 		else: return tuple(attribute_stack[x] for x in view) # Tuple Collection Rule
 	return combine
 
-def the_usual_parser(tables, scan_driver, parse_driver, *, start='INITIAL', language=None, interactive=False):
+def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', language=None, interactive=False):
 	"""
 	This generates a function for parsing texts based on a set of tables and supplied drivers.
+	
+	It is simple in that no special provisions are made querying the state of a failed scan/parse,
+	and it uses the simple version of the parse algorithm which means at most one token per scan pattern match.
+	But it's fine for many simple applications.
+	
 	:param tables: Generally the output of boozetools.macroparse.compiler.compile_file, but maybe deserialized.
 	:param scan_driver: needs .scan_foo(...) methods.
 	:param parse_driver: needs .parse_foo(...) methods. This may be the same object as scan_driver.
