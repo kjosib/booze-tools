@@ -112,6 +112,7 @@ def compile_string(document:str, filename=None) -> dict:
 	
 	# Compose and compress the control tables. (Serialization will be straight JSON via standard library.)
 	return {
+		'description': 'MacroParse Automaton',
 		'version': (0, 0, 0),
 		'source': filename,
 		'scanner': scan_table_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions),
@@ -149,20 +150,27 @@ def encode_parse_rules(rules:list) -> dict:
 	return result
 
 def main():
-	import argparse
-	parser = argparse.ArgumentParser()
-	parser.add_argument('source_path', help='location of the markdown document containing a macroparse grammar definition')
-	parser.add_argument('-o', '--output', help='path to deposit resulting serialized automaton data')
+	import sys, argparse, json
+	parser = argparse.ArgumentParser(
+		prog='py -m boozetools.macroparse.compiler',
+		description='Compile a macroparse grammar/scanner definition from a markdown document into a set of parsing and scanning tables in JSON format.',
+	)
+	parser.add_argument('source_path', help='path to input file')
+	parser.add_argument('-f', '--force', action='store_true', dest='force', help='allow to write over existing file')
+	parser.add_argument('-o', '--output', help='path to output file')
+	parser.add_argument('-i', '--indent', help='indent the JSON output for easier reading.', action='store_const', dest='indent', const=2, default=None)
+	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
-	assert args.source_path.lower().endswith('.md')
-	target_path = args.output or args.source_path[:-3]+'.mdc'
-	try:
-		compile_file(args.source_path).serialize_to(target_path)
+	target_path = args.output or os.path.splitext(args.source_path)[0]+'.automaton'
+	if os.path.exists(target_path) and not args.force:
+		print('Target file already exists and --force command-line argument was not given.', file=sys.stderr)
+		exit(1)
+	try: json.dump(compile_file(args.source_path), open(target_path, 'w'), separators=(',', ':'), sort_keys=False, indent=args.indent)
 	except DefinitionError as e:
-		import sys
 		print(e.args[0], file=sys.stderr)
 		exit(1)
 	else:
-		pass
+		print('Wrote automaton in JSON format to:')
+		print('\t'+target_path)
 
 if __name__ == '__main__': main()
