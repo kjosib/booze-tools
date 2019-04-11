@@ -27,12 +27,12 @@ true|false|null                               :reserved_word
 ## Productions: value
 ```
 list_of(item) -> :empty | one_or_more(item)
-one_or_more(item) -> item :first | .one_or_more(item) `, .item :append
+one_or_more(item) -> item :first | .one_or_more(item) ',' .item :append
 
 value => string | number | object | array | true | false | null
-object ::= '{ .list_of(key_value_pair) '} :object
-array = '[ .list_of(value) ']
-key_value_pair -> .string `: .value
-string : `" .text `" :string
+object ::= '{' .list_of(key_value_pair) '}' :object
+array = '[' .list_of(value) ']'
+key_value_pair -> .string ':' .value
+string : '"' .text '"' :string
 text ==> :empty | text character :append
 ```
