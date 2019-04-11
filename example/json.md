@@ -1,6 +1,6 @@
 # Welcome to the `MacroParse` Tutorial [JSON](http://www.json.org/) Syntax Description!
 * [JSON](http://www.json.org/) has just enough structure to be an excellent introductory example.
-* It does not exercise every `MacroParse` feature, but there are (to be) further examples.
+* It does not exercise every `MacroParse` feature, but there are [further examples](./).
 
 The format of a `MacroParse` syntax description is literate, meaning that exposition is given
 prominence at least equal to implementation. To that end, a valid syntax description
