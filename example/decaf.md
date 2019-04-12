@@ -1,16 +1,20 @@
 # Example `Decaf` MacroParse Specification
 
-The [Decaf Language](https://parasol.tamu.edu/courses/decaf/students/decafOverview.pdf)
+The [Decaf Language](https://parasol.tamu.edu/courses/decaf/students/)
 is designed for teaching a course on compilers, so it's perfect as a full-throttle example
 exercise for MacroParse. Also, Decaf resembles Java, but with less caffeine.
 
 A little poking around suggests that the definition of Decaf depends strongly on which
 institution you attend. I glanced at a couple versions and I like the one linked above.
-It's a bit more feature-complete than some of the other alternatives.
+It's a bit more feature-complete than some of the other alternatives. Also, it's hosted
+at Texas A&M University, and as a proud Tea-Sip I have to pick on TAMU.
 
 ## Conditions
 
-
+I plan to implement the pre-processor by integration into the main scanner definition.
+This will provide an example of both start-condition nesting and the use of
+a separate scanner instance to re-process tokens. However, the pre-processor is
+not a project for today. It will have to wait.
 
 ## Patterns
 
@@ -37,7 +41,7 @@ be at most 31 characters long. A good solution is to recognize all such sequence
 deal with overlong words in the driver, but MacroParse makes it convenient to build the constraint
 directly into the scanner (at the cost of a larger table).
 ```
-{alpha}{word}{0,30}   :identifier
+{alpha}{word}{0,30}   :ident
 ```
 
 Boolean constants are also reserved. They would overlap with the definition of identifiers
@@ -53,8 +57,8 @@ how you can add a parameter (any sequence of letters and the underscore) to an a
 ```
 \d+                       :decimal_integer
 0[xX]{xdigit}+          :hex_integer
-\d+\.\d*([eE][-+]?\d+)?   :double
-"[{DOT}&&^"]*"            :string
+\d+\.\d*([eE][-+]?\d+)?   :double_constant
+"[{DOT}&&^"]*"            :string_constant
 "                         :error unterminated_string
 ```
 
@@ -77,14 +81,66 @@ way of entering a special start condition. Single-line comments and all other wh
 ## Patterns IN_COMMENT
 The idea is to scan decent-sized chunks of commentary without invoking rules too often.
 It's hypothetically possible to do this as all one regex, but that would be ungainly.
+An end-of-file rule should catch unterminated comments.
 ```
 \*+\/     :begin INITIAL
 \*+/[^/]  |
 [^*]+     :ignore
+.?/$$     :error unterminated_comment
+```
+## Productions PROGRAM
+First, a couple macros. Nothing too crazy, but it does show that you
+can have one macro-call as argument to another, and THINGS SHOULD WORK.
+```
+optional(foo) -> :nothing | foo
+one_or_more(foo) -> foo :first | one_or_more(foo) foo :append
+comma_separated(foo): foo :first | .foo ',' .comma_separated(foo) :append
+list_of(foo) -> optional(one_or_more(foo))
+comma_list(foo) -> optional(comma_separated(foo))
+```
+Now comes the bulk of the grammar. Note that precedence declarations
+come later on. It's not a perfect 1::1 match to the reference grammar,
+but it's clear to see the correspondence.
+```
+PROGRAM -> one_or_more(Declaration)
+Declaration ->  VariableDecl | FunctionDecl | ClassDecl | InterfaceDecl
+
+VariableDecl -> .Variable ';'
+Variable -> Type ident
+Type -> int | double | bool | string
+    | .Type '[' ']' :array_type
+
+FunctionDecl -> .[Type void] .ident '(' .Formals ')' .StmtBlock
+Formals -> comma_list(Variable)
+
+ClassDecl -> class .ident .optional(Parent) .optional(Impls) '{' .list_of(Field) '}' :class
+Parent -> extends .ident
+Impls -> implements .comma_separated(ident)
+Field -> VariableDecl | FunctionDecl
+
+InterfaceDecl -> interface .ident '{' .list_of(Prototype) '}' :interface
+Prototype -> .[Type void] .ident '(' .Formals ')' ';'
+
+StmtBlock -> '{' .list_of(Stmt) '}'
+
+Stmt -> StmtBlock
+    | .Expr ';'    :evaluate_for_side_effects
+    | if '(' .Expr ')' .Stmt             :if_statement
+    | if '(' .Expr ')' .Stmt else .Stmt  :if_else_statement
+    | while '(' .Expr ')' .Stmt          :while_statement
+    | for '(' .optional(Expr) ';' .Expr ';' .optional(Expr) ')' .Stmt   :for_statement
+    | return .optional(Expr) ';'   :return_statement
+    | break .optional(ident) ';'   :break_statement
+    | Print '(' .comma_separated(Expr) ')' ';'  :print_statement
+
 ```
 
-## Productions START
-(This part is still under development...)
+## Precedence
+
+The following declaration solves the "dangling-else" shift/reduce conflict:
 ```
-START -> trivial grammar
+%right if else
 ```
+A rule-precedence declaration on the `:if_statement` rule should eliminate the need to include
+the `if` token in this precedence declaration, but at the moment I don't recall if there's
+metagrammar for that yet. Also, this works too.
