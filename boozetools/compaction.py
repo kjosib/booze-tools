@@ -95,9 +95,10 @@ def modified_aho_corasick_encoding(*, initial:dict, matrix:list, final:dict, jam
 			multi_append(delta, {'default': jam, 'index':None, 'data': row})
 			cost = len(row)
 			failover_path_length.append(0)
-		metric += cost
+		metric += 1+cost
 	# At this point, the DFA is represented in about as terse a format as makes sense.
-	print('Matrix compressed into %d cells with at most %d probes per character scanned.' % (metric+len(delta['default']), 1+max(failover_path_length)))
+	raw_size = len(matrix)*len(matrix[0])
+	print('Matrix compressed into %d cells (%0.2f%%) with at most %d probes per character scanned.' % (metric, 100*metric/raw_size, 1+max(failover_path_length)))
 	return result
 
 def compress_action_table(matrix:list, essential_errors:set) -> dict:
@@ -130,7 +131,9 @@ def compress_action_table(matrix:list, essential_errors:set) -> dict:
 	def find_default_reduction(row:list) -> int:
 		rs = [x for x in row if x < 0]
 		return most_common_member(rs) if rs else 0
-	
+	raw_size = len(matrix)*len(matrix[0])
+	print('Action table begins with %d states and %d columns (%d cells).'%(len(matrix), len(matrix[0]), raw_size))
+	metric = 0
 	delta = {'default':[], 'index':[], 'data':[]}
 	for q, row in enumerate(matrix):
 		reduction = find_default_reduction(row)
@@ -138,8 +141,11 @@ def compress_action_table(matrix:list, essential_errors:set) -> dict:
 		idx = [i for i,x in enumerate(row) if x not in becomes_default and (q,x) not in essential_errors]
 		if len(idx) * 2 < len(row):
 			multi_append(delta, {'default':reduction, 'index':idx, 'data':[row[k] for k in idx]})
+			metric += 3 + 2 * len(idx)
 		else:
 			multi_append(delta, {'default': 0, 'index':None, 'data': row})
+			metric += 2 + len(row)
+	print("Compact form takes %d cells (%0.2f%%)."%(metric, 100*metric/raw_size))
 	return delta
 
 def compress_goto_table(goto_table:list) -> dict:

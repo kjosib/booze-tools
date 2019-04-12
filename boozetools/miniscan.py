@@ -162,7 +162,10 @@ def _BEGIN_():
 			scanner.less(0)
 			scanner.enter(condition)
 		return fn
-	def _bracket_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1:-1]]
+	def _bracket_reference(scanner):
+		name = scanner.matched_text()[1:-1]
+		try: return 'reference', scanner.env[name]
+		except KeyError: raise interfaces.MetaError(repr(name)+' is not a defined subexpression name.')
 	def _shorthand_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1]]
 	def _dot_reference(scanner): return 'reference', scanner.env['DOT']
 	def _hex_escape(scanner): return 'c', int(scanner.matched_text()[2:], 16)

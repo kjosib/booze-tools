@@ -12,7 +12,7 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 ========================================
 
 """
-import re, os
+import re, os, collections
 from .. import miniscan, regular, context_free, foundation, interfaces, compaction
 from . import grammar
 
@@ -39,19 +39,37 @@ def compile_string(document:str, filename=None) -> dict:
 		pass
 	
 	def patterns():
-		m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(\s+[A-Za-z_]+)?(?:\s+:(0|[1-9][0-9]*))?', current_line_text)
+		# This could be done better: a nice exercise might be to enhance the present regex parser to also
+		# grok actual scanner rules as an alternate language start-symbol; such could eliminate some of
+		# this contemptible string hackery and thereby enable things like embedded spaces where they make sense.
+		# Such would also involve hacking the metascanner bootstrap code to track paren depth and recognize
+		# the other tokens that can appear.
+		def note_pattern(pattern):
+			# Now patterns that share a trail length can also share a rule ID number.
+			try: bol, expression, trail = miniscan.analyze_pattern(pattern, env)
+			except interfaces.MetaError as e: raise DefinitionError('At line '+str(line_number)+': '+repr(e.args))
+			except interfaces.LanguageError as e: raise DefinitionError('Malformed pattern on line %d.' % line_number) from e
+			else: pending_patterns[trail].append((bol, expression))
+		if current_line_text.endswith('|'):
+			pattern = current_line_text[:-1].strip()
+			if re.search(r'\s', pattern): raise DefinitionError('Unable to analyze pattern/same-as-next structure at line %d.')
+			note_pattern(pattern)
+			return
+		m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(?:\s+([A-Za-z_]+))?(?:\s+:(0|[1-9][0-9]*))?', current_line_text)
 		if not m: raise DefinitionError('Unable to analyze overall pattern/action/parameter/(rank) structure at line %d.'%line_number)
 		pattern, action, parameter, rank_string = m.groups()
 		rank = int(rank_string) if rank_string else 0
-		try: bol, expression, trail = miniscan.analyze_pattern(pattern, env)
-		except interfaces.LanguageError as e: raise DefinitionError('Malformed pattern on line %d.'%line_number) from e
-		rule_id = foundation.allocate(scan_actions, (action, parameter, trail, line_number))
-		src = nfa.new_node(rank)
-		dst = nfa.new_node(rank)
-		for q,b in zip(nfa.condition(group), bol):
-			if b: nfa.link_epsilon(q, src)
-		nfa.final[dst] = rule_id
-		expression.encode(src, dst, nfa, rank)
+		note_pattern(pattern)
+		for trail, list_of_patterns in pending_patterns.items():
+			rule_id = foundation.allocate(scan_actions, (action, parameter, trail, line_number))
+			for bol, expression in list_of_patterns:
+				src = nfa.new_node(rank)
+				dst = nfa.new_node(rank)
+				for q,b in zip(nfa.condition(group), bol):
+					if b: nfa.link_epsilon(q, src)
+				nfa.final[dst] = rule_id
+				expression.encode(src, dst, nfa, rank)
+		pending_patterns.clear()
 		pass
 	
 	def precedence(): ebnf.read_precedence_line(current_line_text, line_number)
@@ -90,6 +108,7 @@ def compile_string(document:str, filename=None) -> dict:
 	# The regular (finite-state) portion of the definition:
 	env = miniscan.PRELOAD['ASCII'].copy()
 	nfa = regular.NFA()
+	pending_patterns = collections.defaultdict(list) # Those awaiting an application of the `|` action...
 	scan_actions = [] # That of a regular-language rule entry is <message, parameter, trail, line_number>
 	group = None
 
@@ -101,12 +120,14 @@ def compile_string(document:str, filename=None) -> dict:
 		line_number += 1
 		if in_code:
 			current_line_text = current_line_text.strip()
-			if '```' in current_line_text: in_code = False
+			if '```' in current_line_text:
+				in_code = False
+				if pending_patterns: raise DefinitionError("Consecutive group of patterns lacks a scanner action before end of code block at line %d."%line_number)
 			elif current_line_text and section: section()
 		elif current_line_text.startswith('#'): section = decide_section()
 		elif current_line_text.strip().startswith('```'): in_code = True
 		else: continue
-	
+	if in_code and section: raise DefinitionError("A code block fails to terminate before the end of the document.")
 	# Validate everything possible:
 	ebnf.validate()
 	
