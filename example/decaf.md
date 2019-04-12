@@ -56,7 +56,7 @@ unterminated strings are caught specifically with an extra rule here. It demonst
 how you can add a parameter (any sequence of letters and the underscore) to an action.
 ```
 \d+                       :decimal_integer
-0[xX]{xdigit}+          :hex_integer
+0[xX]{xdigit}+            :hex_integer
 \d+\.\d*([eE][-+]?\d+)?   :double_constant
 "[{DOT}&&^"]*"            :string_constant
 "                         :error unterminated_string
@@ -110,7 +110,17 @@ Variable -> Type ident
 Type -> int | double | bool | string
     | .Type '[' ']' :array_type
 
-FunctionDecl -> .[Type void] .ident '(' .Formals ')' .StmtBlock
+FunctionDecl -> .Type .ident '(' .Formals ')' .StmtBlock
+FunctionDecl -> .void .ident '(' .Formals ')' .StmtBlock
+```
+There's a reason for the above near-duplication in `FunctionDecl`: If you write instead
+`-> .[Type void] .ident...`, then the grammar is no longer LR(1): The
+parser can't know if it's parsing a `Variable` or a `FunctionDecl`,
+so it doesn't know whether to reduce the `Type` as a `[Type|void]` or
+shift a following `ident`. Ideally that should not be a problem because of
+unit-rule optimization (a.k.a. renaming-elimination). Tracking this
+down is going to result in a much nicer tool...
+```
 Formals -> comma_list(Variable)
 
 ClassDecl -> class .ident .optional(Parent) .optional(Impls) '{' .list_of(Field) '}' :class
@@ -133,10 +143,47 @@ Stmt -> StmtBlock
     | break .optional(ident) ';'   :break_statement
     | Print '(' .comma_separated(Expr) ')' ';'  :print_statement
 
+Expr -> .LValue '=' .Expr   :assign
+    | Constant | LValue | this | Call | '(' .Expr ')'
+    | .Expr '+'  .Expr :add
+    | .Expr '-'  .Expr :subtract
+    | .Expr '*'  .Expr :multiply
+    | .Expr '/'  .Expr :divide
+    | .Expr '%'  .Expr :modulo
+    |       '-'  .Expr :negate
+    | .Expr '<'  .Expr :lt
+    | .Expr '<=' .Expr :le
+    | .Expr '==' .Expr :eq
+    | .Expr '!=' .Expr :ne
+    | .Expr '>=' .Expr :ge
+    | .Expr '>'  .Expr :gt
+    | .Expr '&&' .Expr :and
+    | .Expr '||' .Expr :or
+    |       '!'  .Expr :not
+    | .ReadInteger '(' ')' :read
+    | .ReadLine '(' ')'    :read
+    | New '(' .ident ')'   :new
+    | NewArray '(' .Expr ',' .Type ')'  :new_array
+    
+    
+    
+
 ```
 
 ## Precedence
-
+The usual rules apply, remembering that highest-precedence comes first in MacroParse.
+Decaf doesn't have bitwise operators, so there's little opportunity for confusion.
+I'm going to assume chained-comparison operators are not allowed, and that `&&`
+binds more tightly than `||`.
+```
+%left '*' '/' '%'
+%left '+' '-'
+%nonassoc '<' '<=' '==' '!=' '>=' '>'
+%left '!'
+%left '&&'
+%left '||'
+%right '='
+```
 The following declaration solves the "dangling-else" shift/reduce conflict:
 ```
 %right if else
