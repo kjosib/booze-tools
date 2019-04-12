@@ -5,6 +5,10 @@ Discarded ideas go here: they may be useful but are far from the simplest possib
 
 """
 The first such victim is the row-offset method of perfect-hashing.
+	* A hash is "perfect" when it requires at most one probe to determine
+	the presence or absence of a key; in general these must be precomputed.
+	* A hash is "minimal" when (in the lingo of hashing) all the buckets are used.
+	* The holy grail of "minimal perfect hashing" generally requires a more complex function.
 
 This is meant to illustrate a possible O(1) mechanism rather than be fast in the specific
 context of Python. By sliding the rows of a matrix around, we can find a set of offsets
