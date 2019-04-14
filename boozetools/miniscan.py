@@ -202,7 +202,11 @@ def _BEGIN_():
 	dollar_charclass = regular.CharClass(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].cls))
 	META.install_rule(expression=txt('^'), action=_metatoken, bol=(False, True))
 	META.install_rule(expression=txt('^^'), action=_metatoken, bol=(False, True))
-	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=1, action=lambda scanner:('$', dollar_charclass))
+	# This next rule says that a dollar-sign at the end of a pattern supplies a regex matching EITHER end-of-line OR end-of-file
+	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=-1, action=lambda scanner:('$', dollar_charclass))
+	# So I build another similar one for end-of-file rules: the string '<<EOF>>' appearing at the end of the pattern.
+	# And by the way, the rex grammar (above) correctly directs such things to the trailing-context fork of the parse.
+	META.install_rule(expression=seq(txt('<<EOF>>'), eof_charclass), trail=-1, action=lambda scanner:('$', eof_charclass))
 	for c in '(|)?*+/': META.install_rule(expression=txt(c), action=_metatoken)
 	META.install_rule(expression=txt('.'), action=_dot_reference)
 	META.install_rule(expression=txt('{'), action=_and_then('{'))

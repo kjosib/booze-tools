@@ -86,7 +86,7 @@ An end-of-file rule should catch unterminated comments.
 \*+\/     :begin INITIAL
 \*+/[^/]  |
 [^*]+     :ignore
-.?/$$     :error unterminated_comment
+<<EOF>>   :error unterminated_comment
 ```
 ## Productions PROGRAM
 First, a couple macros. Nothing too crazy, but it does show that you
