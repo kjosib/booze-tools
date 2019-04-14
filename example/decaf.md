@@ -108,7 +108,7 @@ Declaration ->  VariableDecl | FunctionDecl | ClassDecl | InterfaceDecl
 VariableDecl -> .Variable ';'
 Variable -> Type ident
 Type -> int | double | bool | string
-    | .Type '[' ']' :array_type
+	| .Type '[' ']' :array_type
 
 FunctionDecl -> .Type .ident '(' .Formals ')' .StmtBlock
 FunctionDecl -> .void .ident '(' .Formals ')' .StmtBlock
@@ -134,39 +134,54 @@ Prototype -> .[Type void] .ident '(' .Formals ')' ';'
 StmtBlock -> '{' .list_of(Stmt) '}'
 
 Stmt -> StmtBlock
-    | .Expr ';'    :evaluate_for_side_effects
-    | if '(' .Expr ')' .Stmt             :if_statement
-    | if '(' .Expr ')' .Stmt else .Stmt  :if_else_statement
-    | while '(' .Expr ')' .Stmt          :while_statement
-    | for '(' .optional(Expr) ';' .Expr ';' .optional(Expr) ')' .Stmt   :for_statement
-    | return .optional(Expr) ';'   :return_statement
-    | break .optional(ident) ';'   :break_statement
-    | Print '(' .comma_separated(Expr) ')' ';'  :print_statement
-
+	| .Expr ';'    :evaluate_for_side_effects
+	| if '(' .Expr ')' .Stmt             :if_statement
+	| if '(' .Expr ')' .Stmt else .Stmt  :if_else_statement
+	| while '(' .Expr ')' .Stmt          :while_statement
+	| for '(' .optional(Expr) ';' .Expr ';' .optional(Expr) ')' .Stmt   :for_statement
+	| return .optional(Expr) ';'   :return_statement
+	| break .optional(ident) ';'   :break_statement
+	| Print '(' .comma_separated(Expr) ')' ';'  :print_statement
+```
+There's a minor annoyance with the `:if_statement` and `:if_else_statement` actions:
+it would be convenient to supply an `optional(ElseClause)`, but it seems to confuse
+the table generator into seeing a conflict that operator-precedence declarations are
+not sufficient to resolve. I think I understand why, but gee whiz if some parse table
+visualization kung-fu wouldn't be awesome. Come to think of it, I've got a little
+project I'm working on...
+```
 Expr -> .LValue '=' .Expr   :assign
-    | Constant | LValue | this | Call | '(' .Expr ')'
-    | .Expr '+'  .Expr :add
-    | .Expr '-'  .Expr :subtract
-    | .Expr '*'  .Expr :multiply
-    | .Expr '/'  .Expr :divide
-    | .Expr '%'  .Expr :modulo
-    |       '-'  .Expr :negate
-    | .Expr '<'  .Expr :lt
-    | .Expr '<=' .Expr :le
-    | .Expr '==' .Expr :eq
-    | .Expr '!=' .Expr :ne
-    | .Expr '>=' .Expr :ge
-    | .Expr '>'  .Expr :gt
-    | .Expr '&&' .Expr :and
-    | .Expr '||' .Expr :or
-    |       '!'  .Expr :not
-    | .ReadInteger '(' ')' :read
-    | .ReadLine '(' ')'    :read
-    | New '(' .ident ')'   :new
-    | NewArray '(' .Expr ',' .Type ')'  :new_array
-    
-    
-    
+	| Constant | LValue | this | Call | '(' .Expr ')'
+	| .Expr '+'  .Expr :add
+	| .Expr '-'  .Expr :subtract
+	| .Expr '*'  .Expr :multiply
+	| .Expr '/'  .Expr :divide
+	| .Expr '%'  .Expr :modulo
+	|       '-'  .Expr :negate    %prec UMINUS
+	| .Expr '<'  .Expr :lt
+	| .Expr '<=' .Expr :le
+	| .Expr '==' .Expr :eq
+	| .Expr '!=' .Expr :ne
+	| .Expr '>=' .Expr :ge
+	| .Expr '>'  .Expr :gt
+	| .Expr '&&' .Expr :and
+	| .Expr '||' .Expr :or
+	|       '!'  .Expr :not
+	| .ReadInteger '(' ')' :read
+	| .ReadLine '(' ')'    :read
+	| New '(' .ident ')'   :new
+	| NewArray '(' .Expr ',' .Type ')'  :new_array
+	
+LValue -> ident
+	| .Expr '.' .ident      :field
+	| .Expr '[' .Expr ']'   :element
+
+Call -> .ident '(' .Actuals ')'         :function_call
+	| .Expr '.' .ident '(' .Actuals ')' :method_call
+
+Actuals -> optional(comma_separated(Expr))
+
+Constant -> intConstant | doubleConstant | boolConstant | stringConstant | null
 
 ```
 
@@ -176,14 +191,21 @@ Decaf doesn't have bitwise operators, so there's little opportunity for confusio
 I'm going to assume chained-comparison operators are not allowed, and that `&&`
 binds more tightly than `||`.
 ```
+%left '[' '(' '.'
+%bogus UMINUS
 %left '*' '/' '%'
 %left '+' '-'
 %nonassoc '<' '<=' '==' '!=' '>=' '>'
-%left '!'
+%nonassoc '!'
 %left '&&'
 %left '||'
 %right '='
 ```
+Mathematically, Decaf does not need a special high-precedence rule for unary
+negation: it has neither operator overloading nor exponentiation notation.
+But it's still widely accepted that unary negation should happen before any
+other math, so I've thrown it in.
+
 The following declaration solves the "dangling-else" shift/reduce conflict:
 ```
 %right if else

@@ -14,11 +14,18 @@ see [json.md](json.md) in this folder.
 Unlike Bison or Yacc, highest-precedence comes first. After all, that's the way
 you learned it in grade school!
 ```
+%bogus UMINUS
 %right '^'
 %left '*' '/'
 %left '+' '-'
 ```
+The declaration `%bogus` introduces a name for a precedence level that can only be
+used as a rule's `%prec` symbol, which you can see illustrated below for unary negation.
+In case you're wondering, it's how we make `-1 ^ 2` = `1`.
+
 You can also use `%nonassoc` in the usual way, but this example does not require that.
+The larger [Decaf Example](decaf.md) uses it to prevent things like `a > b < c`, which
+admittedly *can* be made sense of, but they aren't part of the Decaf language specification.
 
 # Productions START
 The productions for this are pretty normal.
@@ -33,7 +40,7 @@ E -> '(' .E ')'
   | .E '*' .E   :multiply
   | .E '/' .E   :divide
   | .E '^' .E   :power
-  | '-' .E      :negate
+  | '-' .E      :negate  %prec UMINUS
   | variable    :lookup
   | number
 ```

@@ -101,7 +101,7 @@ METAGRAMMAR.rule('head', '.name ( .%s ) arrow' % list_of('name', ','))(None) # R
 
 ELEMENTS = one_or_more('element')
 METAGRAMMAR.rule('rewrite', ELEMENTS)(Rewrite)
-METAGRAMMAR.rule('rewrite', '.' + ELEMENTS + ' pragma_precsym .terminal')(Rewrite)
+METAGRAMMAR.rule('rewrite', '.' + ELEMENTS + ' pragma_prec .terminal')(Rewrite)
 
 METAGRAMMAR.renaming('terminal', 'name', 'literal')
 
@@ -126,6 +126,7 @@ METAGRAMMAR.rule('precedence', '.associativity .'+one_or_more('terminal'))(None)
 METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x:context_free.LEFT)
 METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x:context_free.RIGHT)
 METAGRAMMAR.rule('associativity', 'pragma_nonassoc')(lambda x:context_free.NONASSOC)
+METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda x:context_free.BOGUS)
 
 ### The lexeme definitions for production rule lines are as follows:
 LEX = miniscan.Definition()

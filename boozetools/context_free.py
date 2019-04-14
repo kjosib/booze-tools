@@ -4,10 +4,14 @@ from . import pretty, interfaces
 
 DOT = '\u25cf'
 
-LEFT, RIGHT, NONASSOC = object(), object(), object()
+LEFT, RIGHT, NONASSOC, BOGUS = object(), object(), object(), object()
 
 class Fault(ValueError): pass
 class DuplicateRule(Fault): pass
+class NonTerminalsCannotHavePrecedence(Fault): pass
+class FailedToSetPrecedenceOnPrecsym(Fault): pass
+class PrecedenceDeclaredTwice(Fault): pass
+class RuleProducesBogusToken(Fault): pass # The rule produces a bogus symbol...
 class UnreachableSymbols(Fault): pass
 class NonproductiveSymbols(Fault): pass
 
@@ -74,9 +78,8 @@ class ContextFreeGrammar:
 		to be prepared to find a rule with a null attribute. Correct behavior is generally
 		to leave the semantic-stack unchanged.
 		"""
-		assert lhs not in self.token_precedence
+		if lhs in self.token_precedence: raise NonTerminalsCannotHavePrecedence(lhs)
 		assert attribute is not None or len(rhs) == 1, 'There are no shortcuts at this layer.'
-		if prec_sym is not None: assert prec_sym in self.token_precedence
 		self.symbols.add(lhs)
 		self.symbols.update(rhs)
 		if lhs not in self.symbol_rule_ids: self.symbol_rule_ids[lhs] = []
@@ -85,13 +88,25 @@ class ContextFreeGrammar:
 		sri.append(allocate(self.rules, Rule(lhs, rhs, attribute, prec_sym)))
 	
 	def validate(self):
+		"""
+		This raises an exception (derived from Fault, above) for the first error noticed.
+		It might be nice to get a more complete read-out of problems, but that would mean
+		inventing some sort of document structure to talk about faults in grammars.
+		Then again, maybe that's in the pipeline.
+		"""
+		bogons = {sym for sym, prec in self.token_precedence.items() if self.level_assoc[prec] is BOGUS}
 		produces = collections.defaultdict(set)  # nt -> set[t]
 		produced_by = collections.defaultdict(set)
-		for rule in self.rules:
+		for rule_id, rule in enumerate(self.rules):
 			assert rule.attribute is not None or len(rule.rhs) == 1
+			if rule.prec_sym is not None and rule.prec_sym not in self.token_precedence:
+				raise FailedToSetPrecedenceOnPrecsym(rule_id)
 			produces[rule.lhs].update(rule.rhs)
-			for symbol in rule.rhs: produced_by[symbol].add(rule.lhs)
+			for symbol in rule.rhs:
+				produced_by[symbol].add(rule.lhs)
+				if symbol in bogons: raise RuleProducesBogusToken(rule_id)
 		unreachable = self.symbols - transitive_closure(self.start, produces.get)
+		# NB: This shows the bogons are not among the true symbols.
 		if unreachable: raise UnreachableSymbols(unreachable)
 		nonterminals = set(produces.keys())
 		nonproductive = self.symbols - transitive_closure(self.symbols-nonterminals, produced_by.get)
@@ -99,11 +114,12 @@ class ContextFreeGrammar:
 		pass
 	
 	def assoc(self, direction, symbols):
-		assert direction in (LEFT, NONASSOC, RIGHT)
+		assert direction in (LEFT, NONASSOC, RIGHT, BOGUS)
 		assert symbols
 		level = allocate(self.level_assoc, direction)
 		for symbol in symbols:
-			assert symbol not in self.symbol_rule_ids
+			if symbol in self.symbol_rule_ids: raise NonTerminalsCannotHavePrecedence(symbol)
+			if symbol in self.token_precedence: raise PrecedenceDeclaredTwice(symbol)
 			self.token_precedence[symbol] = level
 			
 	def decide_shift_reduce(self, symbol, rule_id):
@@ -268,6 +284,7 @@ class ContextFreeGrammar:
 							if decision == LEFT: action_row[idx] = reduce
 							elif decision == RIGHT: pass
 							elif decision == NONASSOC: essential_errors.add((q, idx))
+							elif decision == BOGUS: raise RuleProducesBogusToken(rule_id)
 							else: conflict[symbol].update([prior, reduce])
 				if conflict:
 					pure = False

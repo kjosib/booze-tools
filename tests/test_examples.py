@@ -92,9 +92,10 @@ class TestCalculator(unittest.TestCase):
 			('3*4+5', 17),
 			('3+4*5', 23),
 			('(3+4)*5', 35),
-			('3^3', 27),
-			('3^3^3', 7625597484987),
-			('(3^3)^3', 19683),
+			('2^3', 8),
+			('2^3^2', 512),  # Exponentiation is right-associative.
+			('(2^3)^2', 64),
+			('-1 ^ 2', 1), # THIS is why unary negation needs a higher precedence level.
 			('a=3', 3),
 			('b=4', 4),
 			('a^2 + b^2 - 25', 0),
