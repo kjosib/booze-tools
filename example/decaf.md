@@ -9,6 +9,9 @@ institution you attend. I glanced at a couple versions and I like the one linked
 It's a bit more feature-complete than some of the other alternatives. Also, it's hosted
 at Texas A&M University, and as a proud Tea-Sip I have to pick on TAMU.
 
+If this is your first look at MacroParse, I'd like to recommend starting with the
+[JSON tutorial example](json.md).
+
 ## Conditions
 
 I plan to implement the pre-processor by integration into the main scanner definition.
@@ -35,13 +38,17 @@ class|interface|extends|implements        |
 for|while|if|else|return|break            |
 New|NewArray|Print|ReadInteger|ReadLine   :reserved_word
 ```
-An identifier is a sequence of letters, digits, and underscores, starting with a letter. Decaf is case-sensitive,
-e.g., if is a keyword, but IF is an identifier; binky and Binky are two distinct identifiers. Identifiers can
-be at most 31 characters long. A good solution is to recognize all such sequences and
-deal with overlong words in the driver, but MacroParse makes it convenient to build the constraint
-directly into the scanner (at the cost of a larger table).
+A Decaf-Language identifier is a sequence of letters, digits, and underscores, starting
+with a letter. Decaf is case-sensitive, e.g., `if` is a keyword, but `IF` is an identifier;
+`binky` and `Binky` are two distinct identifiers. Quoting directly from the specification,
+Identifiers can be at most 31 characters long; a longer sequence is truncated and yields
+a warning message from a compliant implementation. A good engineered solution is to recognize
+the pattern `{alpha}{word}*` and deal with overlong words in the driver, but this is also
+an excellent opportunity to show how MacroParse makes it convenient to build the constraint
+directly into the scanner (at the cost of a larger scan table).
 ```
 {alpha}{word}{0,30}   :ident
+{alpha}{word}{31,}    :overlong_identifier
 ```
 
 Boolean constants are also reserved. They would overlap with the definition of identifiers

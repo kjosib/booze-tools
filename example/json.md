@@ -2,10 +2,10 @@
 * [JSON](http://www.json.org/) has just enough structure to be an excellent introductory example.
 * It does not exercise every `MacroParse` feature, but there are [further examples](./).
 
-The format of a `MacroParse` syntax description is literate, meaning that exposition is given
-prominence at least equal to implementation. To that end, a valid syntax description
-is also a valid [markdown](https://en.wikipedia.org/wiki/Markdown) document,
-and *this* markdown document (the one you are reading right now) is a valid
+The format of a `MacroParse` syntax description is [literate](http://www.literateprogramming.com/),
+meaning that exposition is given prominence at least equal to implementation. To that end,
+a valid syntax description is also a valid [markdown](https://en.wikipedia.org/wiki/Markdown)
+document, and *this* markdown document (the one you are reading right now) is a valid
 `MacroParse` syntax description.
 
 * A stripped, "just-the-facts" version of this file is at [json_stripped.md](json_stripped.md).
