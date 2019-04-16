@@ -20,9 +20,48 @@ class DefinitionError(Exception): pass
 
 def compile_file(pathname) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
-	return compile_string(document, os.path.basename(pathname))
+	return compile_string(document).as_compact_form(filename=os.path.basename(pathname))
 
-def compile_string(document:str, filename=None) -> dict:
+class TextBookForm:
+	""" This provides the various views of the text-book form of scan and parse tables. """
+	def __init__(self, *, dfa:regular.DFA, scan_actions:list, parse_table:context_free.DragonBookTable):
+		self.dfa = dfa
+		self.scan_actions = scan_actions
+		self.parse_table = parse_table
+	def as_compact_form(self, *, filename):
+		return {
+			'description': 'MacroParse Automaton',
+			'version': (0, 0, 0),
+			'source': filename,
+			'scanner': self.compact_scanner(),
+			'parser': self.compact_parser(),
+		}
+	def compact_scanner(self) -> dict:
+		dfa = self.dfa
+		return {
+			'dfa': compaction.modified_aho_corasick_encoding(initial=dfa.initial, matrix=dfa.states, final=dfa.final, jam=dfa.jam_state()),
+			'action': dict(zip(['message', 'parameter', 'trail', 'line_number'], zip(*self.scan_actions))),
+			'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
+		}
+	def compact_parser(self) -> dict:
+		table = self.parse_table
+		symbol_index = {s: i for i, s in enumerate(table.terminals + table.nonterminals)}
+		symbol_index[None] = None
+		return {
+			'initial': table.initial,
+			'action': compaction.compress_action_table(table.action_matrix, table.essential_errors),
+			'goto': compaction.compress_goto_table(table.goto_matrix),
+			'terminals': table.terminals,
+			'nonterminals': table.nonterminals,
+			'breadcrumbs': [symbol_index[s] for s in table.breadcrumbs],
+			'rule': encode_parse_rules(table.rule_table),
+		}
+	def pretty_print(self):
+		self.dfa.stats()
+		self.parse_table.display()
+
+def compile_string(document:str) -> TextBookForm:
+	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
 	# Each major sub-language is line-oriented and interpreted with one of the following five subroutines:
@@ -131,35 +170,13 @@ def compile_string(document:str, filename=None) -> dict:
 	# Validate everything possible:
 	ebnf.validate()
 	
-	# Compose and compress the control tables. (Serialization will be straight JSON via standard library.)
-	return {
-		'description': 'MacroParse Automaton',
-		'version': (0, 0, 0),
-		'source': filename,
-		'scanner': scan_table_encoding(nfa.subset_construction().minimize_states().minimize_alphabet(), scan_actions),
-		'parser': parse_table_encoding(ebnf.plain_cfg.lalr_construction())
-	}
+	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
+	return TextBookForm(
+		dfa = nfa.subset_construction().minimize_states().minimize_alphabet(),
+		scan_actions = scan_actions,
+		parse_table = ebnf.plain_cfg.lalr_construction(),
+	)
 
-def scan_table_encoding(dfa:regular.DFA, scan_actions:list) -> dict:
-	dfa.stats()
-	return {
-		'dfa': compaction.modified_aho_corasick_encoding(initial=dfa.initial, matrix=dfa.states, final=dfa.final, jam=dfa.jam_state()),
-		'action': dict(zip(['message', 'parameter', 'trail', 'line_number'], zip(*scan_actions))),
-		'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
-	}
-
-def parse_table_encoding(table:context_free.DragonBookTable) -> dict:
-	symbol_index = {s: i for i, s in enumerate(table.terminals + table.nonterminals)}
-	symbol_index[None] = None
-	return {
-		'initial': table.initial,
-		'action': compaction.compress_action_table(table.action_matrix, table.essential_errors),
-		'goto': compaction.compress_goto_table(table.goto_matrix),
-		'terminals': table.terminals,
-		'nonterminals': table.nonterminals,
-		'breadcrumbs': [symbol_index[s] for s in table.breadcrumbs],
-		'rule': encode_parse_rules(table.rule_table),
-	}
 
 def encode_parse_rules(rules:list) -> dict:
 	assert isinstance(rules, list), type(rules)
@@ -180,17 +197,23 @@ def main():
 	parser.add_argument('-f', '--force', action='store_true', dest='force', help='allow to write over existing file')
 	parser.add_argument('-o', '--output', help='path to output file')
 	parser.add_argument('-i', '--indent', help='indent the JSON output for easier reading.', action='store_const', dest='indent', const=2, default=None)
+	parser.add_argument('--pretty', action='store_true', help='Display various things...')
 	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
 	target_path = args.output or os.path.splitext(args.source_path)[0]+'.automaton'
 	if os.path.exists(target_path) and not args.force:
 		print('Target file already exists and --force command-line argument was not given.', file=sys.stderr)
 		exit(1)
-	try: json.dump(compile_file(args.source_path), open(target_path, 'w'), separators=(',', ':'), sort_keys=False, indent=args.indent)
+	with(open(args.source_path)) as fh:document = fh.read()
+	try:
+		textbook_form = compile_string(document)
 	except DefinitionError as e:
 		print(e.args[0], file=sys.stderr)
 		exit(1)
 	else:
+		compact = textbook_form.as_compact_form(filename=os.path.basename(args.source_path))
+		if args.pretty: textbook_form.pretty_print()
+		json.dump(compact, open(target_path, 'w'), separators = (',', ':'), sort_keys = False, indent = args.indent)
 		print('Wrote automaton in JSON format to:')
 		print('\t'+target_path)
 
