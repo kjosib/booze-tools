@@ -87,6 +87,9 @@ class DFA(interfaces.FiniteAutomaton):
 		X = sum(sum(x != -1 for x in state) for state in self.states)
 		print('DFA has %d states and %d character classes, using %d cells.'%(Q, W, Q*W))
 		print('%d non-error cells, or %0.2f%%'%(X, 100*X/(Q*W)))
+	
+	def make_csv(self, pathstem):
+		pass
 
 class NFA:
 	def __init__(self):

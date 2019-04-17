@@ -311,7 +311,6 @@ class ContextFreeGrammar:
 		)
 
 
-		
 class DragonBookTable(interfaces.ParserTables):
 	"""
 	This is the classic textbook view of a set of parse tables. It's also a reasonably quick implementation
@@ -359,3 +358,16 @@ class DragonBookTable(interfaces.ParserTables):
 		for i, (b, a, g) in enumerate(zip(self.breadcrumbs, self.action_matrix, self.goto_matrix)):
 			body.append([i, b, *a, '', *g])
 		pretty.print_grid([head] + body)
+	
+	def make_csv(self, pathstem):
+		""" Generate action and goto tables into CSV files suitable for inspection in a spreadsheet program. """
+		def mask(q, row, essential):
+			return [
+				s if s or (q,t) in essential else None
+				for t, s in enumerate(row)
+			]
+		def typical_grid(top, matrix, essential):
+			head = [None, None, *top]
+			return [head]+[  [q, self.breadcrumbs[q]]+mask(q, row, essential)  for q, row in enumerate(matrix)]
+		pretty.write_csv_grid(pathstem + '.action.csv', typical_grid(self.terminals, self.action_matrix, self.essential_errors))
+		pretty.write_csv_grid(pathstem + '.goto.csv', typical_grid(self.nonterminals, self.goto_matrix, frozenset()))

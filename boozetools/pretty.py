@@ -1,4 +1,5 @@
-""" Sometimes you just need to see what's going on. """
+""" Bits and bobs in support of visualizing data structures. """
+import csv
 
 def print_grid(grid):
 	lens = list(map(len, grid))
@@ -22,3 +23,7 @@ def print_grid(grid):
 		if r %5 == 1: print(divider)
 		print(vertical.join(s.rjust(w,' ') for s,w in zip(row, width)))
 	print(lower.join(segments))
+
+def write_csv_grid(path, grid):
+	with open(path, 'w', newline="") as fh:
+		csv.writer(fh).writerows(grid)

@@ -58,7 +58,11 @@ class TextBookForm:
 		}
 	def pretty_print(self):
 		self.dfa.stats()
+		self.dfa.display()
 		self.parse_table.display()
+	def make_csv(self, pathstem):
+		self.dfa.make_csv(pathstem)
+		self.parse_table.make_csv(pathstem)
 
 def compile_string(document:str) -> TextBookForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
@@ -197,10 +201,12 @@ def main():
 	parser.add_argument('-f', '--force', action='store_true', dest='force', help='allow to write over existing file')
 	parser.add_argument('-o', '--output', help='path to output file')
 	parser.add_argument('-i', '--indent', help='indent the JSON output for easier reading.', action='store_const', dest='indent', const=2, default=None)
-	parser.add_argument('--pretty', action='store_true', help='Display various things...')
+	parser.add_argument('--pretty', action='store_true', help='Display uncompressed tables in attractive grid format on STDOUT.')
+	parser.add_argument('--csv', action='store_true', help='Generate CSV versions of uncompressed tables, suitable for inspection.')
 	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
-	target_path = args.output or os.path.splitext(args.source_path)[0]+'.automaton'
+	stem, extension = os.path.splitext(args.source_path)
+	target_path = args.output or stem+'.automaton'
 	if os.path.exists(target_path) and not args.force:
 		print('Target file already exists and --force command-line argument was not given.', file=sys.stderr)
 		exit(1)
@@ -213,6 +219,7 @@ def main():
 	else:
 		compact = textbook_form.as_compact_form(filename=os.path.basename(args.source_path))
 		if args.pretty: textbook_form.pretty_print()
+		if args.csv: textbook_form.make_csv(target_path)
 		json.dump(compact, open(target_path, 'w'), separators = (',', ':'), sort_keys = False, indent = args.indent)
 		print('Wrote automaton in JSON format to:')
 		print('\t'+target_path)
