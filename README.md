@@ -16,9 +16,6 @@ For now there are three major components. Eventually there will be more. These a
 Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/wiki).
 Worked examples may be found at [/example/](https://github.com/kjosib/booze-tools/tree/master/example/).
 
-The `dev` branch currently has two major focuses: proper packaging for distribution on PYPI, and
-improving the MacroParse module.
-
 # Priorities?
 * These operate within a Python environment.
 * They have some features not found in other such tools.
