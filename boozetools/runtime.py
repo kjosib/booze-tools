@@ -44,8 +44,16 @@ def parser_action_function(*, index, data, default) -> callable:
 		return default[state_id] if q is None else q
 	return fn
 
-def parser_goto_function(*, state_class, class_list ) -> callable:
-	""" The compressed goto function is good, fast, and cheap. """
+def parser_goto_function(*, row_index, col_index, quotient, residue ) -> callable:
+	cut = len(quotient)
+	def probe(state_id:int, nonterminal_id:int):
+		r, c = row_index[state_id], col_index[nonterminal_id]
+		dominant = min(r, c)
+		return quotient[dominant] if dominant < cut else residue[r-cut][c-cut]
+	return probe
+
+	
+def old_parser_goto_function(*, state_class, class_list ) -> callable:
 	def probe(state_id:int, nonterminal_id:int):
 		cls = state_class[state_id]
 		return 0-cls if cls < 0 else class_list[cls][nonterminal_id]

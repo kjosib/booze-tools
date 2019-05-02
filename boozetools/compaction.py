@@ -150,6 +150,37 @@ def compress_action_table(matrix:list, essential_errors:set) -> dict:
 
 def compress_goto_table(goto_table:list) -> dict:
 	"""
+	Per issue #4: Look alternately for rows or columns with but a single remaining
+	significant value. Record this value in a "quotient" list, together with bookkeeping
+	data for the rows and columns. Afterwards, we are left with a much smaller residue matrix;
+	typical equivalence-class methods may be used upon it.
+	"""
+	
+	def remaining(index): return [r for r, x in enumerate(index) if x is None]
+	def significant_cells(index, vector): return [v for x,v in zip(index, vector) if x is None and bool(v)]
+	def homogenize(vector):
+		if len(vector) < 1: return -1
+		if is_homogenous(vector): return vector[0]
+	def compact(target_index, second_index, read):
+		# This takes some pains to keep the quotient list small. It could be very slightly better...
+		tmp = [(homogenize(significant_cells(second_index, read(r))), r) for r in remaining(target_index)]
+		for q, i in sorted((q, i) for (q,i) in tmp if q is not None):
+			if not quotient or quotient[-1] != q: quotient.append(q)
+			target_index[i] = len(quotient) - 1
+	
+	height, width = len(goto_table), len(goto_table[0])
+	row_index, col_index, quotient = [None]*height, [None]*width, []
+	while True:
+		watermark = len(quotient)
+		compact(row_index, col_index, goto_table.__getitem__)
+		compact(col_index, row_index, lambda c:[row[c] for row in goto_table])
+		if len(quotient) == watermark: break
+	
+	return {'row_index': row_index, 'col_index': col_index, 'quotient': quotient, 'residue': residue}
+	
+
+def old_compress_goto_table(goto_table:list) -> dict:
+	"""
 	Produce a compact representation of the "GOTO" table for a typical shift-reduce parser.
 	:param goto_table: [state][nonterminal] contains the state ID for that nonterminal appearing in that state.
 	:return: a compact structure.
