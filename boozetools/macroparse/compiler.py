@@ -13,7 +13,7 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 
 """
 import re, os, collections
-from .. import miniscan, regular, context_free, foundation, interfaces, compaction
+from .. import miniscan, regular, context_free, foundation, interfaces, compaction, pretty
 from . import grammar
 
 class DefinitionError(Exception): pass
@@ -203,6 +203,7 @@ def main():
 	parser.add_argument('-i', '--indent', help='indent the JSON output for easier reading.', action='store_const', dest='indent', const=2, default=None)
 	parser.add_argument('--pretty', action='store_true', help='Display uncompressed tables in attractive grid format on STDOUT.')
 	parser.add_argument('--csv', action='store_true', help='Generate CSV versions of uncompressed tables, suitable for inspection.')
+	parser.add_argument('--dev', action='store_true', help='Operate in "development mode" -- which changes from time to time.')
 	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
 	stem, extension = os.path.splitext(args.source_path)
@@ -220,6 +221,12 @@ def main():
 		compact = textbook_form.as_compact_form(filename=os.path.basename(args.source_path))
 		if args.pretty: textbook_form.pretty_print()
 		if args.csv: textbook_form.make_csv(target_path)
+		if args.dev:
+			compact_goto = compact['parser']['goto']
+			for listname in ['row_index', 'col_index', 'quotient']:
+				print(listname, ':', compact_goto[listname], len(compact_goto[listname]))
+			if compact_goto['residue']: pretty.print_grid(compact_goto['residue'])
+			else: print('No residue matrix for GOTO table.')
 		json.dump(compact, open(target_path, 'w'), separators = (',', ':'), sort_keys = False, indent = args.indent)
 		print('Wrote automaton in JSON format to:')
 		print('\t'+target_path)

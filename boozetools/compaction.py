@@ -154,6 +154,10 @@ def compress_goto_table(goto_table:list) -> dict:
 	significant value. Record this value in a "quotient" list, together with bookkeeping
 	data for the rows and columns. Afterwards, we are left with a much smaller residue matrix;
 	typical equivalence-class methods may be used upon it.
+	
+	I didn't make this up. Unfortunately I cannot recall where I saw it in the literature, for
+	it was a very long time ago. If anyone knows who invented this, or what article originally
+	introduced it, I would very much like to hear from you.
 	"""
 	
 	def remaining(index): return [r for r, x in enumerate(index) if x is None]
@@ -165,61 +169,52 @@ def compress_goto_table(goto_table:list) -> dict:
 		# This takes some pains to keep the quotient list small. It could be very slightly better...
 		tmp = [(homogenize(significant_cells(second_index, read(r))), r) for r in remaining(target_index)]
 		for q, i in sorted((q, i) for (q,i) in tmp if q is not None):
-			if not quotient or quotient[-1] != q: quotient.append(q)
+			if quotient[-1] != q: quotient.append(q)
 			target_index[i] = len(quotient) - 1
+	def further_minimize(matrix):
+		# This deals in rows, but gets called twice: matrix transposition is a thing.
+		index, classes = [], []
+		for row in matrix:
+			for class_id, candidate_class in enumerate(classes):
+				if all(a == b or not (a and b) for a, b in zip(row, candidate_class)):
+					index.append(class_id)
+					for c, value in enumerate(row):
+						if value: candidate_class[c] = value
+					break
+			else:
+				index.append(foundation.allocate(classes, list(row)))
+		return index, classes
 	
+	# Find rows/columns to zap, accumulating the "quotient" list:
 	height, width = len(goto_table), len(goto_table[0])
-	row_index, col_index, quotient = [None]*height, [None]*width, []
+	row_index, col_index, quotient = [None]*height, [None]*width, [-1]
 	while True:
-		watermark = len(quotient)
+		hi_water_mark = len(quotient)
 		compact(row_index, col_index, goto_table.__getitem__)
 		compact(col_index, row_index, lambda c:[row[c] for row in goto_table])
-		if len(quotient) == watermark: break
+		if len(quotient) == hi_water_mark: break
 	
-	return {'row_index': row_index, 'col_index': col_index, 'quotient': quotient, 'residue': residue}
+	# Capture the much smaller residue matrix:
+	column_residue = remaining(col_index)
+	row_residue = remaining(row_index)
+	residue = [
+		[row[c] for c in column_residue]
+		for row in [goto_table[i] for i in row_residue]
+	]
 	
-
-def old_compress_goto_table(goto_table:list) -> dict:
-	"""
-	Produce a compact representation of the "GOTO" table for a typical shift-reduce parser.
-	:param goto_table: [state][nonterminal] contains the state ID for that nonterminal appearing in that state.
-	:return: a compact structure.
+	# Minimize the residue.
+	row_class, minimal_rows = further_minimize(residue)
+	for cls_id, state_id in zip(row_class, row_residue):
+		row_index[state_id] = len(quotient) + cls_id
 	
-	In a GOTO table, zeros are "don't-care" entries, because they represent situations that
-	are unreachable if the table construction algorithm is correct. There tends to be a lot of
-	repetition for any given nonterminal, and most states have only a small handful of entries.
+	col_class, minimal_cols = further_minimize(zip(*minimal_rows))
+	for cls_id, nonterm_id in zip(col_class, column_residue):
+		col_index[nonterm_id] = len(quotient) + cls_id
 	
-	This algorithm uses a per-state equivalence-class idea exploiting the prevalence of
-	irrelevant/unreachable cells in the dense-matrix representation. Finding the very best
-	possible set of such classes seems like it's probably NP-hard, so this algorithm uses
-	the simplistic plan of a linear scan. On balance, it should still produce decent results.
-	
-	Upon further reflection, it appears that many states have only a single possible "goto";
-	in this cases the indirection through the equivalence class list need not apply, and thus
-	even fewer equivalence classes should be created.
-	"""
-	def find_class(row) -> int:
-		distinct = set(row)
-		distinct.discard(0)
-		if len(distinct) == 1: return 0-distinct.pop()
-		for class_id, row_class in enumerate(class_list):
-			if compatible(row, row_class):
-				merge(row, row_class)
-				return class_id
-		return foundation.allocate(class_list, list(row))
-	
-	def compatible(row, row_class): return all(r==0 or c==0 or r==c for r,c in zip(row, row_class))
-	
-	def merge(row, row_class):
-		for i,r in enumerate(row):
-			if r != 0:
-				if row_class[i] == 0: row_class[i] = r
-				else: assert row_class[i] == r
-	
-	print("GOTO table original size:", sum(map(len, goto_table)))
-	class_list = []
-	state_class = [find_class(row) for row in goto_table]
-	print("GOTO compact size:", sum(map(len, class_list))+len(state_class))
-	return {'state_class': state_class, 'class_list': class_list}
+	# Wrap up and return.
+	print("GOTO table original size: %d rows, %d columns -> %d cells"%(height, width, height * width))
+	metric = len(row_index) + len(col_index) + len(quotient) + (len(row_class) * len(col_class))
+	print("GOTO compact size: %d (%.2f%%)"%(metric, 100.0*metric/(height * width)))
+	return {'row_index': row_index, 'col_index': col_index, 'quotient': quotient, 'residue': list(zip(*minimal_cols))}
 
 
