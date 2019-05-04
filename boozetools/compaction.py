@@ -213,7 +213,7 @@ def compress_goto_table(goto_table:list) -> dict:
 	
 	# Wrap up and return.
 	print("GOTO table original size: %d rows, %d columns -> %d cells"%(height, width, height * width))
-	metric = len(row_index) + len(col_index) + len(quotient) + (len(row_class) * len(col_class))
+	metric = len(row_index) + len(col_index) + len(quotient) + (len(minimal_rows) * len(minimal_cols))
 	print("GOTO compact size: %d (%.2f%%)"%(metric, 100.0*metric/(height * width)))
 	return {'row_index': row_index, 'col_index': col_index, 'quotient': quotient, 'residue': list(zip(*minimal_cols))}
 
