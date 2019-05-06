@@ -89,6 +89,10 @@ class DFA(interfaces.FiniteAutomaton):
 		print('%d non-error cells, or %0.2f%%'%(X, 100*X/(Q*W)))
 	
 	def make_csv(self, pathstem):
+		pretty.write_csv_grid(pathstem+'.dfa.csv', [
+			[q, self.final.get(q), '']+row
+			for q, row in enumerate(self.states)
+		])
 		pass
 
 class NFA:
@@ -113,9 +117,24 @@ class NFA:
 		self.states[src].edges.append(NFA.Edge(label, dst))
 		self.all_bounds.update(label)
 	def link_epsilon(self, src :int, dst :int): self.states[src].epsilons.add(dst)
+	def link_condition(self, main_condition, included_condition):
+		"""
+		Precondition: Both conditions exist, and are known to the NFA `self`.
+		Postcondition: It is as if all the rules in `included_condition` are also defined in `main_condition`,
+		and in the same relative order.
+		"""
+		for src, dst in zip(self.initial[main_condition], self.initial[included_condition]):
+			self.link_epsilon(src, dst)
 	def subset_construction(self) -> DFA:
-		all_bounds = sorted(self.all_bounds|{-1})
-		dfa = DFA(alphabet=charclass.SimpleClassifier(all_bounds[1:]), initial={}, final={}, states=[])
+		"""
+		The standard plan to convert an NFA to a DFA, in plain English, is to consider
+		that a deterministic state represents a particular and distinct subset of NFA states.
+		That general plan is embodied by the interplay between the generic BreadthFirstTraversal(...)
+		and `visit(key)`: the "key" is composed principally of a `frozenset` of NFA state ID numbers.
+		
+		This module also supports "rule ranks" -- about which more is written elsewhere. To implement
+		the concept, an extra bit of data rides along with the subset: specifically, a rank number.
+		"""
 		def close(ns, min_rank:int):
 			assert all(isinstance(n, int) for n in ns)
 			tc = foundation.transitive_closure(ns, lambda n :self.states[n].epsilons)
@@ -144,6 +163,9 @@ class NFA:
 					successor = bft.lookup((subset, subrank)) if subset else -1
 				delta.append(successor)
 			dfa.append_state(delta or [-1]*dfa.width)
+		# Main routine:
+		all_bounds = sorted(self.all_bounds|{-1})
+		dfa = DFA(alphabet=charclass.SimpleClassifier(all_bounds[1:]), initial={}, final={}, states=[])
 		bft = foundation.BreadthFirstTraversal()
 		def initial(q:int): return close([q], 0)
 		dfa.initial = {k :(bft.lookup(initial(a)), bft.lookup(initial(b))) for k ,(a ,b) in self.initial.items()}

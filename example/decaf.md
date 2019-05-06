@@ -1,23 +1,44 @@
 # Example `Decaf` MacroParse Specification
 
-The [Decaf Language](https://parasol.tamu.edu/courses/decaf/students/)
-is designed for teaching a course on compilers, so it's perfect as a full-throttle example
-exercise for MacroParse. Also, Decaf resembles Java, but with less caffeine.
-
-A little poking around suggests that the definition of Decaf depends strongly on which
-institution you attend. I glanced at a couple versions and I like the one linked above.
-It's a bit more feature-complete than some of the other alternatives. Also, it's hosted
-at Texas A&M University, and as a proud Tea-Sip I have to pick on TAMU.
+The Decaf Language is designed for teaching a course on compilers,
+so it's perfect as a full-throttle example exercise for MacroParse.
+Also, Decaf resembles Java, but with less caffeine.
 
 If this is your first look at MacroParse, I'd like to recommend starting with the
 [JSON tutorial example](json.md).
 
+A little
+[poking around](https://www.google.com/search?client=firefox-b-1-d&q=decaf+language)
+shows that the definition of Decaf depends strongly on which institution you attend.
+The [Texas A&M version](https://parasol.tamu.edu/courses/decaf/students/), for example,
+appears very similar to the
+[Stanford version](https://web.stanford.edu/class/archive/cs/cs143/cs143.1128/)
+with the addition of a simplistic macro facility, possibly to pad out the academic year.
+Some versions support backslash-escapes in strings.
+Some add a foreign-function-call interface. At least one version looks more like Scheme.
+
+I've mainly followed the Stanford version, except that I add support for:
+* Character
+[escape sequences](https://docs.oracle.com/javase/specs/jls/se7/html/jls-3.html#jls-3.10.6)
+in the Java style, and
+* Multi-line triple-quoted strings in the Python style.
+
+(The real purpose of these additions is to exercise the `conditions` block.)
+
 ## Conditions
 
-I plan to implement the pre-processor by integration into the main scanner definition.
-This will provide an example of both start-condition nesting and the use of
-a separate scanner instance to re-process tokens. However, the pre-processor is
-not a project for today. It will have to wait.
+The Decaf scanner can be in one of four conditions: `INITIAL`, `IN_COMMENT`, `IN_STRING`,
+or `IN_LONG_STRING`. Either of the last two conditions shares a group of patterns called
+`CHARACTER_ESCAPES`, as well as a few special patterns of their own.
+
+I had contemplated 
+
+```
+INITIAL
+IN_COMMENT
+IN_STRING > CHARACTER_ESCAPES
+IN_LONG_STRING > CHARACTER_ESCAPES
+```
 
 ## Patterns
 
@@ -58,15 +79,18 @@ true|false       :boolean_constant :1
 ```
 Integer constants may be either decimal or hexadecimal using the C-style convention.
 Floating point constants require a decimal point, but not necessarily a fractional part.
-Strings are not allowed to span lines, and they MUST be closed. In a nod to usability,
-unterminated strings are caught specifically with an extra rule here. It demonstrates
-how you can add a parameter (any sequence of letters and the underscore) to an action.
+Strings of the usual kind begin with the double-quote (`"`) character, while triple-quoted
+strings begin with `"""`. Aside from the termination requirements which are expressed as
+scanner rules, the processing of strings is presumably identical: the only difference
+is which scan-condition to enter up front. These rules, then, show how you can provide
+such a parameter (any sequence of letters and the underscore) to an action,
+directly in the scanner definition.
 ```
 \d+                       :decimal_integer
 0[xX]{xdigit}+            :hex_integer
 \d+\.\d*([eE][-+]?\d+)?   :double_constant
-"[{DOT}&&^"]*"            :string_constant
-"                         :error unterminated_string
+"                         :begin_string IN_STRING
+"""                       :begin_string IN_LONG_STRING
 ```
 
 Decaf uses various punctuation in its grammar. The following rules pick that up. Since we
@@ -95,6 +119,62 @@ An end-of-file rule should catch unterminated comments.
 [^*]+     :ignore
 <<EOF>>   :error unterminated_comment
 ```
+
+## Patterns CHARACTER_ESCAPES
+The character escape rules are a fine example of something that can be done once for more than one
+scan condition, and then included into the right places by reference. (See the `conditions` header.)
+```
+\\t   :escape tab
+\\b   :escape backspace
+\\n   :escape newline
+\\r   :escape carriage_return
+\\f   :escape form_feed
+\\'   :escape single_quote
+\\"   :escape double_quote
+\\\\  :escape backslash
+\\[0-3]?[0-7]{1,2}  :octal_escape
+```
+I've presumed that the "escape" routine will look something up in a table, but the
+octal escapes will require something more sophisticated.
+
+Additionally, in Java, there are
+[unicode escape sequences](https://docs.oracle.com/javase/specs/jls/se7/html/jls-3.html#jls-3.3),
+but Java processes them in an earlier phase. For the sake of playing well with others,
+I don't mind defining them as a feature of the string constants.
+```
+\\[uU]{xdigit}{4}  :unicode_escape
+```
+
+## Patterns IN_STRING
+Having established the character escapes, it's now necessary to describe the bits which
+are unique to the two string delimiting syntaxes. Also, it's necessary to explain,
+*IN HUMAN LANGUAGE*, that we mean for the scanner-driver to accumulate a sequence of
+zero-or-more `literal_text` and various `escape FOO` to emit as a single parser token
+of category `string_constant` whenever the end of the string is encountered.
+```
+"                :finish_string
+[{DOT}&&^\\"]+   :literal_text
+{vertical}       |
+<<EOF>>          :error unterminated_string
+```
+Strings (of the usual sort) are not allowed to span lines, and they MUST be closed.
+In a nod to usability, unterminated strings are caught specifically with rules here,
+rather than leaving the end-user with a stuck scanner.
+
+## Patterns IN_LONG_STRING
+What's special about these long-strings is that they can span lines, and also the
+terminator is more than one character long. Thus, the patterns for
+matching literal text and the final delimiters are a tad different:
+```
+"""              :finish_string
+""?              |
+\s+              |
+[{DOT}&&^\\"]+   :literal_text
+<<EOF>>          :error unterminated_string
+```
+Similar to the `IN_COMMENT` group, it would be possible to write even more aggressive
+regular expressions, but that particular juice is not really worth the squeeze.
+
 ## Productions PROGRAM
 First, a couple macros. Nothing too crazy, but it does show that you
 can have one macro-call as argument to another, and THINGS SHOULD WORK.
