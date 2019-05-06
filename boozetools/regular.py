@@ -90,7 +90,7 @@ class DFA(interfaces.FiniteAutomaton):
 	
 	def make_csv(self, pathstem):
 		pretty.write_csv_grid(pathstem+'.dfa.csv', [
-			[q, self.final.get(q), '']+row
+			[q, self.final.get(q), '', *row]
 			for q, row in enumerate(self.states)
 		])
 		pass
