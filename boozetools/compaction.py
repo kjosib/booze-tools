@@ -16,8 +16,8 @@ As a nod to runtime efficiency, offsets useful for a displacement table are prec
 and provided for later.
 """
 
-import collections
-from . import foundation
+import collections, operator
+from . import foundation, pretty
 
 def multi_append(table:dict, row:dict):
 	"""
@@ -36,70 +36,115 @@ def most_common_member(row):
 def is_homogenous(row):
 	return len(row) < 2 or all(r == row[0] for r in row)
 	
+def compress_dfa_matrix(*, initial:dict, matrix:list, final:dict) -> dict:
+	"""
+	Per issue #8: A possibly-novel approach to condensing large scanner tables.
+	The method is described at https://github.com/kjosib/booze-tools/issues/8
+	"""
+	# Splitting the matrix into two planes (residue and exceptions):
+	zeros, ones, residue, exceptions = [], [], [], []
+	for row in matrix:
+		common = [k for k,v in collections.Counter(row).most_common(2)]
+		zeros.append(common[0])
+		ones.append(common[-1]) # Because if len(common) == 1, duplicate it.
+		look_up = {v:i for i,v in enumerate(common)}
+		residue.append([look_up.get(v) for v in row])
+		exceptions.append({c:x for c,x in enumerate(row) if x not in common})
+	# Compacting the residue plane (a partially-null boolean matrix) by means of equivalence classification:
+	column_class, minimal_columns = find_row_equivalence(zip(*residue), None)
+	residue = list(zip(*minimal_columns))
+	for i, row in enumerate(residue): # Taking care to keep rows sparse:
+		if sum(map(bool, row)) * 2 > len(row):
+			zeros[i], ones[i], residue[i] = ones[i], zeros[i], tuple(None if x is None else int(not x) for x in row)
+	row_class, residue = find_row_equivalence(residue, None)
+	# Converting the final residue to a set-as-displacement-table representation:
+	indices = [[i for i,x in enumerate(row) if x] for row in residue]
+	offset, size = first_fit_decreasing(indices)
+	check = [-1]*size
+	for i, (row, base) in enumerate(zip(indices, offset)):
+		for col in row:
+			check[base+col] = i
+	# Tie a pretty bow around it:
+	delta = {
+		'exceptions': typical_displacement_function(exceptions),
+		'background': {
+			# For most states, the most common entry is the error transition. Thus: exceptions to that rule:
+			'zero': list(zip(*[(index, value) for index, value in enumerate(zeros) if value != -1])),
+			'one': ones,
+			'row_class': row_class, 'column_class': column_class,
+			'offset': offset, 'check': check,
+		},
+	}
+	height, width = len(matrix), len(matrix[0])
+	metric = measure_approximate_cost(delta)
+	print("DFA matrix was %d rows, %d cols = %d cells; compact form is about %d cells (%0.2f%%)"%(
+		height, width, height * width, metric, (100.0*metric/(height*width))
+	))
+	return {'delta': delta, 'initial': initial, 'final': list(final.keys()), 'rule': list(final.values()),}
 
-def modified_aho_corasick_encoding(*, initial:dict, matrix:list, final:dict, jam:int) -> dict:
+def measure_approximate_cost(structure):
+	""" Various bits estimate the size of the structures they return. This makes that consistent. """
+	if isinstance(structure, (list, tuple)): return 1 + sum(map(measure_approximate_cost, structure))
+	elif isinstance(structure, dict): return len(structure) + sum(map(measure_approximate_cost, structure.values()))
+	elif isinstance(structure, int) or structure is None: return 1
+	else: assert False, type(structure)
+
+def first_fit_decreasing(indices: list):
 	"""
-	Alfred V. Aho and Margaret J. Corasick discovered a truly wonderful algorithm for a particular class
-	of string search problem in which there are both many needles and lots of haystack data. It works by
-	the construction of a TRIE for identifying needles, together with a failure pointer for what state to
-	enter if the present haystack character is not among the outbound edges from the current state. The
-	structure so constructed is queried at most twice per character of haystack data on average, because
-	the failure pointers always point to a node at least one edge less deep into the TRIE.
+	(Aho and Ulman [2]) and (Ziegler [7]) advocate this scheme...
+	This function finds a set of displacements such that no two index[i][j]+displacement[i] are the same.
+	The entry in list `indices` may be a list of columns within a given row which are considered to
+	have legitimate data in some particular sparse matrix. But note that in Python, dictionaries iterate
+	as their keys, so there's a shortcut...
+
+	The result can be used to populate a displacement table, which is a simple kind of perfect-hash.
+		* A hash is "perfect" when it requires at most one probe to determine
+		the presence or absence of a key; in general these must be precomputed.
+		* A hash is "minimal" when (in the lingo of hashing) all the buckets are used.
+		* The holy grail of "minimal perfect hashing" generally requires a more complex function.
 	
-	That structure provides the inspiration for a fast, compact encoding of an arbitrary DFA. The key
-	idea is to find, for each state, the least-cost "default transition", defined according to how much
-	storage gets used under the rules for that case. We begin with the most common transition within
-	the row, but then scan over prior states looking for a good template: a "shallower" state with
-	many transitions in common. It is then sufficient to store the identity of that default pointer
-	and a sparse list of exceptions. If the sparse list results in expansion, a dense row may be stored
-	instead. If the exceptions are all identical, they may be stored as a single integer rather than a list.
+	Rows are considered in decreasing order of density, so if Zipf's law applies then the result
+	will tend to be packed fairly densely: i.e. minimal or nearly so. This tends to be true of the
+	way this particular function gets used in this library.
 	
-	Upon further reflection: sometime states at the same distance-from-root have the most in common.
-	A probe takes constant amortized time as long as the fail-over path length is restricted to a constant
-	multiple of the node's depth. That constant probably need not be more than one for excellent results.
+	The size of the necessary resulting vector is also returned: it would have to be determined again
+	in every reasonable case otherwise.
 	"""
-	# Renumber the states according to a breadth-first topology, and also determine the resulting
-	# depth boundaries. (A topological index would suffice, but this has other nice properties.)
-	assert jam == -1
-	bft = foundation.BreadthFirstTraversal()
-	states = []
-	def renumber(src): states.append([jam if dst == jam else bft.lookup(dst) for dst in matrix[src]])
-	initial = {condition: (bft.lookup(q0), bft.lookup(q1)) for condition, (q0, q1) in initial.items()}
-	bft.execute(renumber)
-	depth = bft.depth_list()
+	used = set()
+	def first_fit(row: list) -> int:
+		if not row: return 0
+		offset = 0 - min(row)
+		while any(r + offset in used for r in row): offset += 1
+		used.update(r + offset for r in row)
+		return offset
 	
-	# Next, we need to construct the compressed structure. For simplicity, this will be three arrays
-	# named for their function and indexed by state number.
-	delta = {'default': [], 'index': [], 'data': [],}
-	result = {'delta':delta, 'initial': initial, 'final': [bft.lookup(q) for q in final.keys()], 'rule': list(final.values())}
-	failover_path_length = []
-	metric = 0
-	for i, row in enumerate(states):
-		# Find the shortest encoding, possibly by reference to earlier states:
-		default = most_common_member(row)
-		index = [k for k,x in enumerate(row) if x != default]
-		data = [row[k] for k in index]
-		cost = len(index) + (1 if is_homogenous(data) else len(data))
-		for j in range(i):
-			if failover_path_length[j]<=depth[i]:
-				try_index = [k for k,x in enumerate(states[j]) if x != row[k]]
-				try_data = [row[k] for k in try_index]
-				try_cost = len(try_index) + (1 if is_homogenous(try_data) else len(try_data))
-				if try_cost < cost: default, index, data, cost = -2-j, try_index, try_data, try_cost
-		# Append the chosen encoding into the structure:
-		if cost < len(row): # If the compression actually saves space on this row:
-			if is_homogenous(data): data = data[0] if data else default
-			multi_append(delta, {'default': default, 'index':index, 'data': data})
-			failover_path_length.append(0 if default > -2 else 1+failover_path_length[-2-default])
-		else: # Otherwise, a dense storage format is indicated by eliding the list of indices.
-			multi_append(delta, {'default': jam, 'index':None, 'data': row})
-			cost = len(row)
-			failover_path_length.append(0)
-		metric += 1+cost
-	# At this point, the DFA is represented in about as terse a format as makes sense.
-	raw_size = len(matrix)*len(matrix[0])
-	print('Matrix compressed into %d cells (%0.2f%%) with at most %d probes per character scanned.' % (metric, 100*metric/raw_size, 1+max(failover_path_length)))
-	return result
+	displacements = [0] * len(indices)
+	for i in sorted(range(len(indices)), key=lambda q: 0-len(indices[q])): displacements[i] = first_fit(indices[i])
+	size = max(used)+1 if used else 0
+	print("First-Fit Decreasing placed %d entries among %d positions."%(len(used), size))
+	return displacements, size
+
+def typical_displacement_function(exceptions:list):
+	"""
+	:param exceptions: a list of dictionaries; keys are column numbers, values are destination state numbers.
+	The typical textbook method is shown.
+	No attempt is made to coalesce similar or identical rows here. It could be attempted, but:
+		(1) it's hypothesized the space savings would be minimal, and
+		(2) it would introduce some additional branching into the code to probe the structure, and
+		(3) it's really the caller's responsibility.
+	"""
+	offset, size = first_fit_decreasing(exceptions)
+	check = [-1]*size
+	value = [0]*size
+	for row_id, row_dict in enumerate(exceptions):
+		row_offset = offset[row_id]
+		for column, entry in row_dict.items():
+			index = row_offset + column
+			assert check[index] == -1
+			check[index] = row_id
+			value[index] = entry
+	return {'offset': offset, 'check': check, 'value':value}
+	
 
 def compress_action_table(matrix:list, essential_errors:set) -> dict:
 	"""
@@ -171,19 +216,6 @@ def compress_goto_table(goto_table:list) -> dict:
 		for q, i in sorted((q, i) for (q,i) in tmp if q is not None):
 			if quotient[-1] != q: quotient.append(q)
 			target_index[i] = len(quotient) - 1
-	def further_minimize(matrix):
-		# This deals in rows, but gets called twice: matrix transposition is a thing.
-		index, classes = [], []
-		for row in matrix:
-			for class_id, candidate_class in enumerate(classes):
-				if all(a == b or not (a and b) for a, b in zip(row, candidate_class)):
-					index.append(class_id)
-					for c, value in enumerate(row):
-						if value: candidate_class[c] = value
-					break
-			else:
-				index.append(foundation.allocate(classes, list(row)))
-		return index, classes
 	
 	# Find rows/columns to zap, accumulating the "quotient" list:
 	height, width = len(goto_table), len(goto_table[0])
@@ -203,18 +235,36 @@ def compress_goto_table(goto_table:list) -> dict:
 	]
 	
 	# Minimize the residue.
-	row_class, minimal_rows = further_minimize(residue)
+	row_class, minimal_rows = find_row_equivalence(residue, 0)
 	for cls_id, state_id in zip(row_class, row_residue):
 		row_index[state_id] = len(quotient) + cls_id
 	
-	col_class, minimal_cols = further_minimize(zip(*minimal_rows))
+	col_class, minimal_cols = find_row_equivalence(zip(*minimal_rows), 0)
 	for cls_id, nonterm_id in zip(col_class, column_residue):
 		col_index[nonterm_id] = len(quotient) + cls_id
 	
 	# Wrap up and return.
 	print("GOTO table original size: %d rows, %d columns -> %d cells"%(height, width, height * width))
-	metric = len(row_index) + len(col_index) + len(quotient) + (len(minimal_rows) * len(minimal_cols))
+	result = {'row_index': row_index, 'col_index': col_index, 'quotient': quotient, 'residue': list(zip(*minimal_cols))}
+	metric = measure_approximate_cost(result)
 	print("GOTO compact size: %d (%.2f%%)"%(metric, 100.0*metric/(height * width)))
-	return {'row_index': row_index, 'col_index': col_index, 'quotient': quotient, 'residue': list(zip(*minimal_cols))}
+	return result
 
+def find_row_equivalence(matrix, do_not_care):
+	"""
+	This typically gets called twice per matrix with a transposition for the columns.
+	:param matrix: A rank-two tensor. Iterable of rows.
+	:param do_not_care: Cells with this value may be assigned any convenient value for the purpose.
+	"""
+	index, classes = [], []
+	for row in matrix:
+		for class_id, candidate_class in enumerate(classes):
+			if all(a == b or do_not_care in (a, b) for a, b in zip(row, candidate_class)):
+				index.append(class_id)
+				for c, value in enumerate(row):
+					if value != do_not_care: candidate_class[c] = value
+				break
+		else:
+			index.append(foundation.allocate(classes, list(row)))
+	return index, classes
 

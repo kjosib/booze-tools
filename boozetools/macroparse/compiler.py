@@ -37,7 +37,7 @@ class TextBookForm:
 	def compact_scanner(self) -> dict:
 		dfa = self.dfa
 		return {
-			'dfa': compaction.modified_aho_corasick_encoding(initial=dfa.initial, matrix=dfa.states, final=dfa.final, jam=dfa.jam_state()),
+			'dfa': compaction.compress_dfa_matrix(initial=dfa.initial, matrix=dfa.states, final=dfa.final),
 			'action': dict(zip(['message', 'parameter', 'trail', 'line_number'], zip(*self.scan_actions))),
 			'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
 		}

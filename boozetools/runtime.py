@@ -24,16 +24,33 @@ def sparse_table_function(*, index, data) -> callable:
 				hashmap[row_id, column_id] = d
 	return lambda R, C: hashmap.get((R, C))
 
-def scanner_delta_function(*, index, data, default) -> callable:
-	""" This adds the relevant smarts for dealing with the scanner-table compaction. """
-	probe = sparse_table_function(index=index, data=data)
+def scanner_delta_function(*, exceptions:dict, background:dict) -> callable:
+	"""
+	This function came out of some observations about the statistics of scanner delta functions.
+	The best way to understand this function is by reference to the following URL:
+	https://github.com/kjosib/booze-tools/issues/8
+	
+	The basic idea is to first check a table of "unusual" entries in the scanner's transition matrix.
+	If that comes up empty, then the "background" table is essentially a bitmap combined with a pair
+	of most-common entries per given row. The bitmap compresses very well by means of row- and
+	column-equivalence classes; only the 1's (being the less common) need be actually represented.
+	
+	The very most common entry in a row is usually the error transition (-1), so instead of a
+	complete list per state, only the exceptions to this rule are listed.
+	"""
+	zeros = dict(zip(*background['zero']))
 	def fn(state_id:int, symbol_id:int) -> int:
-		if state_id<0: return state_id
-		q = probe(state_id, symbol_id)
-		if q is None:
-			d = default[state_id]
-			return d if d > -2 else fn(-2-d, symbol_id)
-		else: return q
+		# Is this an "exceptional" case? Let's check:
+		offset = exceptions['offset'][state_id] + symbol_id
+		if 0 <= offset < len(exceptions['check']) and exceptions['check'][offset] == state_id:
+			return exceptions['value'][offset]
+		else: # Determined NOT to be exceptional:
+			rc, cc = background['row_class'][state_id], background['column_class'][symbol_id]
+			offset = background['offset'][rc] + cc
+			if 0 <= offset < len(background['check']) and background['check'][offset] == rc:
+				return background['one'][state_id]
+			else: return zeros.get(state_id, -1)
+		pass
 	return fn
 
 def parser_action_function(*, index, data, default) -> callable:
