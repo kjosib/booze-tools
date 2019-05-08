@@ -29,9 +29,10 @@ def multi_append(table:dict, row:dict):
 	"""
 	for key, value in row.items(): table[key].append(value)
 
-def most_common_member(row):
+def most_common(row, *, default=0):
 	""" Return the most-common element in the array; break ties arbitrarily. """
-	return collections.Counter(row).most_common(1)[0][0]
+	C = collections.Counter(row)
+	return C.most_common(1)[0][0] if C else default
 
 def is_homogenous(row):
 	return len(row) < 2 or all(r == row[0] for r in row)
@@ -44,7 +45,7 @@ def compress_dfa_matrix(*, initial:dict, matrix:list, final:dict) -> dict:
 	# Splitting the matrix into two planes (residue and exceptions):
 	zeros, ones, residue, exceptions = [], [], [], []
 	for row in matrix:
-		common = [k for k,v in collections.Counter(row).most_common(2)]
+		common = [k for k,v in collections.Counter(row).most_common(2) if v > 1]
 		zeros.append(common[0])
 		ones.append(common[-1]) # Because if len(common) == 1, duplicate it.
 		look_up = {v:i for i,v in enumerate(common)}
@@ -66,7 +67,7 @@ def compress_dfa_matrix(*, initial:dict, matrix:list, final:dict) -> dict:
 			check[base+col] = i
 	# Tie a pretty bow around it:
 	delta = {
-		'exceptions': typical_displacement_function(exceptions),
+		'exceptions': encode_displacement_function(exceptions),
 		'background': {
 			# For most states, the most common entry is the error transition. Thus: exceptions to that rule:
 			'zero': list(zip(*[(index, value) for index, value in enumerate(zeros) if value != -1])),
@@ -124,14 +125,14 @@ def first_fit_decreasing(indices: list):
 	print("First-Fit Decreasing placed %d entries among %d positions."%(len(used), size))
 	return displacements, size
 
-def typical_displacement_function(exceptions:list):
+def encode_displacement_function(exceptions:list):
 	"""
+	This builds a typical textbook-style displacement table: a simple kind of perfect-hash,
+	which may not be minimal but it's usually decently close.
 	:param exceptions: a list of dictionaries; keys are column numbers, values are destination state numbers.
-	The typical textbook method is shown.
-	No attempt is made to coalesce similar or identical rows here. It could be attempted, but:
-		(1) it's hypothesized the space savings would be minimal, and
-		(2) it would introduce some additional branching into the code to probe the structure, and
-		(3) it's really the caller's responsibility.
+	No attempt is made to coalesce similar or identical rows here:
+		(1) It's the caller's responsibility.
+		(2) Only the caller knows the best way to perform such a feat.
 	"""
 	offset, size = first_fit_decreasing(exceptions)
 	check = [-1]*size
@@ -144,7 +145,45 @@ def typical_displacement_function(exceptions:list):
 			check[index] = row_id
 			value[index] = entry
 	return {'offset': offset, 'check': check, 'value':value}
-	
+
+def decompose_by_default_reduction(matrix:list, essential_errors:set):
+	"""
+	The first phase of compacting a parser's "ACTION" table
+	:param matrix:
+	:param essential_errors:
+	:return: default-reduction vector and resiude matrix where allowed entries have been turned to `None`.
+	"""
+	reduce = [most_common([a for a in row if a < 0]) for row in matrix] # Default Reduction Table
+	residue = [[
+		value if (q,column) in essential_errors or value not in (0, default) else None
+		for column, value in enumerate(row)
+	] for q, (row, default) in enumerate(zip(matrix, reduce))]
+	return reduce, residue
+
+def decompose_by_edit_distance(matrix):
+	"""
+	Note that you CAN get a value of `None` in an 'edit' resulting from this function.
+	Since null means "use the default reduction" in this context, that's considered OK.
+	In a bare-metal implementation, we might decide actually to establish a "rule" for
+	the error response activity: it would therefore get its own number (perhaps -1)
+	and the associated code would be responsible for any error processing. That would
+	take away some of the special-casing associated with parse errors: you just need
+	to make sure the correct code reference is installed in the rule response table.
+	"""
+	height, width = len(matrix), len(matrix[0])
+	population = [width - row.count(None) for row in matrix]
+	schedule = sorted(range(height), key=population.__getitem__)
+	fallback = [-1] * height
+	for count, q in enumerate(schedule):
+		metric = population[q]
+		for j in schedule[:count]:
+			edit_distance = sum( a != b for a, b in zip(matrix[q], matrix[j]))
+			if edit_distance < metric: metric, fallback[q] = edit_distance, j
+	# Now that we have our fallback vector computed, it's straightforward to work out the edits:
+	def edits(row, basis) -> dict:
+		if basis < 0: return {c:v for c,v in enumerate(row) if v is not None}
+		else: return {c:v for c,(x,v) in enumerate(zip(matrix[basis], row)) if x!=v}
+	return fallback, [edits(row, basis) for row, basis in zip(matrix, fallback)]
 
 def compress_action_table(matrix:list, essential_errors:set) -> dict:
 	"""
@@ -152,46 +191,20 @@ def compress_action_table(matrix:list, essential_errors:set) -> dict:
 	:param matrix: list-of-lists of parse actions: positive numbers are shifts; negative are reductions, zero is error.
 	:param essential_errors: set of pairs of (state_id, terminal_id) which MUST NOT go to a default reduction.
 	:return: a compact structure.
-	
-	For each state in the ACTION table, the reduction with the largest lookahead set becomes a
-	default reduction, so that only exceptions need be stored. This can delay the detection of
-	a syntax error until several reductions have taken place, but it does not change the set
-	of strings accepted as part of the language. Also, unless measures are taken to track the
-	deepest state before the last round of reductions, it can throw away information useful to
-	compute a set of valid expected next tokens in an error condition.
-	
-	Two subtleties affect the above strategy:
-	1. Non-associativity declarations can result in	cells which MUST error despite being in
-	   states which otherwise may have a default reduction. These can be expressly included in
-	   the list of exceptions to the default.
-	2. Error productions result in states that shift on the ERROR token. These states should
-	   not get default-reductions -- or if they do, then the above-styled special measures
-	   MUST be taken to ensure that the most suitable error production is finally used.
-	
-	This parsing library doesn't yet support error productions, so I'm only going to worry
-	about the first case for now. Error productions might be a nice enhancement.
-	
-	The encoding of actions here is the same as is used in context_free.DragonBookTable.
 	"""
-	def find_default_reduction(row:list) -> int:
-		rs = [x for x in row if x < 0]
-		return most_common_member(rs) if rs else 0
-	raw_size = len(matrix)*len(matrix[0])
-	print('Action table begins with %d states and %d columns (%d cells).'%(len(matrix), len(matrix[0]), raw_size))
-	metric = 0
-	delta = {'default':[], 'index':[], 'data':[]}
-	for q, row in enumerate(matrix):
-		reduction = find_default_reduction(row)
-		becomes_default = (reduction, 0)
-		idx = [i for i,x in enumerate(row) if x not in becomes_default and (q,x) not in essential_errors]
-		if len(idx) * 2 < len(row):
-			multi_append(delta, {'default':reduction, 'index':idx, 'data':[row[k] for k in idx]})
-			metric += 3 + 2 * len(idx)
-		else:
-			multi_append(delta, {'default': 0, 'index':None, 'data': row})
-			metric += 2 + len(row)
-	print("Compact form takes %d cells (%0.2f%%)."%(metric, 100*metric/raw_size))
-	return delta
+	height, width = len(matrix), len(matrix[0]) # Stats for comparison to the compression method
+	reduce, residue = decompose_by_default_reduction(matrix, essential_errors)
+	fallback, edits = decompose_by_edit_distance(residue)
+	edit_table = encode_displacement_function(edits)
+	for q, (f, e) in enumerate(zip(fallback, edits)):
+		if f == -1 and not e: # Think about it. This EXACTLY selects default-reduce-only states.
+			edit_table['offset'][q] = len(edit_table['check']) # This marks it as an interactive state.
+	result = {'reduce': reduce, 'fallback': fallback, 'edits': edit_table,}
+	metric = measure_approximate_cost(result)
+	print("Action matrix was %d * %d = %d; compressed to %d (%0.2f%%)"%(
+		height, width, height*width, metric, (100.0*metric)/(height*width)
+	))
+	return result
 
 def compress_goto_table(goto_table:list) -> dict:
 	"""

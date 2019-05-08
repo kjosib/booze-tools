@@ -5,24 +5,20 @@ It provides a runtime interface to compacted scanner and parser tables.
 from boozetools.interfaces import ScanState
 from . import interfaces, charclass, algorithms
 
-def sparse_table_function(*, index, data) -> callable:
+def displacement_function(otherwise:callable, *, offset, check, value) -> callable:
 	"""
-	The very simplest Python-ish "sparse matrix", and plenty fast on modern hardware, for the
-	size of tables this module will probably ever see, is an ordinary Python dictionary from
-	<row,column> tuples to significant table entries. There are better ways if you program
-	closer to the bare metal, but this serves the purpose.
-	
-	This routine unpacks "compressed-sparse-row"-style data into an equivalent Python dictionary,
-	then returns a means to query said dictionary according to the expected 2-dimensional interface.
+	(make a) Reader for a perfect-hash such as built at compaction.encode_displacement_function.
+	If the queried cell is absent, the `otherwise` functional-argument provides the back-up plan.
+	I'll admit that form is a bit unusual in Python, but it DOES encapsulate the interpretation.
 	"""
-	hashmap = {}
-	for row_id, (Cs, Ds) in enumerate(zip(index, data)):
-		if isinstance(Ds, int): # All non-blank cells this row have the same value:
-			for column_id in Cs: hashmap[row_id, column_id] = Ds
-		else:
-			for column_id, d in zip(Cs, Ds) if Cs else enumerate(Ds):
-				hashmap[row_id, column_id] = d
-	return lambda R, C: hashmap.get((R, C))
+	size = len(check)
+	def fn(state_id:int, symbol_id:int) -> int:
+		index = offset[state_id] + symbol_id
+		if 0 <= index < size and check[index] == state_id:
+			probe = value[index]
+			if probe is not None: return probe
+		return otherwise(state_id, symbol_id)
+	return fn
 
 def scanner_delta_function(*, exceptions:dict, background:dict) -> callable:
 	"""
@@ -39,27 +35,27 @@ def scanner_delta_function(*, exceptions:dict, background:dict) -> callable:
 	complete list per state, only the exceptions to this rule are listed.
 	"""
 	zeros = dict(zip(*background['zero']))
-	def fn(state_id:int, symbol_id:int) -> int:
-		# Is this an "exceptional" case? Let's check:
-		offset = exceptions['offset'][state_id] + symbol_id
-		if 0 <= offset < len(exceptions['check']) and exceptions['check'][offset] == state_id:
-			return exceptions['value'][offset]
-		else: # Determined NOT to be exceptional:
-			rc, cc = background['row_class'][state_id], background['column_class'][symbol_id]
-			offset = background['offset'][rc] + cc
-			if 0 <= offset < len(background['check']) and background['check'][offset] == rc:
-				return background['one'][state_id]
-			else: return zeros.get(state_id, -1)
-		pass
-	return fn
+	def general_population(state_id:int, symbol_id:int) -> int:
+		rc, cc = background['row_class'][state_id], background['column_class'][symbol_id]
+		offset = background['offset'][rc] + cc
+		if 0 <= offset < len(background['check']) and background['check'][offset] == rc:
+			return background['one'][state_id]
+		else: return zeros.get(state_id, -1)
+	return displacement_function(general_population, **exceptions)
 
-def parser_action_function(*, index, data, default) -> callable:
-	""" This part adds the "default reductions" layer atop the now-sparse action table. """
-	probe = sparse_table_function(index=index, data=data)
+def parser_action_function(*, reduce, fallback, edits) -> callable:
+	def otherwise(state_id:int, symbol_id:int) -> int:
+		""" This deals with chasing the fallback links connected to the "similar rows" concept. """
+		fb = fallback[state_id]
+		return look_at(fb, symbol_id) if fb >= 0 else None # Note the recursion here...
+	look_at = displacement_function(otherwise, **edits)
 	def fn(state_id:int, symbol_id:int) -> int:
-		q = probe(state_id, symbol_id)
-		return default[state_id] if q is None else q
-	return fn
+		""" This part adds the "default reductions" layer. """
+		step = look_at(state_id, symbol_id)
+		return step if step is not None else reduce[state_id]
+	# The somewhat-clever way eager-to-reduce states are denoted is recovered this way:
+	interactive = [r if displacement==len(edits['check']) else 0 for r,displacement in zip(reduce, edits['offset'])]
+	return fn, interactive.__getitem__
 
 def parser_goto_function(*, row_index, col_index, quotient, residue ) -> callable:
 	cut = len(quotient)
@@ -67,13 +63,6 @@ def parser_goto_function(*, row_index, col_index, quotient, residue ) -> callabl
 		r, c = row_index[state_id], col_index[nonterminal_id]
 		dominant = min(r, c)
 		return quotient[dominant] if dominant < cut else residue[r-cut][c-cut]
-	return probe
-
-	
-def old_parser_goto_function(*, state_class, class_list ) -> callable:
-	def probe(state_id:int, nonterminal_id:int):
-		cls = state_class[state_id]
-		return 0-cls if cls < 0 else class_list[cls][nonterminal_id]
 	return probe
 
 class CompactDFA(interfaces.FiniteAutomaton):
@@ -128,9 +117,7 @@ class SymbolicParserTables(interfaces.ParserTables):
 	"combiner" function which the parse algorithm then uses for semantic reductions.
 	"""
 	def __init__(self, parser:dict):
-		action_ = parser['action']
-		self.get_action = parser_action_function(**action_)
-		self.interactive_step = [0 if cols else d for d,cols in zip(action_['default'], action_['index'])].__getitem__
+		self.get_action, self.interactive_step = parser_action_function(**parser['action'])
 		self.get_goto = parser_goto_function(**parser['goto'])
 		self.terminals = parser['terminals']
 		self.get_translation = {symbol:i for i,symbol in enumerate(self.terminals)}.__getitem__
