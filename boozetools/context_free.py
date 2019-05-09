@@ -2,8 +2,6 @@ import typing, collections
 from .foundation import *
 from . import pretty, interfaces
 
-DOT = '\u25cf'
-
 LEFT, RIGHT, NONASSOC, BOGUS = object(), object(), object(), object()
 
 class Fault(ValueError): pass
@@ -215,8 +213,6 @@ class ContextFreeGrammar:
 				q = initial[language]
 				final = hfa[q].shifts[language]
 				token_sets[final].add(end)
-
-				
 		def propagate_tokens():
 			work = set(i for i,ts in enumerate(token_sets) if ts)
 			while work:
@@ -238,15 +234,17 @@ class ContextFreeGrammar:
 		propagate_tokens()
 		##### Determinize the result:
 		def consider(q, lookahead, options):
-			trail, cursor = [], q
+			bread, path, cursor = [], [], q
 			while True:
 				crumb = bft.breadcrumbs[cursor]
 				if crumb:
-					trail.append(crumb)
+					bread.append(crumb)
+					path.append(str(cursor))
 					cursor = bft.earliest_predecessor[cursor]
 				else: break
 			print('==============\nIn language %r, consider:' % self.start[cursor])
-			print('\t'+' '.join(reversed(trail)),DOT,lookahead)
+			print('\t'+' '.join(reversed(bread)), pretty.DOT, lookahead)
+			print('\t'+' '.join(reversed(path)))
 			for x in options:
 				if x > 0:
 					print("Do we shift into:")
