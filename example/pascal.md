@@ -86,7 +86,7 @@ names -> csl(identifier)
 ```
 Here is what might be called the backbone structure of a Pasacal program:
 ```
-module -> PROGRAM identifier '(' names ')' ';' block '.'
+module -> PROGRAM .identifier '(' .names ')' ';' .block '.'
 block -> .labels .const_defs .type_defs .var_defs .subroutines BEGIN .ssl(stmt) END
 
 labels -> :empty | LABEL .csl(integer) ';'
