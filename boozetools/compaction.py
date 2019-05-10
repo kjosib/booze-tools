@@ -16,8 +16,8 @@ As a nod to runtime efficiency, offsets useful for a displacement table are prec
 and provided for later.
 """
 
-import collections, operator
-from . import foundation as F, pretty
+import collections
+from . import foundation
 
 def multi_append(table:dict, row:dict):
 	"""
@@ -120,7 +120,8 @@ def first_fit_decreasing(indices: list, *, allow_negative:bool):
 		return offset
 	
 	displacements = [0] * len(indices)
-	for i in F.grade(list(map(len, indices)), descending=True): displacements[i] = first_fit(indices[i])
+	for i in foundation.grade(list(map(len, indices)), descending=True):
+		displacements[i] = first_fit(indices[i])
 	size = max(used)+1 if used else 0
 	print("First-Fit Decreasing placed %d entries among %d positions."%(len(used), size))
 	return displacements, size
@@ -172,7 +173,7 @@ def decompose_by_edit_distance(matrix):
 	"""
 	height, width = len(matrix), len(matrix[0])
 	population = [width - row.count(None) for row in matrix]
-	schedule = F.grade(population)
+	schedule = foundation.grade(population)
 	fallback = [-1] * height
 	for count, q in enumerate(schedule):
 		metric = population[q]
@@ -249,18 +250,20 @@ def compress_goto_table(goto_table:list) -> dict:
 	col_class, minimal_columns = find_row_equivalence(zip(*minimal_rows), 0)
 	
 	# Try to figure the ideal column-class ordering to make it fit better:
-	col_class_offset = F.everted(F.grade([vector.count(0) for vector in minimal_columns]))
+	col_class_offset = foundation.everted(foundation.grade([vector.count(0) for vector in minimal_columns]))
 	minimal_rows = [{col_class_offset[c]:x for c, x in enumerate(row) if x} for row in zip(*minimal_columns)]
+	
+	# Build a single "residue vector" and row-offsets for efficient packing of the residue.
 	row_class_offset, size = first_fit_decreasing(minimal_rows, allow_negative=False)
 	residue = [0]*size
 	for r_off, row in zip(row_class_offset, minimal_rows):
 		for c_off, value in row.items():
 			if value: residue[r_off+c_off] = value
 	
-	# Fill the holes in the foo_index vectors accordingly:
-	for cls_id, state_id in zip(row_class, row_residue):
+	# Fill the holes in the foo_index vectors using the offsets corresponding to the equivalence classes:
+	for state_id, cls_id in zip(row_residue, row_class):
 		row_index[state_id] = row_class_offset[cls_id] + hi_water_mark
-	for cls_id, nonterm_id in zip(col_class, column_residue):
+	for nonterm_id, cls_id,  in zip(column_residue, col_class):
 		col_index[nonterm_id] = col_class_offset[cls_id] + hi_water_mark
 	
 	# Wrap up and return.
@@ -285,6 +288,6 @@ def find_row_equivalence(matrix, do_not_care):
 					if value != do_not_care: candidate_class[c] = value
 				break
 		else:
-			index.append(F.allocate(classes, list(row)))
+			index.append(foundation.allocate(classes, list(row)))
 	return index, classes
 
