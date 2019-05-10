@@ -1,5 +1,6 @@
 """ Small is beautiful. These algorithms need no introduction. """
 
+from collections.abc import Sequence, Mapping, Iterable
 import operator
 
 def allocate(a_list:list, item):
@@ -52,3 +53,13 @@ def hamming_distance(a, b):
 	""" Compute the number of places in two (equal-length) sequences with unequal corresponding elements. """
 	assert len(a) == len(b)
 	return sum(map(operator.ne, a, b))
+
+def grade(seq:Sequence, *, descending=False) -> list:
+	""" returns result such that [seq[i] for i in grade(seq)] == sorted(seq). Cribbed from APL's grade_up/down. """
+	return sorted(range(len(seq)), key=seq.__getitem__, reverse=descending)
+
+def everted(permutation:Sequence) -> list:
+	""" Creates and returns an inverse permutation: like it's been turned inside-out """
+	result = [None] * len(permutation)
+	for i, x in enumerate(permutation): result[x] = i
+	return result

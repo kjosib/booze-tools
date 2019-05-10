@@ -57,12 +57,11 @@ def parser_action_function(*, reduce, fallback, edits) -> callable:
 	interactive = [r if displacement==len(edits['check']) else 0 for r,displacement in zip(reduce, edits['offset'])]
 	return fn, interactive.__getitem__
 
-def parser_goto_function(*, row_index, col_index, quotient, residue ) -> callable:
-	cut = len(quotient)
+def parser_goto_function(*, row_index, col_index, quotient, mark ) -> callable:
 	def probe(state_id:int, nonterminal_id:int):
 		r, c = row_index[state_id], col_index[nonterminal_id]
 		dominant = min(r, c)
-		return quotient[dominant] if dominant < cut else residue[r-cut][c-cut]
+		return quotient[dominant] if dominant < mark else quotient[r+c-mark]
 	return probe
 
 class CompactDFA(interfaces.FiniteAutomaton):

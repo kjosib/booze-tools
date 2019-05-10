@@ -17,7 +17,7 @@ and provided for later.
 """
 
 import collections, operator
-from . import foundation, pretty
+from . import foundation as F, pretty
 
 def multi_append(table:dict, row:dict):
 	"""
@@ -60,7 +60,7 @@ def compress_dfa_matrix(*, initial:dict, matrix:list, final:dict) -> dict:
 	row_class, residue = find_row_equivalence(residue, None)
 	# Converting the final residue to a set-as-displacement-table representation:
 	indices = [[i for i,x in enumerate(row) if x] for row in residue]
-	offset, size = first_fit_decreasing(indices)
+	offset, size = first_fit_decreasing(indices, allow_negative=True)
 	check = [-1]*size
 	for i, (row, base) in enumerate(zip(indices, offset)):
 		for col in row:
@@ -90,7 +90,7 @@ def measure_approximate_cost(structure):
 	elif isinstance(structure, int) or structure is None: return 1
 	else: assert False, type(structure)
 
-def first_fit_decreasing(indices: list):
+def first_fit_decreasing(indices: list, *, allow_negative:bool):
 	"""
 	(Aho and Ulman [2]) and (Ziegler [7]) advocate this scheme...
 	This function finds a set of displacements such that no two index[i][j]+displacement[i] are the same.
@@ -114,13 +114,13 @@ def first_fit_decreasing(indices: list):
 	used = set()
 	def first_fit(row: list) -> int:
 		if not row: return 0
-		offset = 0 - min(row)
+		offset = 0 - min(row) if allow_negative else 0
 		while any(r + offset in used for r in row): offset += 1
 		used.update(r + offset for r in row)
 		return offset
 	
 	displacements = [0] * len(indices)
-	for i in sorted(range(len(indices)), key=lambda q: 0-len(indices[q])): displacements[i] = first_fit(indices[i])
+	for i in F.grade(list(map(len, indices)), descending=True): displacements[i] = first_fit(indices[i])
 	size = max(used)+1 if used else 0
 	print("First-Fit Decreasing placed %d entries among %d positions."%(len(used), size))
 	return displacements, size
@@ -134,7 +134,7 @@ def encode_displacement_function(exceptions:list):
 		(1) It's the caller's responsibility.
 		(2) Only the caller knows the best way to perform such a feat.
 	"""
-	offset, size = first_fit_decreasing(exceptions)
+	offset, size = first_fit_decreasing(exceptions, allow_negative=True)
 	check = [-1]*size
 	value = [0]*size
 	for row_id, row_dict in enumerate(exceptions):
@@ -172,7 +172,7 @@ def decompose_by_edit_distance(matrix):
 	"""
 	height, width = len(matrix), len(matrix[0])
 	population = [width - row.count(None) for row in matrix]
-	schedule = sorted(range(height), key=population.__getitem__)
+	schedule = F.grade(population)
 	fallback = [-1] * height
 	for count, q in enumerate(schedule):
 		metric = population[q]
@@ -240,25 +240,32 @@ def compress_goto_table(goto_table:list) -> dict:
 		if len(quotient) == hi_water_mark: break
 	
 	# Capture the much smaller residue matrix:
-	column_residue = remaining(col_index)
 	row_residue = remaining(row_index)
-	residue = [
-		[row[c] for c in column_residue]
-		for row in [goto_table[i] for i in row_residue]
-	]
+	column_residue = remaining(col_index)
+	residue_matrix = [[row[e] for e in column_residue] for row in [goto_table[e] for e in row_residue]]
 	
 	# Minimize the residue.
-	row_class, minimal_rows = find_row_equivalence(residue, 0)
-	for cls_id, state_id in zip(row_class, row_residue):
-		row_index[state_id] = len(quotient) + cls_id
+	row_class, minimal_rows = find_row_equivalence(residue_matrix, 0)
+	col_class, minimal_columns = find_row_equivalence(zip(*minimal_rows), 0)
 	
-	col_class, minimal_cols = find_row_equivalence(zip(*minimal_rows), 0)
+	# Try to figure the ideal column-class ordering to make it fit better:
+	col_class_offset = F.everted(F.grade([vector.count(0) for vector in minimal_columns]))
+	minimal_rows = [{col_class_offset[c]:x for c, x in enumerate(row) if x} for row in zip(*minimal_columns)]
+	row_class_offset, size = first_fit_decreasing(minimal_rows, allow_negative=False)
+	residue = [0]*size
+	for r_off, row in zip(row_class_offset, minimal_rows):
+		for c_off, value in row.items():
+			if value: residue[r_off+c_off] = value
+	
+	# Fill the holes in the foo_index vectors accordingly:
+	for cls_id, state_id in zip(row_class, row_residue):
+		row_index[state_id] = row_class_offset[cls_id] + hi_water_mark
 	for cls_id, nonterm_id in zip(col_class, column_residue):
-		col_index[nonterm_id] = len(quotient) + cls_id
+		col_index[nonterm_id] = col_class_offset[cls_id] + hi_water_mark
 	
 	# Wrap up and return.
 	print("GOTO table original size: %d rows, %d columns -> %d cells"%(height, width, height * width))
-	result = {'row_index': row_index, 'col_index': col_index, 'quotient': quotient, 'residue': list(zip(*minimal_cols))}
+	result = {'row_index': row_index, 'col_index': col_index, 'quotient': quotient+residue, 'mark': hi_water_mark}
 	metric = measure_approximate_cost(result)
 	print("GOTO compact size: %d (%.2f%%)"%(metric, 100.0*metric/(height * width)))
 	return result
@@ -278,6 +285,6 @@ def find_row_equivalence(matrix, do_not_care):
 					if value != do_not_care: candidate_class[c] = value
 				break
 		else:
-			index.append(foundation.allocate(classes, list(row)))
+			index.append(F.allocate(classes, list(row)))
 	return index, classes
 

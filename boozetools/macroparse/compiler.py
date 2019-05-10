@@ -246,9 +246,8 @@ def main():
 		if args.dev:
 			compact_goto = compact['parser']['goto']
 			for listname in ['row_index', 'col_index', 'quotient']:
-				print(listname, ':', compact_goto[listname], len(compact_goto[listname]))
-			if compact_goto['residue']: pretty.print_grid(compact_goto['residue'])
-			else: print('No residue matrix for GOTO table.')
+				print(listname+':', compact_goto[listname], len(compact_goto[listname]))
+			print('mark:', compact_goto['mark'], 'residue:', len(compact_goto['quotient'])-compact_goto['mark'])
 		json.dump(compact, open(target_path, 'w'), separators = (',', ':'), sort_keys = False, indent = args.indent)
 		print('Wrote automaton in JSON format to:')
 		print('\t'+target_path)
