@@ -187,6 +187,10 @@ type -> simple_type
 	| collection
 	| PACKED .collection    :packed
 
+simple_type -> identifier
+	| '(' .csl(identifier) ')'
+	| .constant '..' .constant
+
 collection -> RECORD .field_list END
 	| ARRAY '[' .csl(simple_type) ']' OF .type   :array_type
 	| FILE OF .type          :file_type
