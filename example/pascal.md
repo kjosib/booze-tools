@@ -174,7 +174,7 @@ according to the official standard) so that means you have all these numbers wor
 way through the type system, and *that* means access to named-constants in the process is
 quite nice. Unfortunately, compile-time evaluation is limited to negation.  
 ```
-constant -> string_contant
+constant -> string_constant
 	| identifier        :named_constant
 	| '+' .identifier   :named_constant
 	| '-' .identifier   :negate_named_constant
