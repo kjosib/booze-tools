@@ -160,7 +160,7 @@ class ErrorHelper:
 		try: return METAGRAMMAR.parse(metascan, language=language)
 		except interfaces.ScanError as e:
 			column = e.args[0]
-			self.gripe('The MacroParse MetaScanner got confused right...\n\t'+illustrate_position(line, column))
+			self.gripe('The MacroParse MetaScanner got confused by %r right...\n\t'%(e.args[1])+illustrate_position(line, column))
 		except interfaces.ParseError as e:
 			self.gripe('The MacroParse MetaParser got confused. Stack condition was\n\t%r %s %r\nActual point of failure was:\n\t%s'%(e.args[0],context_free.DOT, e.args[1], illustrate_position(line, metascan.current_position())))
 

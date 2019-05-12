@@ -46,15 +46,15 @@ to define the literal constant production rules in a slightly more sensible mann
 so that the letter `E` does not come out looking like a reserved word.
 ```
 \{[^}]*\}              :ignore comment
+\{                     :unterminated_comment
 \s+                    :ignore whitespace
 \d+                    :integer
 \d+\.\d+               :decimal
-\d+\.\d+[eE][-+]?\d+   :scientific_notation
+\d+(\.\d+)?[eE][-+]?\d+   :scientific_notation
 '([^']|'')*'           :string_constant
-<|<=|=|<>|>=|>         :relop
 {alpha}+               :word
 {alpha}{alnum}+        :identifier
-:=                     |
+<=|<>|>=|:=            |
 \.\.                   |
 {punct}                :token
 ```
@@ -67,8 +67,9 @@ I'll spell keywords in ALL CAPS in the grammar rules, so there's a simple test.
 Note also that Pascal does not seem to permit the underscore character in identifiers.
 I wonder if that's an oversight corrected in a later version of the standard?
 
-I've chosen to group relative operators in the lexer here: these *could* be thrown in with
-all other generic tokens, but I expect there's a benefit to recognizing them specially.
+Originally I thought to group relative operators in the lexer here as a way to save a
+grammar production, but since `=` is used in type and constant declarations, that will
+not work.
 
 # Productions module
 A couple macro definitions help considerably: comma-separated list, semicolon-separated list,
@@ -98,8 +99,8 @@ c_decl -> .identifier '=' .constant
 t_decl -> .identifier '=' .type
 v_decl -> .names ':' .type
 
-subroutines -> :empty | .subroutines .signature ';' .block ';'  :append
-
+subroutines -> :empty | .ssl(one_routine) ';'
+one_routine -> .signature ';' .block
 signature -> PROCEDURE identifier formal_parameters
 signature -> FUNCTION identifier formal_parameters ':' identifier
 
@@ -136,12 +137,13 @@ The official standard resolves matters of precedence by defining non-terminals
 for each layer, rather than relying on operator precedence specification.
 ```
 expr -> simple
-	| simple relop simple :relational_test
+	| simple rel_op simple :relational_test
 	| simple IN simple    :set_membership
 
 simple -> signed_term | simple add_op term :sum
 signed_term -> term | '+' .term | '-' .term :negate
 term -> factor | term mul_op factor :product
+rel_op -> '<' | '<=' | '=' | '<>' | '>=' | '>'
 add_op -> '+' | '-' | OR
 mul_op -> '*' | '/' | DIV | MOD | AND
 ```

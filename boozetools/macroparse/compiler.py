@@ -206,11 +206,11 @@ def compile_string(document:str) -> TextBookForm:
 
 def encode_parse_rules(rules:list) -> dict:
 	assert isinstance(rules, list), type(rules)
-	result = {'head': [], 'size': [], 'message': [], 'view':[], 'line_nr':[]}
+	result = {'head': [], 'size': [], 'message': [], 'view':[], 'line_number':[]}
 	unit = (None, None, None)
 	for head, size, attribute in rules:
 		message, view, line_nr = unit if attribute is None else attribute
-		compaction.multi_append(result, {'head': head, 'size':size, 'message': message, 'view':view, 'line_nr':line_nr})
+		compaction.multi_append(result, {'head': head, 'size':size, 'message': message, 'view':view, 'line_number':line_nr})
 	return result
 
 def main():
