@@ -16,17 +16,25 @@ from . import context_free, foundation
 END = '<END>' # An artificial "end-of-text" terminal-symbol.
 
 class GLR0_State(typing.NamedTuple):
-	items: set
-	shift: dict
-	reduce: set
+	items: set # Pairs of (rule-id, position); rules >= len(cfg.rules) are ACCEPT rules.
+	shift: dict # symbol => state-id
+	reduce: set # rule-id
 
 class GLR0_Construction:
 	"""
 	This is not a method-of-CFG: that would have the wrong connotation. A grammar
 	specification is like a model, and this is more like a (complicated) view.
+	The heavy lifting is all done in the constructor.
 	
 	In principle you could drive a Tomita-style parser with this table and the
 	grammar definition, but that is not the plan.
+	
+	Fields are:
+		graph: a list of GLR0_State objects; their index is implicitly their node ID.
+		initial: a list of initial-state ID numbers (graph node indices) corresponding
+			to the start-symbols of the CFG.
+		accept: a list of final/accepting-state ID numbers (graph node indices) also
+			corresponding to the start-symbols of the CFG.
 	"""
 	__slots__ = ['graph', 'initial', 'accept']
 	def __init__(self, grammar:context_free.ContextFreeGrammar):
@@ -42,7 +50,7 @@ class GLR0_Construction:
 			# shift-entry, essentially running the unit-rule at table-generation time.
 			
 			# If performing this task while carrying look-ahead in the parse-items, it sufficient
-			# that the criteria would have applied had the look-ahead not been involved.
+			# that the same criteria would have applied had the look-ahead not been involved.
 			replace = {s: grammar.rules[r].lhs for s, r in check.items() if len(step[s]) == 1}
 			shifts = {}
 			for symbol in step.keys():
@@ -52,20 +60,20 @@ class GLR0_Construction:
 			return shifts
 		
 		def build_state(core: frozenset):
-			step, check, state = collections.defaultdict(set), {}, GLR0_State(items=set(), shift={}, reduce=set())
+			step, check, reduce = collections.defaultdict(set), {}, set()
 			def visit(item):
 				rule_id, position = item
 				if position < len(RHS[rule_id]):
 					next_symbol = RHS[rule_id][position]
-					step[next_symbol].add((rule_id,position+1)) # For the record,
+					step[next_symbol].add((rule_id,position+1))
 					if rule_id in unit_rules and position == 0: check[next_symbol] = rule_id
 					return symbol_front.get(next_symbol)
-				else: state.reduce.add(rule_id)
+				else: reduce.add(rule_id)
 			items = foundation.transitive_closure(core, visit)
 			self.graph.append(GLR0_State(
 				items=items,
 				shift=optimize_unit_rules(step, check),
-				reduce=set(r for r,p in items if p == len(RHS[r])) # The end-of-rule parse-items.
+				reduce=reduce,
 			))
 		
 		assert grammar.start
