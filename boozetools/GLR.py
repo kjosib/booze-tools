@@ -27,7 +27,7 @@ class GLR0_Construction:
 	The heavy lifting is all done in the constructor.
 	
 	In principle you could drive a Tomita-style parser with this table and the
-	grammar definition, but that is not the plan.
+	grammar definition. Over in the unit tests lives something vaguely reminiscent.
 	
 	Fields are:
 		graph: a list of GLR0_State objects; their index is implicitly their node ID.
@@ -68,7 +68,7 @@ class GLR0_Construction:
 					step[next_symbol].add((rule_id,position+1))
 					if rule_id in unit_rules and position == 0: check[next_symbol] = rule_id
 					return symbol_front.get(next_symbol)
-				else: reduce.add(rule_id)
+				elif rule_id<len(grammar.rules): reduce.add(rule_id)
 			items = foundation.transitive_closure(core, visit)
 			self.graph.append(GLR0_State(
 				items=items,
@@ -87,5 +87,8 @@ class GLR0_Construction:
 		# Initial-state cores refer only to the "augmentation" rule -- which has no LHS in this manifestation.
 		self.initial = [bft.lookup(front([foundation.allocate(RHS, [language])])) for language in grammar.start]
 		bft.execute(build_state)
-		self.accept = [self.graph[self.initial[language]].shift[language] for language in grammar.start]
+		self.accept = [self.graph[qi].shift[language] for qi, language in zip(self.initial, grammar.start)]
 		
+	def display(self, grammar:context_free.ContextFreeGrammar):
+		for q, state in enumerate(self.graph):
+			print(q, state.shift, state.reduce)
