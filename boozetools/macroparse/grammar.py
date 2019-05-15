@@ -279,3 +279,8 @@ class EBNF_Definition:
 			print('Inferring CFG start symbol %r from earliest production because none was given explicitly.'%self.inferential_start)
 			self.plain_cfg.start.append(self.inferential_start)
 		self.plain_cfg.validate()
+	
+	def construct_table(self):
+		if self.inferential_start: # In other words, if any rules were ever given...
+			self.validate()
+			return self.plain_cfg.lalr_construction()

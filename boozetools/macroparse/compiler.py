@@ -34,15 +34,17 @@ class TextBookForm:
 			'scanner': self.compact_scanner(),
 			'parser': self.compact_parser(),
 		}
-	def compact_scanner(self) -> dict:
+	def compact_scanner(self):
 		dfa = self.dfa
+		if dfa is None: return
 		return {
 			'dfa': compaction.compress_dfa_matrix(initial=dfa.initial, matrix=dfa.states, final=dfa.final),
 			'action': dict(zip(['message', 'parameter', 'trail', 'line_number'], zip(*self.scan_actions))),
 			'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
 		}
-	def compact_parser(self) -> dict:
+	def compact_parser(self):
 		table = self.parse_table
+		if table is None: return
 		symbol_index = {s: i for i, s in enumerate(table.terminals + table.nonterminals)}
 		symbol_index[None] = None
 		return {
@@ -55,12 +57,16 @@ class TextBookForm:
 			'rule': encode_parse_rules(table.rule_table),
 		}
 	def pretty_print(self):
-		self.dfa.stats()
-		self.dfa.display()
-		self.parse_table.display()
+		if self.dfa is not None:
+			self.dfa.stats()
+			self.dfa.display()
+		if self.parse_table is not None:
+			self.parse_table.display()
 	def make_csv(self, pathstem):
-		self.dfa.make_csv(pathstem)
-		self.parse_table.make_csv(pathstem)
+		if self.dfa is not None:
+			self.dfa.make_csv(pathstem)
+		if self.parse_table is not None:
+			self.parse_table.make_csv(pathstem)
 
 def compile_string(document:str) -> TextBookForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
@@ -161,7 +167,7 @@ def compile_string(document:str) -> TextBookForm:
 	scan_actions = [] # That of a regular-language rule entry is <message, parameter, trail, line_number>
 	current_pattern_group = None
 	condition_definitions = {}
-
+	
 	def tie_conditions():
 		declared = set(condition_definitions.keys())
 		declared.update(*condition_definitions.values())
@@ -192,16 +198,11 @@ def compile_string(document:str) -> TextBookForm:
 		elif current_line_text.strip().startswith('```'): in_code = True
 		else: continue
 	if in_code and section: raise grammar.DefinitionError("A code block fails to terminate before the end of the document.")
-	# Validate everything possible:
-	ebnf.validate()
-	if condition_definitions: tie_conditions()
 	
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
-	return TextBookForm(
-		dfa = nfa.subset_construction().minimize_states().minimize_alphabet(),
-		scan_actions = scan_actions,
-		parse_table = ebnf.plain_cfg.lalr_construction(),
-	)
+	if condition_definitions: tie_conditions()
+	dfa = nfa.subset_construction().minimize_states().minimize_alphabet() if nfa.states else None
+	return TextBookForm(dfa=dfa, scan_actions=scan_actions, parse_table=ebnf.construct_table(),)
 
 
 def encode_parse_rules(rules:list) -> dict:
