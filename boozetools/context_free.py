@@ -254,7 +254,7 @@ class ContextFreeGrammar:
 						left_parts.append(' '.join(rhs[:p]))
 						right_parts.append(' '.join(rhs[p:]))
 					align = max(map(len, left_parts)) + 10
-					for l, r in zip(left_parts, right_parts): print(' '*(align-len(l))+l+'  \u25cf  '+r)
+					for l, r in zip(left_parts, right_parts): print(' '*(align-len(l))+l+'  '+pretty.DOT+'  '+r)
 				else:
 					rule = self.rules[-x - 1]
 					print("Do we reduce:  %s -> %s"%(rule.lhs, ' '.join(rule.rhs)))
