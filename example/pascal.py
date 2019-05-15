@@ -2,6 +2,23 @@
 This driver application actually exists as a bizarrely-bulky test rig for one aspect of the
 most recent GOTO-table compression function. Also, it shows that the Pascal grammar definition
 file nicely describes the sample Pascal programs in this folder.
+
+Easy exercise for the reader: There are more example pascal programs at
+	http://sandbox.mc.edu/~bennet/cs404/doc/pasdex.html
+Finish the driver to be able to parse all of these. Note: one of these is a UNIT definition,
+which requires some additional production rules.
+
+Moderate exercise: Make the parser generate a nicer abstract syntax tree that you can walk.
+Implement and test a routine that displays a nice data-dump of such a tree.
+
+Vigorous exercise: Take the above abstract syntax trees and transcode them into Ansi C,
+taking care of semantic differences between otherwise-similar forms. Such code is likely
+to be ugly and misshapen, but it should run just fine. In particular, proper support for
+nested-function scopes will require special care with the calling convention.
+
+Strenuous exercise: Instead of building C code (structure of which is largely isomorphic)
+build (not-optimized) assembler code for NASM or a CPU simulator of your choice. Assume
+the result will be linked against a convenient runtime library for your platform.
 """
 
 import os
