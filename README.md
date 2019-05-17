@@ -11,7 +11,6 @@ For now there are three major components. Eventually there will be more. These a
     * supports a macro language for simplifying otherwise-redundant parser specifications.
     * provides a suitable runtime library so the [examples](https://github.com/kjosib/booze-tools/tree/master/example/)
         run and pass the [tests](https://github.com/kjosib/booze-tools/tree/master/tests/).
-    * still needs more example applications to exercise the remaining features -- which are coming soonish.
 
 Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/wiki).
 Worked examples may be found at [/example/](https://github.com/kjosib/booze-tools/tree/master/example/).
@@ -22,17 +21,16 @@ Worked examples may be found at [/example/](https://github.com/kjosib/booze-tool
 * The code is deliberately kept simple, small and well-factored:
     * Easy to extend, approachable, and informative. 
     * Aiming for suitability in an instructional context.
-* These modules do not generate code:
-    * They plug directly into your application and work right away.
-    * This makes them excellent for rapid prototyping.
-    * Pickled automatons will be part of the next major feature (MacroParse).
-    * Code generation for other languages is in the foreseeable future.
+* These modules do not generate free-standing code:
+    * Mini-Foo plugs directly into a Python application and works right away, which is nice for rapid prototyping.
+    * MacroParse compiles automatons to JSON, and appropriate run-time support is in the library.
+    * Code generation for other languages is foreseeable: translate the JSON and supply a suitable runtime.
 * Performance is accordingly NOT a top priority, but:
     * if someone wants to play with the profiler they are welcome, and
     * contributions in that vein will be accepted as long as they are consistent with the higher priorities.
 
 # What Else?
-There is a complete worked example JSON scanner/parser in the `example` folder. It has a lot of commentary to walk you through setting up both scanner and parser.
+There are several complete worked example scanners and parsers in the `example` folder. Start with the JSON ones: they have the best introductory commentary to walk you through getting started.
 
 There are unit tests. They're not vast and imposing, but they exercise the interface both directly and via the example code.
 
