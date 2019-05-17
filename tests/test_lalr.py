@@ -14,6 +14,7 @@ class TestLalr(unittest.TestCase):
 		self.g.start.append('S')
 		self.good = []
 	def tearDown(self):
+		print(self.g.find_epsilon())
 		table = self.g.lalr_construction()
 		# table.display()
 		for sentence in self.good:

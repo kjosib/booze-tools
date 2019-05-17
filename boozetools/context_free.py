@@ -12,6 +12,7 @@ class PrecedenceDeclaredTwice(Fault): pass
 class RuleProducesBogusToken(Fault): pass # The rule produces a bogus symbol...
 class UnreachableSymbols(Fault): pass
 class NonproductiveSymbols(Fault): pass
+class IllFoundedGrammar(Fault): pass
 
 class Rule(typing.NamedTuple):
 	lhs: str
@@ -84,6 +85,31 @@ class ContextFreeGrammar:
 		sri = self.symbol_rule_ids[lhs]
 		if any(self.rules[rule_id].rhs == rhs for rule_id in sri): raise DuplicateRule(lhs, rhs)
 		sri.append(allocate(self.rules, Rule(lhs, rhs, attribute, prec_sym)))
+	
+	def apparent_terminals(self) -> set:
+		""" Of all symbols mentioned, those without production rules are apparently terminal. """
+		return self.symbols - self.symbol_rule_ids.keys()
+	
+	def find_epsilon(self) -> set:
+		""" Which nonterminals can possibly produce epsilon? Enquiring algorithms want to know! """
+		opaque = self.apparent_terminals() # These definitely do NOT produce epsilon.
+		epsilon = set() # These do, and are the final return object.
+		population = {k:len(v) for k,v in self.symbol_rule_ids.items()}
+		work = list(self.rules)
+		while work:
+			maybe = []
+			for rule in work:
+				if all(map(epsilon.__contains__, rule.rhs)): epsilon.add(rule.lhs)
+				elif any(map(opaque.__contains__, rule.rhs)):
+					population[rule.lhs] -= 1
+					if population[rule.lhs] == 0: opaque.add(rule.lhs)
+				else: maybe.append(rule)
+			if len(maybe) < len(work): work = maybe
+			else:
+				# If this happens, all rules that remain are mutually recursive or worse,
+				# and I have an idea that this shouldn't happen in a well-founded grammar.
+				raise IllFoundedGrammar(maybe)
+		return epsilon
 	
 	def validate(self):
 		"""
@@ -162,7 +188,7 @@ class ContextFreeGrammar:
 			if rule.attribute is None and len(rule.rhs) == 1: unit_rules.add(rule_id)
 		
 		end = '<END>'
-		terminals = [end] + sorted(self.symbols - self.symbol_rule_ids.keys())
+		terminals = [end] + sorted(self.apparent_terminals())
 		translate = {symbol:i for i,symbol in enumerate(terminals)}
 		nonterminals = sorted(self.symbol_rule_ids.keys())
 		
