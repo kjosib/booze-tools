@@ -2,43 +2,46 @@ import unittest
 
 from boozetools import context_free, GLR, interfaces
 
-def test_parse(hfa:GLR.GLR0_Construction, cfg:context_free.ContextFreeGrammar, sentence):
-	"""
-	This is intended to be a super simplistic embodiment of some idea how to make a GLR parse engine.
-	It exists only for unit-testing the GLR stuff, and therefore doesn't try to build a semantic value.
-	
-	The approach taken is a lock-step parallel simulation with a list of active possible stacks in
-	cactus-stack form: each entry is a cons cell consisting of a state id and prior stack. This
-	approach is guaranteed to work despite exploring all possible paths through the parse.
-	
-	To adapt this algorithm to a stronger table, simply replace the two lines beginning:
-		for rule_id in ...
-	with something that uses foreknowledge of the lexeme that's coming after some sequence
-	of reductions. One could incorporate precedence and even arbitrary predicate tests following a
-	roughly similar plan: consult the predicate before entering the reduction into the "alive" list.
-	"""
-	def reduce(stack, rule_id):
-		""" To perform a reduction, roll the stack to before the RHS and then shift the LHS. """
-		rule = cfg.rules[rule_id]
-		for i in range(len(rule.rhs)): stack = stack[1]
-		return hfa.graph[stack[0]].shift[rule.lhs], stack
-	root = (hfa.initial[0], None)
-	alive = [root]
-	print("Attempting to parse", sentence)
-	for lexeme in sentence:
-		next = []
+class TestGLR0(unittest.TestCase):
+	@staticmethod
+	def parse(hfa: GLR.GLR0_Construction, cfg: context_free.ContextFreeGrammar, sentence):
+		"""
+		This is intended to be a super simplistic embodiment of some idea how to make a GLR parse engine.
+		It exists only for unit-testing the GLR stuff, and therefore doesn't try to build a semantic value.
+
+		The approach taken is a lock-step parallel simulation with a list of active possible stacks in
+		cactus-stack form: each entry is a cons cell consisting of a state id and prior stack. This
+		approach is guaranteed to work despite exploring all possible paths through the parse.
+
+		To adapt this algorithm to a stronger table, simply replace the two lines beginning:
+			for rule_id in ...
+		with something that uses foreknowledge of the lexeme that's coming after some sequence
+		of reductions. One could incorporate precedence and even arbitrary predicate tests following a
+		roughly similar plan: consult the predicate before entering the reduction into the "alive" list.
+		"""
+		
+		def reduce(stack, rule_id):
+			""" To perform a reduction, roll the stack to before the RHS and then shift the LHS. """
+			rule = cfg.rules[rule_id]
+			for i in range(len(rule.rhs)): stack = stack[1]
+			return hfa.graph[stack[0]].shift[rule.lhs], stack
+		
+		root = (hfa.initial[0], None)
+		alive = [root]
+		print("Attempting to parse", sentence)
+		for lexeme in sentence:
+			next = []
+			for stack in alive:
+				state = hfa.graph[stack[0]]
+				if lexeme in state.shift: next.append((state.shift[lexeme], stack))
+				for rule_id in state.reduce: alive.append(reduce(stack, rule_id))
+			alive = next
+			if not alive: raise interfaces.ParseError("Parser died midway at something ungrammatical.")
 		for stack in alive:
-			state = hfa.graph[stack[0]]
-			if lexeme in state.shift: next.append((state.shift[lexeme], stack))
-			for rule_id in state.reduce: alive.append(reduce(stack, rule_id))
-		alive = next
-		if not alive: raise interfaces.ParseError("Parser died midway at something ungrammatical.")
-	for stack in alive:
-		if stack[0]==hfa.accept[0]: return True
-		for rule_id in hfa.graph[stack[0]].reduce: alive.append(reduce(stack, rule_id))
-	raise interfaces.ParseError("Parser recognized a viable prefix, but not a complete sentence.")
+			if stack[0] == hfa.accept[0]: return True
+			for rule_id in hfa.graph[stack[0]].reduce: alive.append(reduce(stack, rule_id))
+		raise interfaces.ParseError("Parser recognized a viable prefix, but not a complete sentence.")
 	
-class TestGLR(unittest.TestCase):
 	def setUp(self):
 		print(self._testMethodName)
 		self.cfg = context_free.ContextFreeGrammar()
@@ -49,7 +52,7 @@ class TestGLR(unittest.TestCase):
 		# hfa.display(self.cfg)
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
-				assert test_parse(hfa, self.cfg, sentence)
+				assert TestGLR0.parse(hfa, self.cfg, sentence)
 
 	def r(self, lhs, rhs:str):
 		rhs = rhs.split()
