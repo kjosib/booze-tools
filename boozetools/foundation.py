@@ -63,3 +63,36 @@ def everted(permutation:Sequence) -> list:
 	result = [None] * len(permutation)
 	for i, x in enumerate(permutation): result[x] = i
 	return result
+
+def strongly_connected_components_by_tarjan(graph):
+	"""
+	See https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
+	Returns a list of strongly-connected components in reverse topological order.
+	Each component is a list of member node numbers. Deviating slightly from the wikipedia
+	presentation, the low-link is local to the recursive call, eliminating one confusion.
+	
+	It's expected that graph[q] is the list of arcs from (or perhaps to) node q.
+	"""
+	def unvisited(q): return index[q] is None
+	def connect(q) -> int:
+		low_link = index[q] = allocate(stack, q)
+		on_stack[q] = True
+		for r in graph[q]:
+			if unvisited(r): low_link = min(low_link, connect(r))
+			elif on_stack[r]: low_link = min(low_link, index[r])
+		if low_link == index[q]: # i.e. if node q is the root of an SCC:
+			component = stack[low_link:]
+			del stack[low_link:]
+			for r in component: on_stack[r] = False
+			output.append(component)
+		return low_link
+	def main():
+		for q in range(size):
+			if unvisited(q): connect(q)
+	size = len(graph)
+	index = [None] * size
+	on_stack = [False] * size
+	stack = []
+	output = []
+	main()
+	return output
