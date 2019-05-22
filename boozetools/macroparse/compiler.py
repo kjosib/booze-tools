@@ -211,7 +211,8 @@ def encode_parse_rules(rules:list) -> dict:
 	unit = (None, None, None)
 	for head, size, attribute in rules:
 		message, view, line_nr = unit if attribute is None else attribute
-		compaction.multi_append(result, {'head': head, 'size':size, 'message': message, 'view':view, 'line_number':line_nr})
+		for k,v in {'head': head, 'size':size, 'message': message, 'view':view, 'line_number':line_nr}.items():
+			result[k].append(v)
 	return result
 
 def main():

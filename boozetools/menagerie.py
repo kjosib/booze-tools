@@ -6,7 +6,18 @@ This module is quite deliberately not maintained.
 Then again, project direction has changed before.
 """
 from . import foundation
-from .compaction import most_common, is_homogenous, multi_append
+from .compaction import most_common, is_homogenous
+
+def multi_append(table:dict, row:dict):
+	"""
+	Utility function for collections of parallel arrays; these often have better
+	storage and encoding characteristics than arrays of records do.
+	:param table: A dictionary in which several keys point to lists.
+	:param row: A dictionary; the values get appended to the corresponding lists in `table`.
+	:return: Nothing.
+	"""
+	for key, value in row.items(): table[key].append(value)
+
 
 def modified_aho_corasick_encoding(*, initial: dict, matrix: list, final: dict, jam: int) -> dict:
 	"""

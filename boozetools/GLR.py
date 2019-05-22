@@ -8,7 +8,7 @@ a GLR runtime to explore.
 Building a deterministic parse table can be seen as first building a non-deterministic one and
 then taking a further step to resolve any conflicts. That is why I'm going down this alley.
 
-Towards the end of this module is a test-parse routine which exercises these GLR-type constructions.
+Towards the end of this module is a trial-parse routine which exercises these GLR-type constructions.
 """
 import collections
 from typing import NamedTuple, Callable, Sequence, Iterable

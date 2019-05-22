@@ -19,16 +19,6 @@ and provided for later.
 import collections
 from . import foundation
 
-def multi_append(table:dict, row:dict):
-	"""
-	Utility function for collections of parallel arrays; these often have better
-	storage and encoding characteristics than arrays of records do.
-	:param table: A dictionary in which several keys point to lists.
-	:param row: A dictionary; the values get appended to the corresponding lists in `table`.
-	:return: Nothing.
-	"""
-	for key, value in row.items(): table[key].append(value)
-
 def most_common(row, *, default=0):
 	""" Return the most-common element in the array; break ties arbitrarily. """
 	C = collections.Counter(row)
