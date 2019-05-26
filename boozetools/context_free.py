@@ -149,10 +149,8 @@ class ContextFreeGrammar:
 	def decide_shift_reduce(self, symbol, rule_id):
 		try: sp = self.token_precedence[symbol]
 		except KeyError: return None
-		rule = self.rules[rule_id]
-		prec_sym = rule.prec_sym or self.infer_prec_sym(rule.rhs)
-		if not prec_sym: return None
-		rp = self.token_precedence[prec_sym]
+		rp = self.determine_rule_precedence(rule_id)
+		if rp is None: return None
 		if rp < sp: return LEFT
 		# NB: Bison and Lemon both treat later declarations as higher-precedence,
 		# which is unintuitive, in that you perform higher-precedence operations
@@ -173,225 +171,16 @@ class ContextFreeGrammar:
 		for symbol in rhs:
 			if symbol in self.token_precedence:
 				return symbol
+	
+	def determine_rule_precedence(self, rule_id):
+		rule = self.rules[rule_id]
+		prec_sym = rule.prec_sym or self.infer_prec_sym(rule.rhs)
+		if prec_sym: return self.token_precedence[prec_sym]
 
-	def lalr_construction(self, *, strict:bool=False) -> 'DragonBookTable':
-		class State(typing.NamedTuple):
-			shifts: dict
-			complete: set  # rule_id
-			follow: dict  # rule_id -> set_id
-		
-		##### Start by arranging most of the grammar data in a convenient form:
-		assert self.start
-		RHS, unit_rules = [], set()
-		for rule_id, rule in enumerate(self.rules):
-			RHS.append(rule.rhs)
-			if rule.attribute is None and len(rule.rhs) == 1: unit_rules.add(rule_id)
-		
-		end = '<END>'
-		terminals = [end] + sorted(self.apparent_terminals())
-		translate = {symbol:i for i,symbol in enumerate(terminals)}
-		nonterminals = sorted(self.symbol_rule_ids.keys())
-		
-		##### The LR(0) construction:
-		def front(rule_ids): return frozenset([(r,0) for r in rule_ids])
-		symbol_front = {symbol: front(rule_ids) for symbol, rule_ids in self.symbol_rule_ids.items()}
-		def build_state(core: frozenset):
-			step, check, complete = collections.defaultdict(set), {}, set()
-			def visit_item(item):
-				r, p = item
-				if p < len(RHS[r]):
-					s = RHS[r][p]
-					step[s].add((r,p+1)) # For the record,
-					if r in unit_rules and p == 0: check[s] = r
-					return symbol_front.get(s)
-				else: complete.add(r)
-			transitive_closure(core, visit_item)
-			replace = {s:self.rules[r].lhs for s, r in check.items() if len(step[s]) == 1}
-			shifts = {}
-			for symbol in step.keys():
-				proxy = symbol
-				while proxy in replace: proxy = replace[proxy]
-				shifts[symbol] = bft.lookup(frozenset(step[proxy]), breadcrumb=proxy)
-			hfa.append(State(shifts=shifts, complete=complete, follow={}))
-		##### Construct first and follow sets:
-		def trace(q, rhs):
-			for s in rhs: q = hfa[q].shifts[s]
-			return q
-		def construct_first_and_follow_sets():
-			def link(*, src:int, dst:int): flows[src].append(dst)
-			for q, state in enumerate(hfa):
-				assert isinstance(state, State)
-				for symbol, successor in state.shifts.items():
-					if symbol in translate: token_sets[q].add(symbol)
-					else:
-						follow = allocate(token_sets, set())
-						link(src=successor, dst=follow)
-						for rule_id in self.symbol_rule_ids[symbol]:
-							q_prime = trace(q, RHS[rule_id])
-							prime = hfa[q_prime]
-							if rule_id in prime.follow: link(src=follow, dst=prime.follow[rule_id])
-							elif rule_id in prime.complete: prime.follow[rule_id] = follow
-							else: pass # This was an elided unit rule.
-				for rule_id in state.complete:
-					if rule_id < len(self.rules):
-						link(src=state.follow[rule_id], dst=q)
-			for rule_id, language in enumerate(self.start, len(self.rules)):
-				q = initial[language]
-				final = hfa[q].shifts[language]
-				token_sets[final].add(end)
-		def propagate_tokens():
-			work = set(i for i,ts in enumerate(token_sets) if ts)
-			while work:
-				src = work.pop()
-				for dst in flows[src]:
-					spill = token_sets[src] - token_sets[dst]
-					if spill:
-						token_sets[dst].update(spill)
-						work.add(dst)
-		
-		hfa = []
-		bft = BreadthFirstTraversal()
-		initial = {language: bft.lookup(front([allocate(RHS, [language])])) for language in self.start}
-		bft.execute(build_state)
-		
-		token_sets = [set() for _ in range(len(hfa))]
-		flows = collections.defaultdict(list)
-		construct_first_and_follow_sets()
-		propagate_tokens()
-		##### Determinize the result:
-		def consider(q, lookahead, options):
-			bread, path, cursor = [], [], q
-			while True:
-				crumb = bft.breadcrumbs[cursor]
-				if crumb:
-					bread.append(crumb)
-					path.append(str(cursor))
-					cursor = bft.earliest_predecessor[cursor]
-				else: break
-			print('==============\nIn language %r, consider:' % self.start[cursor])
-			print('\t'+' '.join(reversed(bread)), pretty.DOT, lookahead)
-			print('\t'+' '.join(reversed(path)))
-			for x in options:
-				if x > 0:
-					print("Do we shift into:")
-					left_parts, right_parts = [], []
-					for r,p in bft.traversal[x]:
-						rhs = self.rules[r].rhs
-						left_parts.append(' '.join(rhs[:p]))
-						right_parts.append(' '.join(rhs[p:]))
-					align = max(map(len, left_parts)) + 10
-					for l, r in zip(left_parts, right_parts): print(' '*(align-len(l))+l+'  '+pretty.DOT+'  '+r)
-				else:
-					rule = self.rules[-x - 1]
-					print("Do we reduce:  %s -> %s"%(rule.lhs, ' '.join(rule.rhs)))
-		
-		def determinize():
-			pure = True
-			conflict =  collections.defaultdict(set)
-			for q, state in enumerate(hfa):
-				goto.append([state.shifts.get(s, 0) for s in nonterminals])
-				action_row = [state.shifts.get(s, 0) for s in terminals]
-				conflict.clear()
-				for rule_id, follow_set_id in state.follow.items():
-					reduce = -1-rule_id
-					for symbol in token_sets[follow_set_id]:
-						idx = translate[symbol]
-						prior = action_row[idx]
-						if prior == 0: action_row[idx] = reduce
-						elif prior < 0:
-							# TODO: if both rules have precedence and they differ, you can resolve
-							# TODO: without reporting a conflict. But when does that ever happen?
-							conflict[symbol].update([prior, reduce])
-							action_row[idx] = max(prior, reduce)
-						elif prior > 0:
-							decision = self.decide_shift_reduce(symbol, rule_id)
-							if decision == LEFT: action_row[idx] = reduce
-							elif decision == RIGHT: pass
-							elif decision == NONASSOC: essential_errors.add((q, idx))
-							elif decision == BOGUS: raise RuleProducesBogusToken(rule_id)
-							else: conflict[symbol].update([prior, reduce])
-				if conflict:
-					pure = False
-					for symbol, options in conflict.items(): consider(q, symbol, options)
-				action.append(action_row)
-			for q,t in essential_errors: action[q][t] = 0
-			if strict: assert pure
-			for language, q in initial.items():
-				final = hfa[q].shifts[language]
-				assert action[final][0] == 0, hfa[final]
-				action[final][0] = final
-
-		action, goto, essential_errors = [], [], set()
-		determinize()
-		return DragonBookTable(
-			initial = initial,
-			action=action,
-			goto=goto,
-			essential_errors=essential_errors,
-			rules=self.rules,
-			terminals=terminals,
-			nonterminals=nonterminals,
-			breadcrumbs=bft.breadcrumbs,
-		)
-
-
-class DragonBookTable(interfaces.ParserTables):
-	"""
-	This is the classic textbook view of a set of parse tables. It's also a reasonably quick implementation
-	if you have a modern amount of RAM in your machine. In days of old, it would be necessary to compress
-	the parse tables. Today, that's still not such a bad idea. The compaction submodule contains
-	some code for a typical method of parser table compression.
-	"""
-	def __init__(self, *, initial:dict, action:list, goto:list, essential_errors:set, rules:list, terminals:list, nonterminals:list, breadcrumbs:list):
-		self.initial = initial
-		self.action_matrix = action
-		self.goto_matrix = goto
-		self.essential_errors = essential_errors
-		self.translate = {symbol: i for i, symbol in enumerate(terminals)}
-		self.get_translation = self.translate.__getitem__
-		nontranslate = {symbol: i for i, symbol in enumerate(nonterminals)}
-		self.terminals, self.nonterminals = terminals, nonterminals
-		self.breadcrumbs = breadcrumbs
-		self.rule_table = [(nontranslate[rule.lhs], len(rule.rhs), rule.attribute) for rule in rules]
-		self.get_rule = self.rule_table.__getitem__
-		
-		interactive = []
-		for row in action:
-			k = set(row)
-			k.discard(0)
-			if len(k) == 1: interactive.append(min(k.pop(), 0))
-			else: interactive.append(0)
-		for q,t in essential_errors: interactive[q] = False
-		self.interactive_step = self.interactive_rule_for = interactive.__getitem__
-	
-	def get_translation(self, symbol) -> int: return self.translate[symbol] # This gets replaced ...
-	
-	def get_action(self, state_id, terminal_id) -> int: return self.action_matrix[state_id][terminal_id]
-	
-	def get_goto(self, state_id, nonterminal_id) -> int: return self.goto_matrix[state_id][nonterminal_id]
-	
-	def get_initial(self, language) -> int: return 0 if language is None else self.initial[language]
-	
-	def get_breadcrumb(self, state_id) -> str: return self.breadcrumbs[state_id]
-	
-	def display(self):
-		size = len(self.action_matrix)
-		print('Action and Goto: (%d states)'%size)
-		head = ['','']+self.terminals+['']+self.nonterminals
-		body = []
-		for i, (b, a, g) in enumerate(zip(self.breadcrumbs, self.action_matrix, self.goto_matrix)):
-			body.append([i, b, *a, '', *g])
-		pretty.print_grid([head] + body)
-	
-	def make_csv(self, pathstem):
-		""" Generate action and goto tables into CSV files suitable for inspection in a spreadsheet program. """
-		def mask(q, row, essential):
-			return [
-				s if s or (q,t) in essential else None
-				for t, s in enumerate(row)
-			]
-		def typical_grid(top, matrix, essential):
-			head = [None, None, *top]
-			return [head]+[  [q, self.breadcrumbs[q]]+mask(q, row, essential)  for q, row in enumerate(matrix)]
-		pretty.write_csv_grid(pathstem + '.action.csv', typical_grid(self.terminals, self.action_matrix, self.essential_errors))
-		pretty.write_csv_grid(pathstem + '.goto.csv', typical_grid(self.nonterminals, self.goto_matrix, frozenset()))
+	def decide_reduce_reduce(self, rule_ids):
+		""" This is more art than science. """
+		field = []
+		for r in rule_ids:
+			p = self.determine_rule_precedence(r)
+			if p is not None: field.append((p,r))
+		if field: return min(field)[1]

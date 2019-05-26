@@ -13,7 +13,7 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 
 """
 import re, os, collections
-from .. import miniscan, regular, context_free, foundation, interfaces, compaction, pretty
+from .. import miniscan, regular, LR, foundation, interfaces, compaction
 from . import grammar
 
 def compile_file(pathname) -> dict:
@@ -22,7 +22,7 @@ def compile_file(pathname) -> dict:
 
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
-	def __init__(self, *, dfa:regular.DFA, scan_actions:list, parse_table:context_free.DragonBookTable):
+	def __init__(self, *, dfa:regular.DFA, scan_actions:list, parse_table:LR.DragonBookTable):
 		self.dfa = dfa
 		self.scan_actions = scan_actions
 		self.parse_table = parse_table

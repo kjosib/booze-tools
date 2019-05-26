@@ -1,6 +1,6 @@
 import unittest
 
-from boozetools import context_free, algorithms
+from boozetools import context_free, LR, algorithms
 
 
 def collect(*args): return args
@@ -15,8 +15,8 @@ class TestLalr(unittest.TestCase):
 		self.good = []
 	def tearDown(self):
 		print(self.g.find_epsilon())
-		table = self.g.lalr_construction()
-		# table.display()
+		table = LR.lalr_construction(self.g)
+		table.display()
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
 				algorithms.parse(table, self.combine, each_token(sentence))
@@ -48,6 +48,12 @@ class TestLalr(unittest.TestCase):
 		self.R('S:x|S y x')
 	def test_05_shift_reduce_conflict(self):
 		self.R('S: E | S + S')
+	def test_06_deep_renaming(self):
+		self.R('S:A')
+		self.R('A:B')
+		self.R('B:C')
+		self.R('C:d')
+		self.good.append('d')
 	def test_10_smoke_test(self):
 		# Parsing Techniques: A Practical Guide -- Page 201
 		self.R('S:E')

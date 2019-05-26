@@ -39,6 +39,14 @@ class BreadthFirstTraversal:
 		result = []
 		for p in self.earliest_predecessor: result.append(0 if p is None else 1+result[p])
 		return result
+	def shortest_path_to(self, index:int) -> list:
+		""" Return a minimal list of states traversed, from a root to the given node index, in normal order. """
+		path = []
+		while index is not None:
+			path.append(index)
+			index = self.earliest_predecessor[index]
+		path.reverse()
+		return path
 
 class EquivalenceClassifier:
 	def __init__(self):

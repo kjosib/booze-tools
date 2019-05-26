@@ -12,7 +12,7 @@ class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
 
-from .. import context_free, miniparse, miniscan, interfaces
+from .. import context_free, miniparse, miniscan, interfaces, LR
 
 class DefinitionError(Exception): pass
 
@@ -283,4 +283,4 @@ class EBNF_Definition:
 	def construct_table(self):
 		if self.inferential_start: # In other words, if any rules were ever given...
 			self.validate()
-			return self.plain_cfg.lalr_construction()
+			return LR.lalr_construction(self.plain_cfg)
