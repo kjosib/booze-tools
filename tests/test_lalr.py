@@ -1,6 +1,6 @@
 import unittest
 
-from boozetools import context_free, LR, algorithms
+from boozetools import context_free, GLR, LR, algorithms
 
 
 def collect(*args): return args
@@ -15,7 +15,7 @@ class TestLalr(unittest.TestCase):
 		self.good = []
 	def tearDown(self):
 		print(self.g.find_epsilon())
-		table = LR.lalr_construction(self.g)
+		table = LR.determinize(GLR.lalr_construction(self.g))
 		table.display()
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):

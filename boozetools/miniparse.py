@@ -1,6 +1,6 @@
 """ No frills. Plenty useful. """
 
-from . import context_free, algorithms, interfaces, LR
+from . import context_free, algorithms, interfaces, LR, GLR
 
 
 class MiniParse:
@@ -68,7 +68,7 @@ class MiniParse:
 		if self.__hfa is None:
 			if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the final production rule.')
 			self.__grammar.validate()
-			self.__hfa = LR.lalr_construction(self.__grammar)
+			self.__hfa = LR.determinize(GLR.lalr_construction(self.__grammar))
 		return self.__hfa
 	def parse(self, each_token, *, language=None):
 		return algorithms.parse(self.get_hfa(), MiniParse.combine, each_token, language=language)

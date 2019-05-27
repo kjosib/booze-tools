@@ -10,8 +10,8 @@ class TestGLR0(unittest.TestCase):
 		self.cfg.start.append('S')
 		self.good = []
 	def tearDown(self):
-		glr0 = GLR.glr0_construction(self.cfg)
-		glalr = GLR.glalr_construction(self.cfg)
+		glr0 = GLR.lr0_construction(self.cfg)
+		glalr = GLR.lalr_construction(self.cfg)
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
 				assert glr0.trial_parse(sentence)

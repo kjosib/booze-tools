@@ -1,13 +1,16 @@
 """
-As all the non-deterministic LR mechanism is in module GLR, so this module deals with
-the pure-deterministic side of things. It also understands about resolving grammar
-conflicts by means of the precedence declarations which may accompany our basic
-context-free structures.
+Building a deterministic parse table can be seen as first building one that admits
+non-determinism then taking a further step. That further step is the bulk of this module.
 
-In the short run, this will mean disentangling all the too-tightly-coupled bits.
+The basic plan is to transcribe a Handle-Finding Automaton into a form useful for the
+deterministic-parse algorithm, taking the deterministic parts verbatim and consulting
+the grammar's precedence declarations otherwise. If that provides a resolution, all is
+well. Otherwise, a non-resolved ambiguity is reported and the chosen deterministic-action
+becomes a matter of policy: The usual convention is to shift when possible, or otherwise
+reduce using the earliest-defined applicable rule.
 """
 import collections
-from . import interfaces, pretty, context_free, foundation, GLR
+from . import interfaces, pretty, context_free, GLR
 
 class DragonBookTable(interfaces.ParserTables):
 	"""
@@ -82,20 +85,9 @@ def consider(hfa, q, lookahead, options):
 	In its original form a bunch of context was available; I've gratuitously stripped that away
 	and now I want to break this down to the bits we actually need.
 	
-	I had been using BreadthFirstTraversal.breadcrumbs[q] as a way to know
-	the accessing symbol of each state. This is still perfectly valid and also needed for the
-	strategy of illustrating parse errors by displaying the so-called "symbols on the stack" which
-	requires the very same information. Therefore, I conclude that a valid complete set of (G)LR-ish
-	parse tables MUST INCLUDE the "breadcrumb" field, but a better name would be a fine thing.
-	
-	bft.earliest_predecessor[...] is involved in determining an example path to reach any
-	given parse state. It's shortest by construction (being breadth-first and all) but it may
-	not be unique. The path-finding logic should go to the BFT object, and the rest ought to be
-	up to the GLR0 object.
-	
-	BreadthFirstTraversal.traversal[x] was used to grab the core LR(0) parse items
-	(in the form of rule_id/position pairs) in order to visualize the state reached by
-	shifting the lookahead token if that shift is viable.
+	BreadthFirstTraversal.traversal[x] was used to grab the core parse items in order to
+	visualize the state reached by shifting the lookahead token if that shift is viable.
+	Such really belongs as a method on the state: soon it will move there.
 	
 	The "options" list contains numeric candidate ACTION instructions which are interpreted
 	in the usual way: This does represent a data-coupling, but one that's unlikely to change,
@@ -119,9 +111,10 @@ def consider(hfa, q, lookahead, options):
 			rule = hfa.grammar.rules[-x - 1]
 			print("Do we reduce:  %s -> %s" % (rule.lhs, ' '.join(rule.rhs)))
 
-def lalr_construction(grammar:context_free.ContextFreeGrammar, *, strict: bool = False) -> DragonBookTable:
+
+def determinize(hfa:GLR.HFA[GLR.LA_State], *, strict: bool = False) -> DragonBookTable:
+	grammar = hfa.grammar
 	assert GLR.END not in grammar.symbols
-	hfa = GLR.glalr_construction(grammar)
 	terminals = [GLR.END]+sorted(grammar.apparent_terminals())
 	translate = {t:i for i,t in enumerate(terminals)}
 	nonterminals = sorted(grammar.symbol_rule_ids.keys())

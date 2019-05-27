@@ -12,7 +12,7 @@ class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
 
-from .. import context_free, miniparse, miniscan, interfaces, LR
+from .. import context_free, miniparse, miniscan, interfaces, LR, GLR, failureprone, pretty
 
 class DefinitionError(Exception): pass
 
@@ -152,17 +152,19 @@ class ErrorHelper:
 	"""
 	def __init__(self): self.current_line_nr = 0
 	def gripe(self, message): raise DefinitionError('At line %d: %s.'%(self.current_line_nr, message))
+	def gripe_about(self, line:str, column:int, message): self.gripe(message +"\n" + failureprone.illustration(line, column, prefix='\t'))
 	def parse(self, line:str, line_nr:int, language:str):
 		""" Factoring out the commonalities of half-decent error reporting... """
 		assert isinstance(line_nr, int), type(line_nr)
 		self.current_line_nr = line_nr
 		metascan = LEX.scan(line)
 		try: return METAGRAMMAR.parse(metascan, language=language)
-		except interfaces.ScanError as e:
-			column = e.args[0]
-			self.gripe('The MacroParse MetaScanner got confused by %r right...\n\t'%(e.args[1])+illustrate_position(line, column))
+		except interfaces.ScanError as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r"%e.args[1])
 		except interfaces.ParseError as e:
-			self.gripe('The MacroParse MetaParser got confused. Stack condition was\n\t%r %s %r\nActual point of failure was:\n\t%s'%(e.args[0],context_free.DOT, e.args[1], illustrate_position(line, metascan.current_position())))
+			self.gripe_about(
+				line, metascan.current_position(),
+				'The MacroParse MetaParser got confused. Stack condition was\n\t%r %s %r\nActual point of failure was:'%(e.args[0],pretty.DOT, e.args[1])
+			)
 
 
 class MacroDefinition:
@@ -283,4 +285,4 @@ class EBNF_Definition:
 	def construct_table(self):
 		if self.inferential_start: # In other words, if any rules were ever given...
 			self.validate()
-			return LR.lalr_construction(self.plain_cfg)
+			return LR.determinize(GLR.lalr_construction(self.plain_cfg))

@@ -1,20 +1,20 @@
 """
-GLR is basically the non-deterministic version of LR parsing.
+G-for-Generalized: GLR is basically the non-deterministic version of LR parsing.
 
-As a parsing strategy, it's amenable to the use of parse tables produced by any viable LR algorithm.
-The more powerful table-construction algorithms result in comparatively fewer blind alleys for
-a GLR runtime to explore.
+As a parsing strategy, GLR means non-determinism is embraced and resolved as necessary at
+in the context of actual parse runs. You can do GLR with any viable LR-style HFA, though
+better tables naturally result in fewer blind alleys. In principle, the "trivial" table
+is just the set of all grammar rules at every point: this yields classical Earley parsing.
 
-Building a deterministic parse table can be seen as first building a non-deterministic one and
-then taking a further step to resolve any conflicts. That is why I'm going down this alley.
+Within this module, various handle-finding automaton (HFA) construction functions return a
+(mostly) standardized structure which properly represents any remaining non-determinism.
+Transmuting these to fully-deterministic structures is the LR module's job.
 
-Towards the end of this module is a trial-parse routine which exercises these GLR-type constructions.
-
-However: even though you can write a parse driver for GLR0, GLALR, and eventually GLR1 objects,
-these should still be understood as an intermediate form: they may expose bits that facilitate
-their use in other contexts. For example: The parse engine doesn't care which parse-items a state
-contains, but diagnostic visualization of the Handle-Finding Automaton would certainly need
-that information.
+The HFA class itself contains a trial-parse routine which exercises these constructions
+by determining whether they recognize a string as "in the language". It's great for testing
+and illustrates one method to perform a parallel-parse, but it does not bother to recover a
+parse tree or semantic value. Such things could be added, but preferably atop good means
+for persisting ambiguous parse tables.
 """
 import collections
 from typing import NamedTuple, Callable, Sequence, Iterable, TypeVar, Generic, List, Dict, Set
@@ -72,14 +72,21 @@ class HFA(Generic[T]):
 	
 	def trial_parse(self, sentence: Iterable):
 		"""
-		This is intended to be a super simplistic embodiment of some idea how to make a GLR parse engine.
+		This is intended to be a super simplistic embodiment of some idea how to make a GLR parse engine:
 		It exists only for unit-testing the GLR stuff, and therefore doesn't try to build a semantic value.
-
+		
+		It happens to be in the general style of the Earley parser with most of the work moved to a
+		static computation of the parse table. I've since learned that similar work was published as:
+		
+		Philippe McLean and R. Nigel Horspool. A faster Earley parser. In Compiler Construction:
+		6th International Conference, CC 1996, volume 1060 of Lecture Notes in Computer Science,
+		pages 281–293, Linkoping, Sweden, April 1996. Springer.
+		
 		The approach taken is a lock-step parallel simulation with a list of active possible stacks in
 		cactus-stack form: each entry is a cons cell consisting of a state id and prior stack. This
 		approach is guaranteed to work despite exploring all possible paths through the parse.
 
-		This is an ABC: it gets (very slightly) specialized to deal with either GLR(0) or GLALR constructions.
+		To play along, HFA states must support the .reductions_before(lexeme) method.
 		"""
 		
 		language_index = 0 # Or perhaps: self.grammar.start.index[language_symbol]
@@ -107,19 +114,28 @@ class HFA(Generic[T]):
 			for rule_id in self.graph[q].reductions_before(END): alive.append(reduce(stack, rule_id))
 		raise interfaces.ParseError("Parser recognized a viable prefix, but not a complete sentence.")
 
-class GLR0_State(NamedTuple):
+class LR0_State(NamedTuple):
+	"""
+	The LR(0) construction completely ignores look-ahead for reduce-rules, so for a
+	non-deterministic parse table, it's enough to track a set of possible rules.
+	"""
 	shift: Dict[str, int]  # symbol => state-id
 	reduce: Set[int]  # rule-id
 	def reductions_before(self, lexeme): return self.reduce
 
 
-def glr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[GLR0_State]:
+def lr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LR0_State]:
 	"""
-	This is not a method-of-CFG: that would have the wrong connotation. A grammar
-	specification is like a model, and this is more like a (complicated) view.
+	In broad strokes, this is a subset-construction with a sophisticated means
+	to identify successor-states. The keys (by which nodes are identified) are
+	core-sets of LR0 parse items, themselves pairs of (rule-id, position).
 	
-	Basically, this is a breadth-first graph exploration/construction.
-	This variety of parse automaton does not consider look-ahead.
+	Additionally, during the full-elaboration step in visiting a core, completed
+	parse-items correspond to a state's `reduce` entries. We don't worry about
+	look-ahead in this construction: hence the '0' in LR(0). The net result is
+	a compact table generated very quickly, but with severely limited power.
+	In practical systems, LR(0) is normally just a first step, but some few
+	grammars are deterministic in LR(0).
 	"""
 	
 	def optimize_unit_rules(step:dict, check:dict) -> dict:
@@ -149,7 +165,7 @@ def glr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[GLR0_State
 				return symbol_front.get(next_symbol)
 			elif rule_id<len(grammar.rules): reduce.add(rule_id)
 		foundation.transitive_closure(core, visit)
-		graph.append(GLR0_State(shift=optimize_unit_rules(step, check), reduce=reduce,))
+		graph.append(LR0_State(shift=optimize_unit_rules(step, check), reduce=reduce, ))
 	
 	assert grammar.start
 	##### Start by arranging most of the grammar data in a convenient form:
@@ -166,13 +182,19 @@ def glr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[GLR0_State
 	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
 
 
-class GLALR_State(NamedTuple):
+class LA_State(NamedTuple):
+	"""
+	The key difference here from LR(0) is that the possible reductions are keyed
+	to lookahead tokens from the follow-set of that reduction *however derived*.
+	
+	The derivation of
+	"""
 	shift: Dict[str, int]
 	reduce: Dict[str, List[int]]
 	def reductions_before(self, lexeme): return self.reduce.get(lexeme, ())
 
 
-def glalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[GLALR_State]:
+def lalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	"""
 	Building a non-deterministic LALR(1)-style table is a direct extension of the GLR(0)
 	construction. The main objective is to figure out which look-ahead tokens are relevant
@@ -186,7 +208,7 @@ def glalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[GLALR_Sta
 	one for each time a symbol gets elaborated. I suspect this is slightly more specific.
 	"""
 	
-	glr0 = glr0_construction(grammar)
+	glr0 = lr0_construction(grammar)
 	terminals = grammar.apparent_terminals()
 	token_sets = [terminals.intersection(node.shift.keys()) for node in glr0.graph]
 	for q in glr0.accept: token_sets[q].add(END) # Denoting that end-of-input can follow a sentence.
@@ -213,7 +235,7 @@ def glalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[GLALR_Sta
 			tokens.update(*[token_sets[j] for j in inflow[k]])
 			token_sets[k] = tokens
 	# At this point, we could stop and make a GLALR table...
-	def transmogrify(q:int, node:GLR0_State) -> GLALR_State:
+	def transmogrify(q:int, node:LR0_State) -> LA_State:
 		""" This doesn't worry about precedence declarations just yet... """
 		reduce = {}
 		for rule_id in node.reduce:
@@ -221,9 +243,14 @@ def glalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[GLALR_Sta
 				assert isinstance(token, str)
 				if token not in reduce: reduce[token] = [rule_id]
 				else: reduce[token].append(rule_id) # This branch represents an R/R conflict...
-		return GLALR_State(node.shift, reduce)
+		return LA_State(node.shift, reduce)
 	return HFA(
 		graph=[transmogrify(q, node) for q, node in enumerate(glr0.graph)],
 		initial=glr0.initial, accept=glr0.accept, grammar=grammar, bft=glr0.bft
 	)
 
+def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
+	"""
+	Before embarking on a quest
+	"""
+	pass
