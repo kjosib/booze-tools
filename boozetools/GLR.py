@@ -72,19 +72,15 @@ class HFA(Generic[T]):
 	
 	def trial_parse(self, sentence: Iterable):
 		"""
-		This is intended to be a super simplistic embodiment of some idea how to make a GLR parse engine:
-		It exists only for unit-testing the GLR stuff, and therefore doesn't try to build a semantic value.
+		This is intended to be a super-simplistic non-deterministic recognizer: It exists only for
+		unit-testing the GLR table-construction algorithms, and therefore doesn't try to build a
+		semantic value or worry about pathological grammars.
 		
-		It happens to be in the general style of the Earley parser with most of the work moved to a
-		static computation of the parse table. I've since learned that similar work was published as:
-		
-		Philippe McLean and R. Nigel Horspool. A faster Earley parser. In Compiler Construction:
-		6th International Conference, CC 1996, volume 1060 of Lecture Notes in Computer Science,
-		pages 281–293, Linkoping, Sweden, April 1996. Springer.
-		
-		The approach taken is a lock-step parallel simulation with a list of active possible stacks in
-		cactus-stack form: each entry is a cons cell consisting of a state id and prior stack. This
-		approach is guaranteed to work despite exploring all possible paths through the parse.
+		The approach taken is a lock-step parallel simulation with a cactus-stack of viable states:
+		each entry is a cons cell consisting of a state id and prior stack. Because it explores
+		every possible parse, it will diverge if faced with an infinitely-ambiguous situation.
+		There are ways to cope with such cases, but in practice they are normally the result of
+		mistakes, so the more useful response is to reject infinitely-ambiguous grammars.
 
 		To play along, HFA states must support the .reductions_before(lexeme) method.
 		"""
@@ -186,8 +182,6 @@ class LA_State(NamedTuple):
 	"""
 	The key difference here from LR(0) is that the possible reductions are keyed
 	to lookahead tokens from the follow-set of that reduction *however derived*.
-	
-	The derivation of
 	"""
 	shift: Dict[str, int]
 	reduce: Dict[str, List[int]]
@@ -251,6 +245,20 @@ def lalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 
 def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	"""
-	Before embarking on a quest
+	Before embarking on a quest to produce a minimal-LR(1) table by sophisticated
+	methods, it's worth learning how to produce the maximal-LR(1) table by (some
+	variant of) Knuth's original method.
+	
+	A Knuth parse-item is like an LR(0) item augmented with the (1) next token
+	expected AFTER the corresponding rule would be recognized. The initial core
+	would look like { .S/# } in the usual notation. Elaboration of non-core items
+	requires knowledge of FIRST and EPSILON for every symbol -- or does it?
+	
+	Every LR(1) state has a corresponding LR(0) state with the same shift vocabulary.
+	Need to know what follows X in state Q? Look at Q_prime.shift[X].shift.keys().
+	Which state is Q_prime? It's at lr0.bfa.catalog[isocore]. Ok, that all works
+	There are some caveats regarding
+	
+	But, we also need to know
 	"""
 	pass
