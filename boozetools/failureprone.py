@@ -10,36 +10,73 @@ Such should be made both likely and comfortable independent of other tools.
 
 Error reporting is actually a topic of some complexity. Fortunately, the common cases
 are reasonably straightforward and for the uncommon ones there is YAGNI (yet).
+
+If you can localize where an error came from, you'd generally like to include some
+context in the report. The usual strategy is to show the offending line, ideally
+with a specific portion highlighted somehow. If you're dealing with a text console
+(as many tools do) then the `illustration` function helps: Given a single line of
+text and a few parameters, it makes a suitable picture.
+
+I prefer to keep line-breaking separate from scanning and parsing, so in those areas
+a simple integer position is as much location data as you get. What's a decent means
+to convert that to a line and column number? Or to slice the corresponding line
+from a larger text string? The Cartographer handles that. It also provides a nice
+`complain(...)` method, which formats a decent-looking error message to STDOUT.
+
+There is just one complication:
+
+Line breaks are a funny thing. Unix calls for \n. Apple prior to OSx called for \r.
+CP/M and its derivatives like Windows call for \r\n, really a printer control sequence.
+OS/390 (an IBM mainframe thing) tends toward character 0x85 (a high-ascii control code)
+whenever it isn't thinking in EBCDIC, but who in their right mind uses EBCDIC anymore?
+The Unicode line-breaking algorithm calls for no less than ELEVEN ways to break a line!
+
+The applications I've tested treat the Unix, Apple, and DOS conventions as line-breaks
+and mostly ignore the other options defined in the Unicode standard, so that's the
+default behavior of the Cartographer. But you can supply a mode parameter to specify
+different line-ending conventions. The options are given symbolically as keys in the
+LINEBREAKS dictionary.
+
+So how exactly SHOULD you delimit lines? The answer, my friend, is blowin' in the wind....
 """
 
-import itertools, bisect
+import bisect, re, sys
 
-def illustration(text:str, start:int, width:int=0, *, prefix='') -> str:
+LINEBREAKS = {
+	'normal': re.compile(r'\r\n?|\n'),
+	'unicode': re.compile(r'\r\n|[\x0a-\x0d\x1c-\x1e\u0085\u2028\u2029]]'),
+	'unix': re.compile(r'\n'),
+	'apple': re.compile(r'\r'),
+	'dos': re.compile(r'\r\n'),
+}
+
+def illustration(single_line:str, start:int, width:int=0, *, prefix='') -> str:
 	""" Builds up a picture of where something appears in a line of text. Useful for polite error messages. """
-	text = text
-	blanks = ''.join(c if c == '\t' else ' ' for c in prefix+text[:start])
+	blanks = ''.join(c if c == '\t' else ' ' for c in prefix + single_line[:start])
 	underline = '^'*(width or 1)+'-- right there'
-	return prefix+text.rstrip()+'\n'+blanks+underline
+	return prefix + single_line.rstrip() + '\n' + blanks + underline
 
-class Text:
-	"""
-	Line breaks are a funny thing. Unix calls for \n. Apple prior to OSx called for \r.
-	CP/M and its derivatives like Windows call for \r\n, really a printer control sequence.
-	The Unicode line-breaking algorithm calls for no less than ELEVEN ways to break a line!
-	So how exactly SHOULD you delimit lines? The answer, my friend, is blowin' in the wind....
-	"""
-	def __init__(self, content:str, filename:str=None):
+class Cartographer:
+	
+	def __init__(self, content:str, mode='normal'):
 		self.content = content
-		self.bounds = [0, *itertools.accumulate(map(len, content.splitlines(keepends=True))), len(content)]
-		self.nr_lines = len(self.bounds) - 2
-		self.filename = filename
-	def each_line(self):
-		for i in range(self.nr_lines): yield self.get_line(i)
-	def get_line(self, row:int) -> str:
+		inside = [m.end() for m in LINEBREAKS[mode].finditer(content)]
+		self.__bounds = [0] + inside + [len(content)]
+		
+	def slice(self, row:int) -> slice:
 		""" Zero-Based! (Like everything else in modern computing...) and includes line end. """
-		return self.content[self.bounds[row]:self.bounds[row+1]]
+		return slice(self.__bounds[row],self.__bounds[row + 1])
+	
 	def find_row_col(self, index:int):
 		""" Zero-Based! This right here is the main point of the class... """
-		row = bisect.bisect_right(self.bounds, index, hi=len(self.bounds)-1)-1
-		col = index - self.bounds[row]
+		row = bisect.bisect_right(self.__bounds, index, hi=len(self.__bounds) - 1) - 1
+		col = index - self.__bounds[row]
 		return row, col
+	
+	def complain(self, index:int, *, width=1, message:str=None, filename:str=None):
+		row, col = self.find_row_col(index)
+		line = self.content[self.slice(row)]
+		if filename is None: print("At line %d, column %d,"%(row+1, col+1), file=sys.stderr)
+		else: print("At line %d, column %d, in file %s"%(row+1, col+1, filename), file=sys.stderr)
+		print(illustration(line, col, width, prefix=' >>> '), file=sys.stderr)
+		if message is not None: print(message, file=sys.stderr)
