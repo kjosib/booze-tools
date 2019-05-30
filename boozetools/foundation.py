@@ -80,6 +80,8 @@ def strongly_connected_components_by_tarjan(graph):
 	presentation, the low-link is local to the recursive call, eliminating one confusion.
 	
 	It's expected that graph[q] is the list of arcs from (or perhaps to) node q.
+	The linear-time bound assumes all nodes are numbered from 0..last. An isomorphism
+	for hashable node keys is provided below.
 	"""
 	def unvisited(q): return index[q] is None
 	def connect(q) -> int:
@@ -104,3 +106,13 @@ def strongly_connected_components_by_tarjan(graph):
 	output = []
 	main()
 	return output
+
+def strongly_connected_components_hashable(graph:dict):
+	""" This adapts Tarjan's SCC algorithm for more kinds of graph node labels than strictly integers. """
+	table = list(graph.keys())
+	index = {key:i for i,key in enumerate(table)}
+	prime = [
+		[index[arc] for arc in node if arc in index]
+		for node in graph.values()
+	]
+	return [[table[q] for q in component] for component in strongly_connected_components_by_tarjan(prime)]

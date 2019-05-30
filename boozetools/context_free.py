@@ -1,6 +1,5 @@
-import typing, collections
-from .foundation import *
-from . import pretty, interfaces
+import typing, collections, itertools
+from . import pretty, foundation
 
 LEFT, RIGHT, NONASSOC, BOGUS = object(), object(), object(), object()
 
@@ -11,8 +10,9 @@ class FailedToSetPrecedenceOnPrecsym(Fault): pass
 class PrecedenceDeclaredTwice(Fault): pass
 class RuleProducesBogusToken(Fault): pass # The rule produces a bogus symbol...
 class UnreachableSymbols(Fault): pass
-class NonproductiveSymbols(Fault): pass
-class IllFoundedGrammar(Fault): pass
+class IllFoundedSymbols(Fault): pass
+class RenamingLoop(Fault): pass
+class EpsilonLoop(Fault): pass
 
 class Rule(typing.NamedTuple):
 	lhs: str
@@ -84,7 +84,7 @@ class ContextFreeGrammar:
 		if lhs not in self.symbol_rule_ids: self.symbol_rule_ids[lhs] = []
 		sri = self.symbol_rule_ids[lhs]
 		if any(self.rules[rule_id].rhs == rhs for rule_id in sri): raise DuplicateRule(lhs, rhs)
-		sri.append(allocate(self.rules, Rule(lhs, rhs, attribute, prec_sym)))
+		sri.append(foundation.allocate(self.rules, Rule(lhs, rhs, attribute, prec_sym)))
 	
 	def apparent_terminals(self) -> set:
 		""" Of all symbols mentioned, those without production rules are apparently terminal. """
@@ -95,22 +95,83 @@ class ContextFreeGrammar:
 		opaque = self.apparent_terminals() # These definitely do NOT produce epsilon.
 		epsilon = set() # These do, and are the final return object.
 		population = {k:len(v) for k,v in self.symbol_rule_ids.items()}
-		work = list(self.rules)
-		while work:
-			maybe = []
-			for rule in work:
+		black = list(self.rules)
+		while black:
+			red = []
+			for rule in black:
 				if all(map(epsilon.__contains__, rule.rhs)): epsilon.add(rule.lhs)
 				elif any(map(opaque.__contains__, rule.rhs)):
 					population[rule.lhs] -= 1
 					if population[rule.lhs] == 0: opaque.add(rule.lhs)
-				else: maybe.append(rule)
-			if len(maybe) < len(work): work = maybe
-			else:
-				# If this happens, all rules that remain are mutually recursive or worse,
-				# and I have an idea that this shouldn't happen in a well-founded grammar.
-				raise IllFoundedGrammar(maybe)
+				else: red.append(rule)
+			if len(red) < len(black): black = red
+			else: raise IllFoundedSymbols(set(rule.lhs for rule in red))
 		return epsilon
 	
+	def assert_no_bogons(self):
+		""" "Bogus" tokens only exist to establish precedence levels and must not appear in right-hand sides. """
+		bogons = {sym for sym, prec in self.token_precedence.items() if self.level_assoc[prec] is BOGUS}
+		for rule_id, rule in enumerate(self.rules):
+			if any(symbol in bogons for symbol in rule.rhs):
+				raise RuleProducesBogusToken(rule_id)
+	
+	def assert_well_founded(self):
+		"""
+		Here, "well-founded" means "can possibly produce a finite sequence of terminals."
+		"Ill-founded" is the opposite. Example ill-founded grammars:
+			S -> x S
+			A -> B y;  B -> A x
+		
+		A terminal symbol is well-founded.
+		A rule with only well-founded symbols in the right-hand side is well-founded.
+		A non-terminal symbol with at least one well-founded rule is well-founded.
+		Induction applies. A grammar with only well-founded symbols is well-founded.
+		"""
+		well_founded = self.apparent_terminals()
+		black = list(self.rules)
+		while black:
+			red = []
+			for rule in black:
+				if rule.lhs not in well_founded:
+					if all(s in well_founded for s in rule.rhs): well_founded.add(rule.lhs)
+					else: red.append(rule)
+			if len(red) < len(black): black = red
+			else: raise IllFoundedSymbols(set(rule.lhs for rule in red))
+	
+	def assert_no_orphans(self):
+		""" Every symbol should be reachable from the start symbol(s). """
+		produces = collections.defaultdict(set)
+		for rule in self.rules: produces[rule.lhs].update(rule.rhs)
+		unreachable = self.symbols - foundation.transitive_closure(self.start, produces.get)
+		if unreachable: raise UnreachableSymbols(unreachable) # NB: Bogons are not among self.symbols.
+	
+	def assert_no_rename_loops(self):
+		""" If a symbol may be replaced by itself (possibly indirectly) then it is diseased. """
+		broken = set()
+		renames = collections.defaultdict(set)
+		for lhs, rhs, *_ in self.rules:
+			if len(rhs) == 1:
+				if lhs == rhs[0]: broken.add(lhs)
+				else: renames[lhs].add(rhs[0])
+		for component in foundation.strongly_connected_components_hashable(renames):
+			if len(component) > 1: broken.update(component)
+		if broken: raise RenamingLoop(broken)
+	
+	def assert_no_epsilon_loops(self):
+		""" Epsilon Left-Self-Recursion is OK. All other recursive-epsilon-loops are pathological. """
+		epsilon = self.find_epsilon()
+		reaches = collections.defaultdict(set)
+		broken = set()
+		for lhs, rhs, *_ in self.rules:
+			epsilon_prefix = list(itertools.takewhile(epsilon.__contains__, rhs))
+			if not epsilon_prefix: continue
+			if epsilon_prefix[0] == lhs: epsilon_prefix.pop(0) #
+			if lhs in epsilon_prefix: broken.add(lhs)
+			reaches[lhs].update(epsilon_prefix)
+		for component in foundation.strongly_connected_components_hashable(reaches):
+			if len(component) > 1: broken.update(component)
+		if broken: raise EpsilonLoop(broken)
+		
 	def validate(self):
 		"""
 		This raises an exception (derived from Fault, above) for the first error noticed.
@@ -118,29 +179,16 @@ class ContextFreeGrammar:
 		inventing some sort of document structure to talk about faults in grammars.
 		Then again, maybe that's in the pipeline.
 		"""
-		bogons = {sym for sym, prec in self.token_precedence.items() if self.level_assoc[prec] is BOGUS}
-		produces = collections.defaultdict(set)  # nt -> set[t]
-		produced_by = collections.defaultdict(set)
-		for rule_id, rule in enumerate(self.rules):
-			assert rule.attribute is not None or len(rule.rhs) == 1
-			if rule.prec_sym is not None and rule.prec_sym not in self.token_precedence:
-				raise FailedToSetPrecedenceOnPrecsym(rule_id)
-			produces[rule.lhs].update(rule.rhs)
-			for symbol in rule.rhs:
-				produced_by[symbol].add(rule.lhs)
-				if symbol in bogons: raise RuleProducesBogusToken(rule_id)
-		unreachable = self.symbols - transitive_closure(self.start, produces.get)
-		# NB: This shows the bogons are not among the true symbols.
-		if unreachable: raise UnreachableSymbols(unreachable)
-		nonterminals = set(produces.keys())
-		nonproductive = self.symbols - transitive_closure(self.symbols-nonterminals, produced_by.get)
-		if nonproductive: raise NonproductiveSymbols(nonproductive)
-		pass
+		self.assert_no_bogons()
+		self.assert_well_founded()
+		self.assert_no_orphans()
+		self.assert_no_rename_loops()
+		self.assert_no_epsilon_loops()
 	
 	def assoc(self, direction, symbols):
 		assert direction in (LEFT, NONASSOC, RIGHT, BOGUS)
 		assert symbols
-		level = allocate(self.level_assoc, direction)
+		level = foundation.allocate(self.level_assoc, direction)
 		for symbol in symbols:
 			if symbol in self.symbol_rule_ids: raise NonTerminalsCannotHavePrecedence(symbol)
 			if symbol in self.token_precedence: raise PrecedenceDeclaredTwice(symbol)
