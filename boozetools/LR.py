@@ -100,13 +100,13 @@ def consider(hfa, q, lookahead, options):
 		if x > 0:
 			print("Do we shift into:")
 			left_parts, right_parts = [], []
-			for r, p in hfa.bft.traversal[x]:
+			for r, p, *_ in hfa.bft.traversal[x]:
 				rhs = hfa.grammar.rules[r].rhs
 				left_parts.append(' '.join(rhs[:p]))
 				right_parts.append(' '.join(rhs[p:]))
 			align = max(map(len, left_parts)) + 10
-			for l, r in zip(left_parts, right_parts): print(
-				' ' * (align - len(l)) + l + '  ' + pretty.DOT + '  ' + r)
+			for l, r in zip(left_parts, right_parts):
+				print(' ' * (align - len(l)) + l + '  ' + pretty.DOT + '  ' + r)
 		else:
 			rule = hfa.grammar.rules[-x - 1]
 			print("Do we reduce:  %s -> %s" % (rule.lhs, ' '.join(rule.rhs)))

@@ -148,6 +148,7 @@ def lr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LR0_State]:
 			proxy = symbol
 			while proxy in replace: proxy = replace[proxy]
 			shifts[symbol] = bft.lookup(frozenset(step[proxy]), breadcrumb=proxy)
+			if proxy != symbol: bft.catalog[frozenset(step[symbol])] = shifts[symbol] # Thus LR(1) can find iso-cores.
 		return shifts
 	
 	def build_state(core: frozenset):
@@ -251,14 +252,42 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	
 	A Knuth parse-item is like an LR(0) item augmented with the (1) next token
 	expected AFTER the corresponding rule would be recognized. The initial core
-	would look like { .S/# } in the usual notation. Elaboration of non-core items
-	requires knowledge of FIRST and EPSILON for every symbol -- or does it?
-	
-	Every LR(1) state has a corresponding LR(0) state with the same shift vocabulary.
-	Need to know what follows X in state Q? Look at Q_prime.shift[X].shift.keys().
-	Which state is Q_prime? It's at lr0.bfa.catalog[isocore]. Ok, that all works
-	There are some caveats regarding
-	
-	But, we also need to know
+	would look like { .S/# } in the usual notation. Otherwise, the algorithm has
+	much in common with the LR(0) construction above.
 	"""
-	pass
+	
+	lr0 = lr0_construction(grammar) # This implicitly solves a lot of sub-problems.
+	first, epsilon = grammar.find_first_and_epsilon()
+	def transparent(symbols): return all(s in epsilon for s in symbols)
+	def build_state(core: frozenset):
+		isocore = frozenset((r,p) for (r,p,f) in core)
+		isostate = lr0.graph[lr0.bft.catalog[isocore]]
+		
+		step, reduce = collections.defaultdict(set), collections.defaultdict(list)
+		def visit(item):
+			rule_id, position, follow = item
+			rhs = RHS[rule_id]
+			if position < len(rhs):
+				next_symbol = rhs[position]
+				step[next_symbol].add((rule_id, position+1, follow))
+				after = list(lr0.graph[isostate.shift[next_symbol]].shift.keys())
+				if transparent(rhs[position+1:]): after.append(follow)
+				if next_symbol in grammar.symbol_rule_ids: return front(grammar.symbol_rule_ids[next_symbol], after )
+			elif rule_id<len(grammar.rules): reduce[follow].append(rule_id)
+		foundation.transitive_closure(core, visit)
+		graph.append(LA_State(
+			shift={sym:bft.lookup(frozenset(items), breadcrumb=sym) for sym,items in step.items()},
+			reduce=reduce,
+		))
+	
+	assert grammar.start
+	graph = []
+	# Initial-state cores refer only to the "augmentation" rule -- which has no LHS in this manifestation.
+	def front(rule_ids, follow): return frozenset([(r,0, s) for r in rule_ids for s in follow])
+	bft = foundation.BreadthFirstTraversal()
+	graph = []
+	RHS = [rule.rhs for rule in grammar.rules]
+	initial = [bft.lookup(front([foundation.allocate(RHS, [language])], [END])) for language in grammar.start]
+	bft.execute(build_state)
+	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
+	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)

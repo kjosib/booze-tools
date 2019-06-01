@@ -90,24 +90,38 @@ class ContextFreeGrammar:
 		""" Of all symbols mentioned, those without production rules are apparently terminal. """
 		return self.symbols - self.symbol_rule_ids.keys()
 	
-	def find_epsilon(self) -> set:
-		""" Which nonterminals can possibly produce epsilon? Enquiring algorithms want to know! """
-		opaque = self.apparent_terminals() # These definitely do NOT produce epsilon.
-		epsilon = set() # These do, and are the final return object.
-		population = {k:len(v) for k,v in self.symbol_rule_ids.items()}
-		black = list(self.rules)
-		while black:
-			red = []
-			for rule in black:
-				if all(map(epsilon.__contains__, rule.rhs)): epsilon.add(rule.lhs)
-				elif any(map(opaque.__contains__, rule.rhs)):
-					population[rule.lhs] -= 1
-					if population[rule.lhs] == 0: opaque.add(rule.lhs)
-				else: red.append(rule)
-			if len(red) < len(black): black = red
-			else: raise IllFoundedSymbols(set(rule.lhs for rule in red))
-		return epsilon
-	
+
+	def find_first_and_epsilon(self):
+		"""
+		Answers the two questions:
+			Which terminals can symbol X begin with?
+			Which symbols can produce the empty string?
+		This solution takes pains not to repeat work, and so should be reasonably quick.
+		"""
+		epsilon = set()
+		first = {s:{s} for s in self.symbols}
+		hangar = collections.defaultdict(list)
+		work = [(i,0) for i in range(len(self.rules))]
+		while work:
+			r,p = work.pop()
+			lhs, rhs, _, _ = self.rules[r]
+			if p == len(rhs):
+				epsilon.add(lhs)
+				if lhs in hangar: work.extend(hangar.pop(lhs))
+			else:
+				symbol = rhs[p]
+				first[lhs].add(symbol)
+				if symbol in epsilon: work.append((r,p+1))
+				else: hangar[symbol].append((r,p+1))
+		for component in foundation.strongly_connected_components_hashable(first):
+			f = set()
+			for symbol in component:
+				f.update(*(first[x] for x in first[symbol]))
+				first[symbol] = f
+			f.difference_update(self.symbol_rule_ids)
+		return first, epsilon
+		
+		
 	def assert_no_bogons(self):
 		""" "Bogus" tokens only exist to establish precedence levels and must not appear in right-hand sides. """
 		bogons = {sym for sym, prec in self.token_precedence.items() if self.level_assoc[prec] is BOGUS}
@@ -149,7 +163,7 @@ class ContextFreeGrammar:
 		""" If a symbol may be replaced by itself (possibly indirectly) then it is diseased. """
 		broken = set()
 		renames = collections.defaultdict(set)
-		for lhs, rhs, *_ in self.rules:
+		for lhs, rhs, _, _ in self.rules:
 			if len(rhs) == 1:
 				if lhs == rhs[0]: broken.add(lhs)
 				else: renames[lhs].add(rhs[0])
@@ -159,13 +173,13 @@ class ContextFreeGrammar:
 	
 	def assert_no_epsilon_loops(self):
 		""" Epsilon Left-Self-Recursion is OK. All other recursive-epsilon-loops are pathological. """
-		epsilon = self.find_epsilon()
+		first, epsilon = self.find_first_and_epsilon()
 		reaches = collections.defaultdict(set)
 		broken = set()
-		for lhs, rhs, *_ in self.rules:
+		for lhs, rhs, _, _ in self.rules:
 			epsilon_prefix = list(itertools.takewhile(epsilon.__contains__, rhs))
 			if not epsilon_prefix: continue
-			if epsilon_prefix[0] == lhs: epsilon_prefix.pop(0) #
+			if epsilon_prefix[0] == lhs: epsilon_prefix.pop(0)
 			if lhs in epsilon_prefix: broken.add(lhs)
 			reaches[lhs].update(epsilon_prefix)
 		for component in foundation.strongly_connected_components_hashable(reaches):

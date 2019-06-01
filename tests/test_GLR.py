@@ -1,6 +1,6 @@
 import unittest
 
-from boozetools import context_free, GLR, interfaces
+from boozetools import context_free, GLR, interfaces, LR
 
 class TestGLR0(unittest.TestCase):
 	
@@ -18,15 +18,17 @@ class TestGLR0(unittest.TestCase):
 			assert not self.pathological, "Grammar %r should not have validated."%self._testMethodName
 			glr0 = GLR.lr0_construction(self.cfg)
 			glalr = GLR.lalr_construction(self.cfg)
+			glr1 = GLR.canonical_lr1(self.cfg)
 			for sentence in self.good:
 				with self.subTest(sentence=sentence):
-					assert glr0.trial_parse(sentence)
-					assert glalr.trial_parse(sentence)
+					for hfa in [glr0, glalr, glr1]:
+						assert hfa.trial_parse(sentence)
 			for sentence in self.bad:
 				with self.subTest(sentence=sentence):
-					try: glalr.trial_parse(sentence)
-					except interfaces.ParseError: pass
-					else: assert False, "%r should not be accepted."%sentence
+					for hfa in [glr0, glalr, glr1]:
+						try: hfa.trial_parse(sentence)
+						except interfaces.ParseError: pass
+						else: assert False, "%r should not be accepted."%sentence
 
 	def r(self, lhs, rhs:str):
 		rhs = rhs.split()
