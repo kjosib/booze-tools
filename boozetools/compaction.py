@@ -160,19 +160,38 @@ def decompose_by_edit_distance(matrix):
 	and the associated code would be responsible for any error processing. That would
 	take away some of the special-casing associated with parse errors: you just need
 	to make sure the correct code reference is installed in the rule response table.
+	
+	This is one area where performance did become a real problem with a simple approach.
+	Therefore, I've thought about things and come up with something I can be reasonably
+	proud of. All hail the well-considered loop invariant!
 	"""
 	height, width = len(matrix), len(matrix[0])
 	population = [width - row.count(None) for row in matrix]
 	schedule = foundation.grade(population)
 	fallback = [-1] * height
-	for count, q in enumerate(schedule):
-		metric = population[q]
-		for x, j in enumerate(schedule[:count]):
+	# Invariant:
+	# 1. fallback array gets the right information as we go along.
+	# 2. schedule[:bound] mentions no two identical rows, and otherwise mentions rows
+	#    in order of increasing population.
+	# Postcondition: fallback array has the best information, and bound==len(schedule)
+	# This calls for some custom-crafted loop control:
+	bound = 0
+	while bound < len(schedule):
+		q = schedule[bound]
+		metric = population[q] # i.e. the cost of writing out the whole row.
+		x = bound    # We'll iterate DOWNWARD through the schedule, because that's the direction
+		while x > 0: # from which a completely equivalent row is soonest to be found.
+			x -= 1
+			j = schedule[x]
+			if metric + population[j] < population[q]: # then no sparser row can possibly improve on what we have.
+				bound += 1
+				break
 			edit_distance = sum( a != b for a, b in zip(matrix[q], matrix[j]))
 			if edit_distance < metric: metric, fallback[q] = edit_distance, j
-			if edit_distance == 0: # We have identified an equivalence class!
-				schedule.pop(x) # Remove extras from consideration henceforth
-				break # and look no further. (This is a big win for large tables.)
+			if edit_distance == 0:  # This row is identical to a previous one.
+				schedule.pop(bound) # Remove this duplicate from consideration henceforth,
+				break               # and look no further for improvement on it.
+		else: bound += 1
 	# Now that we have our fallback vector computed, it's straightforward to work out the edits:
 	def edits(row, basis) -> dict:
 		if basis < 0: return {c:v for c,v in enumerate(row) if v is not None}
