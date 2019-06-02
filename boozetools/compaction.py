@@ -170,6 +170,7 @@ def decompose_by_edit_distance(matrix):
 		for j in schedule[:count]:
 			edit_distance = sum( a != b for a, b in zip(matrix[q], matrix[j]))
 			if edit_distance < metric: metric, fallback[q] = edit_distance, j
+			if edit_distance == 0: break # Profiling showed this line to be a minor win.
 	# Now that we have our fallback vector computed, it's straightforward to work out the edits:
 	def edits(row, basis) -> dict:
 		if basis < 0: return {c:v for c,v in enumerate(row) if v is not None}
