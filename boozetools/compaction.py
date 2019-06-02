@@ -167,10 +167,12 @@ def decompose_by_edit_distance(matrix):
 	fallback = [-1] * height
 	for count, q in enumerate(schedule):
 		metric = population[q]
-		for j in schedule[:count]:
+		for x, j in enumerate(schedule[:count]):
 			edit_distance = sum( a != b for a, b in zip(matrix[q], matrix[j]))
 			if edit_distance < metric: metric, fallback[q] = edit_distance, j
-			if edit_distance == 0: break # Profiling showed this line to be a minor win.
+			if edit_distance == 0: # We have identified an equivalence class!
+				schedule.pop(x) # Remove extras from consideration henceforth
+				break # and look no further. (This is a big win for large tables.)
 	# Now that we have our fallback vector computed, it's straightforward to work out the edits:
 	def edits(row, basis) -> dict:
 		if basis < 0: return {c:v for c,v in enumerate(row) if v is not None}
