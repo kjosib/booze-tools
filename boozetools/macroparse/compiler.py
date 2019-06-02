@@ -23,9 +23,9 @@ PARSE_TABLE_METHODS = {
 
 DEFAULT_TABLE_METHOD = 'LALR'
 
-def compile_file(pathname) -> dict:
+def compile_file(pathname, *, method=DEFAULT_TABLE_METHOD) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
-	return compile_string(document).as_compact_form(filename=os.path.basename(pathname))
+	return compile_string(document, method=method).as_compact_form(filename=os.path.basename(pathname))
 
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
