@@ -2,7 +2,7 @@
 
 For now there are three major components. Eventually there will be more. These are:
 
-* MiniParse -- Provides LALR(1) and operator-precedence grammar facilities (like Lemon, YACC, or Bison).
+* MiniParse -- Provides LALR(1) or Canonical-LR(1) with operator-precedence grammar facilities (like Lemon, YACC, or Bison).
 * MiniScan -- Provides a DFA-based backtracking scanner (like Flex or Lex) with a few extra goodies.
 * MacroParse -- This is the crown jewel of the package right now. It:
     * provides for a separate document containing the definitions of a scanner and parser.
