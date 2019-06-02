@@ -7,12 +7,12 @@ good bit of hair all by itself.
 
 The MetaParse definition object works with structured rewriting-rule objects, so this
 file begins with definitions of some semantic objects. Next come a grammar and scanner
-(implented via the "mini" infrastucture) which build those semantics up. Last is a
+(implemented via the "mini" infrastructure) which build those semantics up. Last is a
 class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
 
-from .. import context_free, miniparse, miniscan, interfaces, LR, GLR, failureprone, pretty
+from .. import context_free, miniparse, miniscan, interfaces, failureprone, pretty
 
 class DefinitionError(Exception): pass
 
@@ -282,7 +282,7 @@ class EBNF_Definition:
 			self.plain_cfg.start.append(self.inferential_start)
 		self.plain_cfg.validate()
 	
-	def construct_table(self):
+	def sugarless_form(self) -> context_free.ContextFreeGrammar:
 		if self.inferential_start: # In other words, if any rules were ever given...
 			self.validate()
-			return LR.determinize(GLR.lalr_construction(self.plain_cfg))
+			return self.plain_cfg

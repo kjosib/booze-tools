@@ -13,8 +13,15 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 
 """
 import re, os, collections
-from .. import miniscan, regular, LR, foundation, interfaces, compaction
+from .. import miniscan, regular, LR, GLR, foundation, interfaces, compaction
 from . import grammar
+
+PARSE_TABLE_METHODS = {
+	'LALR': GLR.lalr_construction,
+	'CLR': GLR.canonical_lr1,
+}
+
+DEFAULT_TABLE_METHOD = 'LALR'
 
 def compile_file(pathname) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
@@ -68,7 +75,7 @@ class TextBookForm:
 		if self.parse_table is not None:
 			self.parse_table.make_csv(pathstem)
 
-def compile_string(document:str) -> TextBookForm:
+def compile_string(document:str, *, method=DEFAULT_TABLE_METHOD) -> TextBookForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
@@ -202,7 +209,8 @@ def compile_string(document:str) -> TextBookForm:
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
 	if condition_definitions: tie_conditions()
 	dfa = nfa.subset_construction().minimize_states().minimize_alphabet() if nfa.states else None
-	return TextBookForm(dfa=dfa, scan_actions=scan_actions, parse_table=ebnf.construct_table(),)
+	hfa = PARSE_TABLE_METHODS[method](ebnf.sugarless_form())
+	return TextBookForm(dfa=dfa, scan_actions=scan_actions, parse_table=LR.determinize(hfa))
 
 
 def encode_parse_rules(rules:list) -> dict:
@@ -228,6 +236,7 @@ def main():
 	parser.add_argument('--pretty', action='store_true', help='Display uncompressed tables in attractive grid format on STDOUT.')
 	parser.add_argument('--csv', action='store_true', help='Generate CSV versions of uncompressed tables, suitable for inspection.')
 	parser.add_argument('--dev', action='store_true', help='Operate in "development mode" -- which changes from time to time.')
+	parser.add_argument('-m', '--method', choices=PARSE_TABLE_METHODS, default=DEFAULT_TABLE_METHOD, type=str.upper, help="Which parser table construction method to use.")
 	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
 	stem, extension = os.path.splitext(args.source_path)
@@ -237,7 +246,7 @@ def main():
 		exit(1)
 	with(open(args.source_path)) as fh:document = fh.read()
 	try:
-		textbook_form = compile_string(document)
+		textbook_form = compile_string(document, method=args.method)
 	except grammar.DefinitionError as e:
 		print(e.args[0], file=sys.stderr)
 		exit(1)

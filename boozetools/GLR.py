@@ -258,6 +258,7 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	
 	lr0 = lr0_construction(grammar) # This implicitly solves a lot of sub-problems.
 	first, epsilon = grammar.find_first_and_epsilon()
+	terminals = grammar.apparent_terminals()
 	def transparent(symbols): return all(s in epsilon for s in symbols)
 	def build_state(core: frozenset):
 		isocore = frozenset((r,p) for (r,p,f) in core)
@@ -270,8 +271,8 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 			if position < len(rhs):
 				next_symbol = rhs[position]
 				step[next_symbol].add((rule_id, position+1, follow))
-				after = list(lr0.graph[isostate.shift[next_symbol]].shift.keys())
-				if transparent(rhs[position+1:]): after.append(follow)
+				after = set(lr0.graph[isostate.shift[next_symbol]].shift.keys()) & terminals
+				if transparent(rhs[position+1:]): after.add(follow)
 				if next_symbol in grammar.symbol_rule_ids: return front(grammar.symbol_rule_ids[next_symbol], after )
 			elif rule_id<len(grammar.rules): reduce[follow].append(rule_id)
 		foundation.transitive_closure(core, visit)
@@ -290,4 +291,5 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	initial = [bft.lookup(front([foundation.allocate(RHS, [language])], [END])) for language in grammar.start]
 	bft.execute(build_state)
 	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
+	print("LR(0) states: %d\t\tLR(1) states:%d" % (len(lr0.graph), len(graph)))
 	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
