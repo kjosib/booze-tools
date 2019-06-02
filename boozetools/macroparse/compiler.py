@@ -16,14 +16,7 @@ import re, os, collections
 from .. import miniscan, regular, LR, GLR, foundation, interfaces, compaction
 from . import grammar
 
-PARSE_TABLE_METHODS = {
-	'LALR': GLR.lalr_construction,
-	'CLR': GLR.canonical_lr1,
-}
-
-DEFAULT_TABLE_METHOD = 'LALR'
-
-def compile_file(pathname, *, method=DEFAULT_TABLE_METHOD) -> dict:
+def compile_file(pathname, *, method=GLR.DEFAULT_TABLE_METHOD) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
 	return compile_string(document, method=method).as_compact_form(filename=os.path.basename(pathname))
 
@@ -75,7 +68,7 @@ class TextBookForm:
 		if self.parse_table is not None:
 			self.parse_table.make_csv(pathstem)
 
-def compile_string(document:str, *, method=DEFAULT_TABLE_METHOD) -> TextBookForm:
+def compile_string(document:str, *, method=GLR.DEFAULT_TABLE_METHOD) -> TextBookForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
@@ -209,7 +202,7 @@ def compile_string(document:str, *, method=DEFAULT_TABLE_METHOD) -> TextBookForm
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
 	if condition_definitions: tie_conditions()
 	dfa = nfa.subset_construction().minimize_states().minimize_alphabet() if nfa.states else None
-	hfa = PARSE_TABLE_METHODS[method](ebnf.sugarless_form())
+	hfa = GLR.PARSE_TABLE_METHODS[method](ebnf.sugarless_form())
 	return TextBookForm(dfa=dfa, scan_actions=scan_actions, parse_table=LR.determinize(hfa))
 
 
@@ -236,7 +229,7 @@ def main():
 	parser.add_argument('--pretty', action='store_true', help='Display uncompressed tables in attractive grid format on STDOUT.')
 	parser.add_argument('--csv', action='store_true', help='Generate CSV versions of uncompressed tables, suitable for inspection.')
 	parser.add_argument('--dev', action='store_true', help='Operate in "development mode" -- which changes from time to time.')
-	parser.add_argument('-m', '--method', choices=PARSE_TABLE_METHODS, default=DEFAULT_TABLE_METHOD, type=str.upper, help="Which parser table construction method to use.")
+	parser.add_argument('-m', '--method', choices=GLR.PARSE_TABLE_METHODS, default=GLR.DEFAULT_TABLE_METHOD, type=str.upper, help="Which parser table construction method to use.")
 	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
 	stem, extension = os.path.splitext(args.source_path)

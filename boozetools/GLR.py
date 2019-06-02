@@ -293,3 +293,12 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
 	print("LR(0) states: %d\t\tLR(1) states:%d" % (len(lr0.graph), len(graph)))
 	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
+
+PARSE_TABLE_METHODS = {
+	'LALR': lalr_construction,
+	'CLR': canonical_lr1,
+}
+
+DEFAULT_TABLE_METHOD = 'LALR'
+
+

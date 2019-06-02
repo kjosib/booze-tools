@@ -74,7 +74,7 @@ def unicode_escape(scanner):
 #  Follow that up with a context-free grammar. It's made a bit less wonderful by not having grammar macros yet...
 ###################################################################################
 
-grammar = miniparse.MiniParse('value')
+grammar = miniparse.MiniParse('value', method='LALR')
 grammar.renaming('value', 'string', 'number', 'object', 'array', 'true', 'false', 'null')
 
 grammar.rule('object', '{ }')(dict)
