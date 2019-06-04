@@ -27,6 +27,12 @@ T = TypeVar('T')
 class HFA(Generic[T]):
 	"""
 	HFA is short for "Handle-Finding Automaton", which is clunky to repeat all over the place.
+	
+	What is a handle?
+	
+	A handle is that point in the text where the right end of a rule has been matched and
+	recognition of the corresponding non-terminal symbol could be performed.
+	
 	There is a common base structure for these, and certain operations are largely similar
 	regardless of which sort of table-construction algorithm is underway.
 	
@@ -129,54 +135,79 @@ def lr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LR0_State]:
 	Additionally, during the full-elaboration step in visiting a core, completed
 	parse-items correspond to a state's `reduce` entries. We don't worry about
 	look-ahead in this construction: hence the '0' in LR(0). The net result is
-	a compact table generated very quickly, but with severely limited power.
+	a compact table generated very quickly, but with somewhat limited power.
 	In practical systems, LR(0) is normally just a first step, but some few
 	grammars are deterministic in LR(0).
 	"""
 	
-	def optimize_unit_rules(step:dict, check:dict) -> dict:
-		# A unit-rule is eligible to be elided (optimized-to-nothing) exactly when
-		# the state reached by shifting the RHS would have no other active parse items.
-		# We don't actually traverse such states, but instead redirect the corresponding
-		# shift-entry, essentially running the unit-rule at table-generation time.
-		
-		# If performing this task while carrying look-ahead in the parse-items, it sufficient
-		# that the same criteria would have applied had the look-ahead not been involved.
-		replace = {s: grammar.rules[r].lhs for s, r in check.items() if len(step[s]) == 1}
-		shifts = {}
-		for symbol in step.keys():
-			proxy = symbol
-			while proxy in replace: proxy = replace[proxy]
-			shifts[symbol] = bft.lookup(frozenset(step[proxy]), breadcrumb=proxy)
-			if proxy != symbol: bft.catalog[frozenset(step[symbol])] = shifts[symbol] # Thus LR(1) can find iso-cores.
-		return shifts
-	
 	def build_state(core: frozenset):
-		step, check, reduce = collections.defaultdict(set), {}, set()
+		step, reduce = collections.defaultdict(set), set()
 		def visit(item):
 			rule_id, position = item
 			if position < len(RHS[rule_id]):
 				next_symbol = RHS[rule_id][position]
 				step[next_symbol].add((rule_id,position+1))
-				if rule_id in unit_rules and position == 0: check[next_symbol] = rule_id
 				return symbol_front.get(next_symbol)
 			elif rule_id<len(grammar.rules): reduce.add(rule_id)
 		foundation.transitive_closure(core, visit)
-		graph.append(LR0_State(shift=optimize_unit_rules(step, check), reduce=reduce, ))
+		graph.append(LR0_State(shift=ure.find_shifts(step), reduce=reduce, ))
 	
 	assert grammar.start
-	##### Start by arranging most of the grammar data in a convenient form:
+	##### Arranging certain bits of the grammar data in a convenient form:
 	RHS = [rule.rhs for rule in grammar.rules] # This soon gets augmented internal to this algorithm.
-	unit_rules = set(i for i, rule in enumerate(grammar.rules) if rule.attribute is None and len(rule.rhs) == 1)
 	def front(rule_ids): return frozenset([(r,0) for r in rule_ids])
 	symbol_front = {symbol: front(rule_ids) for symbol, rule_ids in grammar.symbol_rule_ids.items()}
 	bft = foundation.BreadthFirstTraversal()
+	ure = UnitReductionEliminator(grammar, bft)
 	graph = []
 	# Initial-state cores refer only to the "augmentation" rule -- which has no LHS in this manifestation.
 	initial = [bft.lookup(front([foundation.allocate(RHS, [language])])) for language in grammar.start]
 	bft.execute(build_state)
 	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
 	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
+
+
+class UnitReductionEliminator:
+	def __init__(self, grammar:context_free.ContextFreeGrammar, bft:foundation.BreadthFirstTraversal):
+		self.bft = bft
+		self.unit_rules = {}
+		self.eligible_rhs = set()
+		for rule_id, rule in enumerate(grammar.rules):
+			if rule.attribute is None and len(rule.rhs) == 1:
+				self.unit_rules[rule_id] = rule.lhs
+				self.eligible_rhs.add(rule.rhs[0])
+
+	def find_shifts(self, step: dict) -> dict:
+		"""
+		A unit-rule is eligible to be elided (optimized-to-nothing) exactly when
+		the state reached by shifting the RHS would have no parse items associated with
+		any other rule. Naively, we'd shift the RHS and then immediately back out and
+		reduce to the LHS. We prefer to avoid pointless dancing about in the final automaton,
+		so we detect the situation and correct for it by redirecting the RHS as if we were
+		shifting the LHS instead, essentially running the reduction at table-generation time
+		before a numbered state ever gets allocated.
+		
+		There are TWO little caveats:
+		
+		The target state, after traversing a unit rule, may or may not contain a reduction
+		for that rule: this creates a slightly un-intuitive situation for the LALR construction.
+		
+		LR(1) and IE-LR(1) need to be able to find "iso-cores", so they must ALSO use this
+		to avoid accidentally trying to find an iso-core that doesn't exist in the corresponding
+		LR(0) automaton they use as an initial step.
+		"""
+		replace = {}
+		for symbol in self.eligible_rhs & step.keys():
+			each_item = iter(step[symbol])
+			rule_id = next(each_item)[0]
+			if rule_id in self.unit_rules and all(item[0] == rule_id for item in each_item):
+				replace[symbol] = self.unit_rules[rule_id]
+		shifts = {}
+		for symbol in step.keys():
+			proxy = symbol
+			while proxy in replace: proxy = replace[proxy]
+			shifts[symbol] = self.bft.lookup(frozenset(step[proxy]), breadcrumb=proxy)
+		return shifts
 
 
 class LA_State(NamedTuple):
@@ -276,18 +307,16 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 				if next_symbol in grammar.symbol_rule_ids: return front(grammar.symbol_rule_ids[next_symbol], after )
 			elif rule_id<len(grammar.rules): reduce[follow].append(rule_id)
 		foundation.transitive_closure(core, visit)
-		graph.append(LA_State(
-			shift={sym:bft.lookup(frozenset(items), breadcrumb=sym) for sym,items in step.items()},
-			reduce=reduce,
-		))
+		graph.append(LA_State(shift=ure.find_shifts(step), reduce=reduce,))
 	
 	assert grammar.start
+	RHS = [rule.rhs for rule in grammar.rules]
 	graph = []
 	# Initial-state cores refer only to the "augmentation" rule -- which has no LHS in this manifestation.
 	def front(rule_ids, follow): return frozenset([(r,0, s) for r in rule_ids for s in follow])
 	bft = foundation.BreadthFirstTraversal()
+	ure = UnitReductionEliminator(grammar, bft)
 	graph = []
-	RHS = [rule.rhs for rule in grammar.rules]
 	initial = [bft.lookup(front([foundation.allocate(RHS, [language])], [END])) for language in grammar.start]
 	bft.execute(build_state)
 	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
