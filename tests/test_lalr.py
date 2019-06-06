@@ -1,11 +1,6 @@
 import unittest
 
-from boozetools import context_free, GLR, LR, algorithms
-
-
-def collect(*args): return args
-
-def each_token(s): return [(t,t) for t in s.split()]
+from boozetools import context_free, GLR, LR
 
 class TestLalr(unittest.TestCase):
 	def setUp(self):
@@ -19,7 +14,7 @@ class TestLalr(unittest.TestCase):
 		table.display()
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
-				algorithms.parse(table, self.combine, each_token(sentence))
+				table.trial_parse(sentence.split())
 	def combine(self, rule_id, arg_stack:list):
 		pass
 	def r(self, lhs, rhs:str):

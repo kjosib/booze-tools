@@ -73,6 +73,26 @@ class ParserTables:
 	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language.')
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of the symbol that shifts into this state.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self), 'Return the reduce instruction for interactive-reducing states; zero otherwise.')
+	
+	def trial_parse(self, sentence, *, language=None):
+		"""
+		This quick-and-dirty trial parser will tell you if a sentence is a member of the language by throwing
+		an exception otherwise. It leaves out everything to do with semantic values or parse trees.
+		If you want to wrap your head around shift/reduce parsing, this is where to start.
+		"""
+		def prepare_to_shift(terminal_id) -> int:
+			while True:
+				step = self.get_action(stack[-1], terminal_id)
+				if step > 0: return step # Shift Action
+				elif step == 0: raise ParseError() # Error Action
+				else: # Reduce Action
+					nonterminal_id, length, message = self.get_rule(-1-step)
+					del stack[len(stack)-length:] # Python hiccup: don't let epsilon rules delete the whole stack.
+					stack.append(self.get_goto(stack[-1], nonterminal_id))
+		stack = [self.get_initial(language) if language else 0]
+		for symbol in sentence: stack.append(prepare_to_shift(self.get_translation(symbol)))
+		prepare_to_shift(0)
+		assert len(stack) == 2
 
 class ScanState:
 	"""
