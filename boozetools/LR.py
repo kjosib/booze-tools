@@ -127,6 +127,13 @@ def determinize(hfa:GLR.HFA[GLR.LA_State], *, strict: bool = False) -> DragonBoo
 		action_row = [state.shift.get(s, 0) for s in terminals]
 		conflict.clear()
 		for symbol, rule_ids in state.reduce.items():
+			idx = translate[symbol]
+			if rule_ids is ():
+				# This is how GLR.reachable(...) communicates a non-association situation.
+				essential_errors.add((q,idx))
+				continue
+			# TODO: this loop has much in common with GLR.reachable(...). Far better would be to incorporate its use
+			#       into all the look-ahead modes and let this module only handle inadequacies not otherwise resolved.
 			if len(rule_ids) > 1:
 				rule_id = grammar.decide_reduce_reduce(rule_ids)
 				if rule_id is None:
@@ -134,7 +141,6 @@ def determinize(hfa:GLR.HFA[GLR.LA_State], *, strict: bool = False) -> DragonBoo
 					rule_id = min(rule_ids)
 			else: rule_id = rule_ids[0]
 			reduce = -1 - rule_id
-			idx = translate[symbol]
 			prior = action_row[idx]
 			if prior == 0: action_row[idx] = reduce
 			else:

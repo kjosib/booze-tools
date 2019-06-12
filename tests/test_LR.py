@@ -23,7 +23,20 @@ def mysterious_invasive_conflict(cfg:context_free.ContextFreeGrammar):
 	shorthand(cfg, {'S': 'aAa|bAb', 'A':'a|aa'})
 	cfg.assoc(context_free.LEFT, ['a'])
 
-class GrammarTester(unittest.TestCase):
+
+class TestContextFree(unittest.TestCase):
+	def setUp(self) -> None:
+		self.g = context_free.ContextFreeGrammar()
+		self.g.start.append('S')
+	def test_decide_sr(self):
+		shorthand(self.g, {'S': 'abc|ab|abd'})
+		assert self.g.decide_shift_reduce('c', 0) is None
+		self.g.assoc(context_free.RIGHT, ['c'])
+		self.g.assoc(context_free.LEFT, ['d'])
+		assert self.g.decide_shift_reduce('c', 0) is context_free.RIGHT
+		assert self.g.decide_shift_reduce('d', 2) is context_free.LEFT
+
+class TableMethodTester(unittest.TestCase):
 	def setUp(self):
 		print(self._testMethodName)
 		self.g = context_free.ContextFreeGrammar()
@@ -51,7 +64,7 @@ class GrammarTester(unittest.TestCase):
 		lhs, rest = text.split(':')
 		for rhs in rest.split('|'): self.r(lhs, rhs)
 
-class TestLALR(GrammarTester):
+class TestLALR(TableMethodTester):
 	
 	construct = staticmethod(GLR.lalr_construction)
 	
@@ -98,8 +111,18 @@ class TestLALR(GrammarTester):
 		self.good = ['a c d', 'b c e', ]
 		self.bad = ['a c e', 'b c d', ] # This is because X is chosen over Y, being defined earlier.
 
-class TestCLR(GrammarTester):
+class TestCLR(TableMethodTester):
 	construct = staticmethod(GLR.canonical_lr1)
+	def test_invasive(self):
+		mysterious_invasive_conflict(self.g)
+		self.good = ['a a a', 'b a b', 'b a a b',]
+		self.bad = ['a a a a',]
+	def test_new(self):
+		mysterious_reduce_conflict(self.g)
+		self.good = ['a c d', 'a c e', 'b c d', 'b c e']
+
+class TestLR1(TableMethodTester):
+	construct = staticmethod(GLR.minimal_deterministic_lr1)
 	def test_invasive(self):
 		mysterious_invasive_conflict(self.g)
 		self.good = ['a a a', 'b a b', 'b a a b',]

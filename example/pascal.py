@@ -89,7 +89,7 @@ class PascalDriver:
 
 # Similar to what's done in the calculator example, this reads and compiles the grammar every time.
 definition_path = os.path.join(os.path.dirname(__file__), 'pascal.md')
-tables = compiler.compile_file(definition_path)  # or maybe: json.load('pascal.automaton')
+tables = compiler.compile_file(definition_path, method='LR1')  # or maybe: json.load('pascal.automaton')
 # As mentioned in the definition file, the all-upper-case terminals are reserved words.
 driver = PascalDriver([T for T in tables['parser']['terminals'] if T.isalpha() and T==T.upper()])
 parse = runtime.the_simple_case(tables, driver, driver)

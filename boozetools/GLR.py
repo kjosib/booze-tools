@@ -17,7 +17,7 @@ parse tree or semantic value. Such things could be added, but preferably atop go
 for persisting ambiguous parse tables.
 """
 import collections
-from typing import NamedTuple, Callable, Sequence, Iterable, TypeVar, Generic, List, Dict, Set
+from typing import NamedTuple, Iterable, TypeVar, Generic, List, Dict, Set, Tuple
 from . import context_free, foundation, interfaces, pretty
 
 END = '<END>' # An artificial "end-of-text" terminal-symbol.
@@ -209,7 +209,6 @@ class UnitReductionEliminator:
 			shifts[symbol] = self.bft.lookup(frozenset(step[proxy]), breadcrumb=proxy)
 		return shifts
 
-
 class LA_State(NamedTuple):
 	"""
 	The key difference here from LR(0) is that the possible reductions are keyed
@@ -222,34 +221,68 @@ class LA_State(NamedTuple):
 
 def lalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	"""
-	Building a non-deterministic LALR(1)-style table is a direct extension of the GLR(0)
-	construction. The main objective is to figure out which look-ahead tokens are relevant
-	to reduce rules. I'm not going to worry about precedence declarations at this point.
-	If we stop here, we get a table that's more efficient than GLR(0) for generalized
-	parsing because it will not attempt a trial reduction if LALR says the look-ahead
-	token definitely would not be shift-able in any event.
+	Building a non-deterministic LALR(1)-style table is a direct extension of the LR(0)
+	construction. LR(0) tables tend to have lots of inadequate states. If we figure out
+	which look-ahead tokens are relevant to which reductions, then the automaton gets a
+	good deal more capable. In the limit, there is canonical LR(1) as given by Knuth.
+	That's traditionally been considered impractical for all but the very smallest
+	grammars. Today's workstations have the chops to handle canonical LR(1) even for
+	larger grammars, but it's still a chore and, as we will see, a needless one.
 	
-	The bulk of the work here consists of constructing first- and follow-sets. I take the
-	approach of allocating a "follow set" for each place that a rule accepts, rather than
-	one for each time a symbol gets elaborated. I suspect this is slightly more specific.
+	The bulk of the work involved consists of finding the follow-sets for reductions.
+	I've chosen to break that work into its own function, rather than code the entire
+	LALR construction as one function, for two reasons. First, it's an interesting
+	algorithm in its own right. Second, that function provides the perfect level of
+	abstraction for exploitation later in the minimal-LR(1) construction given later.
+	
+	Keep in mind we're still in non-deterministic parsing land, so I'm not going to
+	worry about precedence declarations at this point. (That's another function.)
+	
+	If we stop here, we get a table that's more efficient than LR(0) for generalized
+	parsing: it will attempt many fewer dead-end reductions before look-ahead tokens
+	that LALR determines not to be in the reduction's follow-set.
 	"""
-	
-	glr0 = lr0_construction(grammar)
+	lr0 = lr0_construction(grammar)
+	token_sets, follow = lalr_first_and_follow(lr0)
+	def make_lalr_state(q:int, node:LR0_State) -> LA_State:
+		reduce = {}
+		for rule_id in node.reduce:
+			for token in token_sets[follow[q, rule_id]]:
+				assert isinstance(token, str)
+				if token not in reduce: reduce[token] = [rule_id]
+				else: reduce[token].append(rule_id) # This branch represents an R/R conflict...
+		return LA_State(node.shift, reduce)
+	return HFA(
+		graph=[make_lalr_state(q, node) for q, node in enumerate(lr0.graph)],
+		initial=lr0.initial, accept=lr0.accept, grammar=grammar, bft=lr0.bft
+	)
+
+def lalr_first_and_follow(lr0:HFA[LR0_State]) -> Tuple[list, dict]:
+	"""
+	This is a variant of the channel algorithm as described (colorfully and frankly not
+	very clearly) in chapter 9 of Parsing Techniques: a Practical Guide, by Dick Grune
+	and Ceriel Jacobs. In essence the idea is to build a directed graph by certain rules
+	and then "flow" terminal symbols around the nodes in that graph until updates cease.
+	You may recognize this as a fix-point over the set-union operation. It turns out we
+	can do better: using Tarjan's Strongly-Connected-Components algorithm and orienting
+	the edges in the correct direction, we need only ever consider each edge once.
+	"""
+	grammar = lr0.grammar
 	terminals = grammar.apparent_terminals()
-	token_sets = [terminals.intersection(node.shift.keys()) for node in glr0.graph]
-	for q in glr0.accept: token_sets[q].add(END) # Denoting that end-of-input can follow a sentence.
+	token_sets = [terminals.intersection(node.shift.keys()) for node in lr0.graph]
+	for q in lr0.accept: token_sets[q].add(END) # Denoting that end-of-input can follow a sentence.
 	# Allocate and track/label all follow sets:
 	follow = {}
-	for q, node in enumerate(glr0.graph):
+	for q, node in enumerate(lr0.graph):
 		for rule_id in node.reduce:
 			follow[q,rule_id] = foundation.allocate(token_sets, set())
 	# Generate a token-set inflow graph with nodes as lists of inbound edges.
 	inflow:List[Set[int]] = [set() for _ in token_sets]
-	for q, node in enumerate(glr0.graph):
+	for q, node in enumerate(lr0.graph):
 		for symbol, target in node.shift.items():
 			if symbol in grammar.symbol_rule_ids: # That is, if symbol is non-terminal,
 				for rule_id in grammar.symbol_rule_ids[symbol]:
-					rule_end = glr0.traverse(q, grammar.rules[rule_id].rhs)
+					rule_end = lr0.traverse(q, grammar.rules[rule_id].rhs)
 					if (rule_end, rule_id) in follow: # Otherwise a unit-reduction was elided here.
 						inflow[rule_end].add(target)
 						inflow[follow[rule_end, rule_id]].add(target)
@@ -260,26 +293,13 @@ def lalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 			tokens.update(token_sets[k])
 			tokens.update(*[token_sets[j] for j in inflow[k]])
 			token_sets[k] = tokens
-	# At this point, we could stop and make a GLALR table...
-	def transmogrify(q:int, node:LR0_State) -> LA_State:
-		""" This doesn't worry about precedence declarations just yet... """
-		reduce = {}
-		for rule_id in node.reduce:
-			for token in token_sets[follow[q, rule_id]]:
-				assert isinstance(token, str)
-				if token not in reduce: reduce[token] = [rule_id]
-				else: reduce[token].append(rule_id) # This branch represents an R/R conflict...
-		return LA_State(node.shift, reduce)
-	return HFA(
-		graph=[transmogrify(q, node) for q, node in enumerate(glr0.graph)],
-		initial=glr0.initial, accept=glr0.accept, grammar=grammar, bft=glr0.bft
-	)
+	return token_sets, follow
 
 def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	"""
 	Before embarking on a quest to produce a minimal-LR(1) table by sophisticated
 	methods, it's worth learning how to produce the maximal-LR(1) table by (some
-	variant of) Knuth's original method.
+	variant of) Donald E. Knuth's original method.
 	
 	A Knuth parse-item is like an LR(0) item augmented with the (1) next token
 	expected AFTER the corresponding rule would be recognized. The initial core
@@ -287,9 +307,6 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	much in common with the LR(0) construction above.
 	"""
 	
-	lr0 = lr0_construction(grammar) # This implicitly solves a lot of sub-problems.
-	first, epsilon = grammar.find_first_and_epsilon()
-	terminals = grammar.apparent_terminals()
 	def transparent(symbols): return all(s in epsilon for s in symbols)
 	def build_state(core: frozenset):
 		isocore = frozenset((r,p) for (r,p,f) in core)
@@ -309,7 +326,9 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 		foundation.transitive_closure(core, visit)
 		graph.append(LA_State(shift=ure.find_shifts(step), reduce=reduce,))
 	
-	assert grammar.start
+	lr0 = lr0_construction(grammar) # This implicitly solves a lot of sub-problems.
+	first, epsilon = grammar.find_first_and_epsilon()
+	terminals = grammar.apparent_terminals()
 	RHS = [rule.rhs for rule in grammar.rules]
 	graph = []
 	# Initial-state cores refer only to the "augmentation" rule -- which has no LHS in this manifestation.
@@ -323,9 +342,136 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	print("LR(0) states: %d\t\tLR(1) states:%d" % (len(lr0.graph), len(graph)))
 	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
 
+def minimal_deterministic_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
+	"""
+	This amounts to a hybrid of LALR and Canonical LR(1) in which only the conflicted
+	parts are reconsidered, and then only in light of whatever advice the grammar's
+	precedence and associativity declarations determine.
+	
+	After poring over the IELR paper on several occasions, I believe there may yet be
+	some originality in this contribution. If anything, I have an argument why this
+	routine produces absolutely minimal tables: each output state has an absolutely
+	minimal set of "siblings" affiliated with a corresponding LALR state, because the
+	only thing distinguishing "siblings" is the correct final deterministic parse
+	action after the rule associated with a parse-item is recognized, and then only
+	for those (generally very few) tokens for which LALR does not figure it out. Also,
+	unit rule elimination is applied, and unreachable states (in light of conflict
+	resolutions) are never considered.
+	"""
+	lr0 = lr0_construction(grammar)
+	token_sets, follow = lalr_first_and_follow(lr0)
+	first, epsilon = grammar.find_first_and_epsilon()
+	# Later we need to know if a certain rule is implicated in an LALR conflict: if so, for which terminals?
+	# We also need to know if a state is conflicted with respect to a particular terminal.
+	conflict_data = find_conflicts(lr0.graph, {(q,r):token_sets[i] for (q,r),i in follow.items()})
+	RHS = [rule.rhs for rule in grammar.rules]
+	def transparent(symbols): return all(s in epsilon for s in symbols)
+	def build_state(core: frozenset):
+		isocore = frozenset((r, p) for (r, p, f) in core)
+		iso_q = lr0.bft.catalog[isocore]
+		isostate = lr0.graph[iso_q]
+		step, reduce = collections.defaultdict(set), {}
+		def visit(item):
+			EMPTY = frozenset()
+			rule_id, position, follower = item
+			rhs = RHS[rule_id]
+			if position < len(rhs): # a non
+				next_symbol = rhs[position]
+				step[next_symbol].add((rule_id, position+1, follower))
+				if next_symbol in grammar.symbol_rule_ids: # We have a non-terminal.
+					more = []
+					goto_q = isostate.shift[next_symbol]
+					goto_shifts = lr0.graph[goto_q].shift.keys()
+					goto_conflict = conflict_data[goto_q].tokens.keys()
+					front = grammar.symbol_rule_ids[next_symbol]
+					for sub_rule_id in front:
+						reach = lr0.traverse(iso_q, RHS[sub_rule_id])
+						if follower is None: # We're coming from LALR-land:
+							more.append((sub_rule_id, 0, None))
+							reach_conflict = conflict_data[reach].rules.get(sub_rule_id, EMPTY)
+							for token in reach_conflict & goto_shifts - goto_conflict:
+								more.append((sub_rule_id, 0, token))
+						else:
+							if follower in conflict_data[reach].tokens and transparent(rhs[position+1:]):
+								assert follower in goto_conflict
+								more.append((sub_rule_id, 0, follower))
+					return more
+			elif rule_id < len(grammar.rules): # We're at a reduction. `follower` is either None or a terminal.
+				if follower is None:
+					for t in token_sets[follow[iso_q, rule_id]] - conflict_data[iso_q].rules[rule_id]:
+						if t in reduce: assert rule_id in reduce[t], (reduce, t, rule_id)
+						else: reduce[t] = [rule_id]
+				else:
+					assert follower in conflict_data[iso_q].rules[rule_id], [follower, conflict_data[iso_q].rules[rule_id]]
+					if follower in reduce:
+						assert rule_id not in reduce[follower]
+						reduce[follower].append(rule_id)
+					else: reduce[follower] = [rule_id]
+		foundation.transitive_closure(core, visit)
+		graph.append(LA_State(shift=ure.find_shifts(reachable(step, reduce, grammar)), reduce=reduce, ))
+	
+	bft = foundation.BreadthFirstTraversal()
+	ure = UnitReductionEliminator(grammar, bft)
+	graph = []
+	def initial_item(language): return foundation.allocate(RHS, [language]), 0, None
+	def initial_core(language): return frozenset([initial_item(language)])
+	initial = [bft.lookup(initial_core(language)) for language in grammar.start]
+	bft.execute(build_state)
+	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
+	print("LR(0) states: %d\t\tLR(1) states:%d" % (len(lr0.graph), len(graph)))
+	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
+
+def reachable(step:dict, reduce:dict, grammar) -> dict:
+	"""
+	The object of this function is to prevent the exploration of useless/unreachable states.
+	As a nice bonus it also applies the precedence declarations to the non-deterministic table,
+	allowing minimal-LR1 mode to do both precedence/associativity and generalized-parsing.
+	"""
+	for token, rids in list(reduce.items()):
+		if token not in step: continue
+		if len(rids) > 1:
+			print("R")
+			rule_id = grammar.decide_reduce_reduce(rids)
+			if rule_id is None: continue # If we can't decide among rules, none have precedence and so the shift won't decide either.
+			else: reduce[token] = [rule_id] # Conversely, we can eliminate all but the strongest rule from contention.
+		else: rule_id = rids[0]
+		decision = grammar.decide_shift_reduce(token, rule_id)
+		if decision == context_free.LEFT: del step[token]
+		elif decision == context_free.RIGHT: del reduce[token]
+		elif decision == context_free.NONASSOC:
+			del step[token]
+			reduce[token] = ()
+		elif decision == context_free.BOGUS: raise context_free.RuleProducesBogusToken(rule_id)
+		else: pass
+	return step
+
+
+class ConflictData(NamedTuple):
+	tokens: Dict[str, Set[int]] # The rules that conflict on this token
+	rules: Dict[int, Set[str]] # The tokens that conflict on this rule.
+
+def find_conflicts(graph, follow_sets) -> List[ConflictData]:
+	result = []
+	for q, state in enumerate(graph):
+		seen = collections.Counter(state.shift.keys()) # This picks up some nonterminals but they do no harm.
+		for rule_id in state.reduce:
+			for token in follow_sets[q,rule_id]:
+				seen[token] += 1
+		bogons = set(token for token, count in seen.items() if count > 1)
+		conflict = ConflictData({token: set() for token in bogons}, {})
+		for rule_id in state.reduce:
+			contribution = bogons & follow_sets[q,rule_id]
+			conflict.rules[rule_id] = contribution
+			for token in contribution: conflict.tokens[token].add(rule_id)
+		result.append(conflict)
+	return result
+
+
+
 PARSE_TABLE_METHODS = {
 	'LALR': lalr_construction,
 	'CLR': canonical_lr1,
+	'LR1': minimal_deterministic_lr1,
 }
 
 DEFAULT_TABLE_METHOD = 'LALR'

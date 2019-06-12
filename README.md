@@ -2,7 +2,7 @@
 
 For now there are three major components. Eventually there will be more. These are:
 
-* MiniParse -- Provides LALR(1) or Canonical-LR(1) with operator-precedence grammar facilities (like Lemon, YACC, or Bison).
+* MiniParse -- Provides Minimal-LR(1)* or LALR(1) or Canonical-LR(1) with operator-precedence grammar facilities (like Lemon, YACC, or Bison).
 * MiniScan -- Provides a DFA-based backtracking scanner (like Flex or Lex) with a few extra goodies.
 * MacroParse -- This is the crown jewel of the package right now. It:
     * provides for a separate document containing the definitions of a scanner and parser.
@@ -11,6 +11,11 @@ For now there are three major components. Eventually there will be more. These a
     * supports a macro language for simplifying otherwise-redundant parser specifications.
     * provides a suitable runtime library so the [examples](https://github.com/kjosib/booze-tools/tree/master/example/)
         run and pass the [tests](https://github.com/kjosib/booze-tools/tree/master/tests/).
+
+The "minimal-LR(1)" algorithm used here is -- I believe -- provably minimal, even while it
+respects precedence and associativity declarations in the usual way. It is strongly inspired
+by the IELR(1) algorithm, but it is NOT exactly that algorithm. As far as I can tell it is a
+new contribution. As such, I would appreciate feedback respecting your results with it.
 
 Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/wiki).
 Worked examples may be found at [/example/](https://github.com/kjosib/booze-tools/tree/master/example/).
