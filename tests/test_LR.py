@@ -122,7 +122,7 @@ class TestCLR(TableMethodTester):
 		self.good = ['a c d', 'a c e', 'b c d', 'b c e']
 
 class TestLR1(TableMethodTester):
-	construct = staticmethod(GLR.minimal_deterministic_lr1)
+	construct = staticmethod(GLR.minimal_lr1)
 	def test_invasive(self):
 		mysterious_invasive_conflict(self.g)
 		self.good = ['a a a', 'b a b', 'b a a b',]
