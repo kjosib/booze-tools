@@ -86,10 +86,30 @@ class ContextFreeGrammar:
 		if any(self.rules[rule_id].rhs == rhs for rule_id in sri): raise DuplicateRule(lhs, rhs)
 		sri.append(foundation.allocate(self.rules, Rule(lhs, rhs, attribute, prec_sym)))
 	
+	def augmented_rules(self) -> list:
+		"""
+		The LR family of algorithms are normally explained in terms of an augmented grammar:
+		It has a special "accept" rule which just expands to the start symbol for the ordinary
+		context-free grammar at issue. There's a good reason for this: It makes the algorithms
+		work properly without a lot of special edge cases to worry about. However, the "accept"
+		non-terminal ought to be imaginary: it can't appear on the right, one never reduces the
+		"accept" symbol, and I object to it consuming space in the GOTO table as it typically
+		does in implementations that rely on a first-class rule (with left-hand side symbol).
+
+		This object exists to clarify interaction with the "augmented" rule set.
+		NB: Since we support multiple "start" symbols, there are corresponding "accept" rules.
+		"""
+		assert self.start
+		return [rule.rhs for rule in self.rules] + [[language] for language in self.start]
+	
+	def initial(self) -> range:
+		""" The range of augmented-rule indices corresponding to the list of start symbols. """
+		first = len(self.rules)
+		return range(first, first+len(self.start))
+	
 	def apparent_terminals(self) -> set:
 		""" Of all symbols mentioned, those without production rules are apparently terminal. """
 		return self.symbols - self.symbol_rule_ids.keys()
-	
 
 	def find_first_and_epsilon(self):
 		"""
@@ -120,7 +140,6 @@ class ContextFreeGrammar:
 				first[symbol] = f
 			f.difference_update(self.symbol_rule_ids)
 		return first, epsilon
-		
 		
 	def assert_no_bogons(self):
 		""" "Bogus" tokens only exist to establish precedence levels and must not appear in right-hand sides. """

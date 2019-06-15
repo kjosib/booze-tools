@@ -154,14 +154,13 @@ def lr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LR0_State]:
 	
 	assert grammar.start
 	##### Arranging certain bits of the grammar data in a convenient form:
-	RHS = [rule.rhs for rule in grammar.rules] # This soon gets augmented internal to this algorithm.
+	RHS = grammar.augmented_rules()
 	def front(rule_ids): return frozenset([(r,0) for r in rule_ids])
 	symbol_front = {symbol: front(rule_ids) for symbol, rule_ids in grammar.symbol_rule_ids.items()}
 	bft = foundation.BreadthFirstTraversal()
 	ure = UnitReductionEliminator(grammar, bft)
 	graph = []
-	# Initial-state cores refer only to the "augmentation" rule -- which has no LHS in this manifestation.
-	initial = [bft.lookup(front([foundation.allocate(RHS, [language])])) for language in grammar.start]
+	initial = [bft.lookup(front([rule_id])) for rule_id in grammar.initial()]
 	bft.execute(build_state)
 	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
 	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
@@ -307,7 +306,6 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	much in common with the LR(0) construction above.
 	"""
 	
-	def transparent(symbols): return all(s in epsilon for s in symbols)
 	def build_state(core: frozenset):
 		isocore = frozenset((r,p) for (r,p,f) in core)
 		isostate = lr0.graph[lr0.bft.catalog[isocore]]
@@ -319,28 +317,47 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 			if position < len(rhs):
 				next_symbol = rhs[position]
 				step[next_symbol].add((rule_id, position+1, follow))
-				after = set(lr0.graph[isostate.shift[next_symbol]].shift.keys()) & terminals
-				if transparent(rhs[position+1:]): after.add(follow)
-				if next_symbol in grammar.symbol_rule_ids: return front(grammar.symbol_rule_ids[next_symbol], after )
+				if next_symbol in grammar.symbol_rule_ids:
+					goto_state = lr0.graph[isostate.shift[next_symbol]]
+					after = set(goto_state.shift.keys()) & terminals
+					if transparent(rule_id, position+1): after.add(follow)
+					return front(grammar.symbol_rule_ids[next_symbol], after )
 			elif rule_id<len(grammar.rules): reduce[follow].append(rule_id)
 		foundation.transitive_closure(core, visit)
 		graph.append(LA_State(shift=ure.find_shifts(step), reduce=reduce,))
 	
 	lr0 = lr0_construction(grammar) # This implicitly solves a lot of sub-problems.
-	first, epsilon = grammar.find_first_and_epsilon()
 	terminals = grammar.apparent_terminals()
-	RHS = [rule.rhs for rule in grammar.rules]
+	RHS = grammar.augmented_rules()
+	transparent = find_transparent(grammar.find_first_and_epsilon()[1], RHS)
 	graph = []
-	# Initial-state cores refer only to the "augmentation" rule -- which has no LHS in this manifestation.
 	def front(rule_ids, follow): return frozenset([(r,0, s) for r in rule_ids for s in follow])
 	bft = foundation.BreadthFirstTraversal()
 	ure = UnitReductionEliminator(grammar, bft)
 	graph = []
-	initial = [bft.lookup(front([foundation.allocate(RHS, [language])], [END])) for language in grammar.start]
+	initial = [bft.lookup(front([rule_id], [END])) for rule_id in grammar.initial()]
 	bft.execute(build_state)
 	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
 	print("LR(0) states: %d\t\tLR(1) states:%d" % (len(lr0.graph), len(graph)))
 	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
+
+def find_transparent(epsilon:Set[str], right_hand_sides:List[List[str]]):
+	"""
+	In LR(1)-family algorithms, we do a fair amount of tests for the rest-of-a-rule
+	being transparent: i.e. all the remaining symbols in a right-hand-side (if any)
+	being possibly-epsilon. The naive way -- something like
+			all(symbol in epsilon for symbol in rhs[dot_position:])
+	works just fine, but think of the all those garbage list copies!
+	We can do better. This is one way.
+	"""
+	def transparency_threshold(rhs):
+		position = len(rhs)
+		# Invariant: all(symbol in epsilon for symbol in rhs[dot_position:])
+		while position > 0 and rhs[position-1] in epsilon: position -= 1
+		return position
+	thresholds = list(map(transparency_threshold, right_hand_sides))
+	return lambda rule_id, position: thresholds[rule_id] <= position
+
 
 def minimal_deterministic_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	"""
@@ -358,14 +375,6 @@ def minimal_deterministic_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA
 	unit rule elimination is applied, and unreachable states (in light of conflict
 	resolutions) are never considered.
 	"""
-	lr0 = lr0_construction(grammar)
-	token_sets, follow = lalr_first_and_follow(lr0)
-	first, epsilon = grammar.find_first_and_epsilon()
-	# Later we need to know if a certain rule is implicated in an LALR conflict: if so, for which terminals?
-	# We also need to know if a state is conflicted with respect to a particular terminal.
-	conflict_data = find_conflicts(lr0.graph, {(q,r):token_sets[i] for (q,r),i in follow.items()})
-	RHS = [rule.rhs for rule in grammar.rules]
-	def transparent(symbols): return all(s in epsilon for s in symbols)
 	def build_state(core: frozenset):
 		isocore = frozenset((r, p) for (r, p, f) in core)
 		iso_q = lr0.bft.catalog[isocore]
@@ -392,7 +401,7 @@ def minimal_deterministic_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA
 							for token in reach_conflict & goto_shifts - goto_conflict:
 								more.append((sub_rule_id, 0, token))
 						else:
-							if follower in conflict_data[reach].tokens and transparent(rhs[position+1:]):
+							if follower in conflict_data[reach].tokens and transparent(rule_id, position+1):
 								assert follower in goto_conflict
 								more.append((sub_rule_id, 0, follower))
 					return more
@@ -409,13 +418,17 @@ def minimal_deterministic_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA
 					else: reduce[follower] = [rule_id]
 		foundation.transitive_closure(core, visit)
 		graph.append(LA_State(shift=ure.find_shifts(reachable(step, reduce, grammar)), reduce=reduce, ))
-	
+	lr0 = lr0_construction(grammar)
+	token_sets, follow = lalr_first_and_follow(lr0)
+	# Later we need to know if a certain rule is implicated in an LALR conflict: if so, for which terminals?
+	# We also need to know if a state is conflicted with respect to a particular terminal.
+	conflict_data = find_conflicts(lr0.graph, {(q,r):token_sets[i] for (q,r),i in follow.items()})
+	RHS = grammar.augmented_rules()
+	transparent = find_transparent(grammar.find_first_and_epsilon()[1], RHS)
 	bft = foundation.BreadthFirstTraversal()
 	ure = UnitReductionEliminator(grammar, bft)
 	graph = []
-	def initial_item(language): return foundation.allocate(RHS, [language]), 0, None
-	def initial_core(language): return frozenset([initial_item(language)])
-	initial = [bft.lookup(initial_core(language)) for language in grammar.start]
+	initial = [bft.lookup(frozenset([(rule_id, 0, None)])) for rule_id in grammar.initial()]
 	bft.execute(build_state)
 	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
 	print("LR(0) states: %d\t\tLR(1) states:%d" % (len(lr0.graph), len(graph)))
