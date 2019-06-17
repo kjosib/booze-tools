@@ -393,9 +393,6 @@ def minimal_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	parts are reconsidered in greater detail. Details of the approach are in the
 	doc-comments for the `front` and `note_reduce` subroutines.
 	
-	, and then only in light of whatever advice the grammar's
-	precedence and associativity declarations determine.
-	
 	After poring over the IELR paper on several occasions, I believe there may yet be
 	some originality in this contribution. If anything, I have an argument why this
 	routine produces absolutely minimal tables: each output state has an absolutely
@@ -410,6 +407,8 @@ def minimal_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 		"""
 		Return the list of parse-items which DIRECTLY follow from the given criteria.
 		
+		The complexity here comes from how this algorithm threads the needle between
+		LALR-when-adequate and LR(1)-when-necessary.
 		"""
 		isostate = lr0.graph[iso_q]
 		items = []
@@ -417,25 +416,52 @@ def minimal_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 		goto_shifts = lr0.graph[goto_q].shift.keys()
 		goto_conflict = conflict_data[goto_q].tokens.keys()
 		for sub_rule_id in grammar.symbol_rule_ids[symbol]:
+			# Most of the smarts in this algorithm comes down to understanding what
+			# LALR found at the far end of each sub-production. We need to know which
+			# LR(0) state you reach after shifting the contents of that sub-rule:
 			reach = lr0.traverse(iso_q, grammar.rules[sub_rule_id].rhs)
 			if follower is None:  # We're coming from LALR-land:
 				items.append((sub_rule_id, 0, None))
 				reach_conflict = conflict_data[reach].rules.get(sub_rule_id, EMPTY)
 				for token in reach_conflict & goto_shifts - goto_conflict:
+					# NB: It's tempting to exclude candidate follower-tokens for which
+					# a shift is assured according to the precedence declarations, but
+					# it doesn't buy you anything (S/R conflicts get resolved later)
+					# and in practice it results in larger parse tables.
+					# We leave out the "GOTO-conflicted" tokens here because...
 					items.append((sub_rule_id, 0, token)) # Canonical parse-item
 			else:  # The canonical branch:
+				# GOTO-conflicted tokens will have resulted in canonical-style parse items.
+				# As with Canonical, they can follow a derivation only when the remainder
+				# of the current rule is "transparent", but this algorithm imposes the
+				# additional constraint regarding the token's contribution to a
+				# LALR-inadequacy in the "reach" state.
 				if follower in conflict_data[reach].tokens and goto_transparent:
 					assert follower in goto_conflict
 					items.append((sub_rule_id, 0, follower))
 		return items
 	
 	def note_reduce(reduce, follower, rule_id, iso_q):
+		"""
+		There are two cases:
+		
+		If the "follower" is `None`, it stands for the un-conflicted portion of the
+		corresponding LALR follow set.
+		
+		Otherwise, the token MUST have earlier been implicated in a LALR-inadequacy
+		in this state (which fact we assert for good measure). Handle it the same as
+		Canonical-LR(1).
+		
+		Incidentally, it is possible to reach a particular `reduce[follower]` list
+		more than once if and only if the follower is LALR-inadequate. Proof follows
+		from the fact that a given parse-item is visited at most once.
+		"""
 		if follower is None:
 			for t in token_sets[follow[iso_q, rule_id]] - conflict_data[iso_q].rules[rule_id]:
-				if t in reduce: assert rule_id in reduce[t], (reduce, t, rule_id)
-				else: reduce[t] = [rule_id]
+				assert t not in reduce
+				reduce[t] = [rule_id]
 		else:
-			assert follower in conflict_data[iso_q].rules[rule_id], [follower, conflict_data[iso_q].rules[rule_id]]
+			assert follower in conflict_data[iso_q].rules[rule_id]
 			if follower in reduce:
 				assert rule_id not in reduce[follower]
 				reduce[follower].append(rule_id)
