@@ -20,7 +20,7 @@ text and a few parameters, it makes a suitable picture.
 I prefer to keep line-breaking separate from scanning and parsing, so in those areas
 a simple integer position is as much location data as you get. What's a decent means
 to convert that to a line and column number? Or to slice the corresponding line
-from a larger text string? The Cartographer handles that. It also provides a nice
+from a larger text string? The SourceText handles that. It also provides a nice
 `complain(...)` method, which formats a decent-looking error message to STDOUT.
 
 There is just one complication:
@@ -33,16 +33,16 @@ The Unicode line-breaking algorithm calls for no less than ELEVEN ways to break 
 
 The applications I've tested treat the Unix, Apple, and DOS conventions as line-breaks
 and mostly ignore the other options defined in the Unicode standard, so that's the
-default behavior of the Cartographer. But you can supply a mode parameter to specify
+default behavior of the SourceText. But you can supply a mode parameter to specify
 different line-ending conventions. The options are given symbolically as keys in the
-LINEBREAKS dictionary.
+LINEBREAK_MODE dictionary.
 
 So how exactly SHOULD you delimit lines? The answer, my friend, is blowin' in the wind....
 """
 
 import bisect, re, sys
 
-LINEBREAKS = {
+LINEBREAK_MODE = {
 	'normal': re.compile(r'\r\n?|\n'),
 	'unicode': re.compile(r'\r\n|[\x0a-\x0d\x1c-\x1e\u0085\u2028\u2029]]'),
 	'unix': re.compile(r'\n'),
@@ -56,27 +56,31 @@ def illustration(single_line:str, start:int, width:int=0, *, prefix='') -> str:
 	underline = '^'*(width or 1)+'-- right there'
 	return prefix + single_line.rstrip() + '\n' + blanks + underline
 
-class Cartographer:
-	
-	def __init__(self, content:str, mode='normal'):
+class SourceText:
+	""" A wrapper for e.g. a program source text which can print a half-respectable error message with context. """
+	def __init__(self, content:str, mode='normal', filename:str=None):
 		self.content = content
-		inside = [m.end() for m in LINEBREAKS[mode].finditer(content)]
-		self.__bounds = [0] + inside + [len(content)]
-		
-	def slice(self, row:int) -> slice:
-		""" Zero-Based! (Like everything else in modern computing...) and includes line end. """
-		return slice(self.__bounds[row],self.__bounds[row + 1])
+		self.filename = filename
+		self.__mode = mode
 	
+	def __make_bounds(self):
+		""" Lazily only find line breaks if it turns out to be necessary for a particular text. """
+		if not hasattr(self, '__bound'):
+			inside = [m.end() for m in LINEBREAK_MODE[self.__mode].finditer(self.content)]
+			self.__bounds = [0] + inside + [len(self.content)]
+
 	def find_row_col(self, index:int):
 		""" Zero-Based! This right here is the main point of the class... """
+		self.__make_bounds()
 		row = bisect.bisect_right(self.__bounds, index, hi=len(self.__bounds) - 1) - 1
 		col = index - self.__bounds[row]
 		return row, col
 	
-	def complain(self, index:int, *, width=1, message:str=None, filename:str=None):
+	def complain(self, index:int, *, width=1, message:str=None):
+		"""  """
 		row, col = self.find_row_col(index)
-		line = self.content[self.slice(row)]
-		if filename is None: print("At line %d, column %d,"%(row+1, col+1), file=sys.stderr)
-		else: print("At line %d, column %d, in file %s"%(row+1, col+1, filename), file=sys.stderr)
+		line = self.content[self.__bounds[row]:self.__bounds[row + 1]]
+		if self.filename is None: print("At line %d, column %d,"%(row+1, col+1), file=sys.stderr)
+		else: print("At line %d, column %d, in file %s"%(row+1, col+1, self.filename), file=sys.stderr)
 		print(illustration(line, col, width, prefix=' >>> '), file=sys.stderr)
 		if message is not None: print(message, file=sys.stderr)

@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
 	name='booze-tools',
-	version='0.2.0dev',
+	version='0.3.0',
 	packages=['boozetools', 'boozetools.macroparse'],
 	license='http://unlicense.org/',
 	description='A panoply of tools for parsing and lexical analysis',
