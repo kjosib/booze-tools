@@ -355,7 +355,7 @@ def abstract_lr1_construction(
 					return front(next_symbol, follower, transparent(rule_id, position + 1), iso_q)
 			elif rule_id<len(grammar.rules): note_reduce(reduce, follower, rule_id, iso_q)
 		foundation.transitive_closure(core, visit)
-		graph.append(LA_State(shift=ure.find_shifts(step), reduce=reduce,))
+		graph.append(LA_State(shift=ure.find_shifts(reachable(step, reduce, grammar)), reduce=reduce,))
 	
 	RHS = grammar.augmented_rules()
 	transparent = find_transparent(grammar.find_first_and_epsilon()[1], RHS)
@@ -472,7 +472,7 @@ def minimal_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	token_sets, follow = lalr_first_and_follow(lr0)
 	# Later we need to know if a certain rule is implicated in an LALR conflict: if so, for which terminals?
 	# We also need to know if a state is conflicted with respect to a particular terminal.
-	conflict_data = find_conflicts(lr0.graph, {(q,r):token_sets[i] for (q,r),i in follow.items()})
+	conflict_data = find_conflicts(lr0.graph, {(q,r):token_sets[i] for (q,r),i in follow.items()}, grammar)
 
 	return abstract_lr1_construction(
 		grammar,
@@ -510,20 +510,46 @@ class ConflictData(NamedTuple):
 	tokens: Dict[str, Set[int]] # The rules that conflict on this token
 	rules: Dict[int, Set[str]] # The tokens that conflict on this rule.
 
-def find_conflicts(graph, follow_sets) -> List[ConflictData]:
+def find_conflicts(graph, follow_sets, grammar) -> List[ConflictData]:
 	"""
 	This drives one of the central ideas of the Minimal-LR(1) algorithm:
+	Learn which tokens are involved in conflicts, and which rules contribute
+	to those conflicts for each token (as known to LALR).
+	
+	Subtleties:
+	
+	1. If an S/R conflict is DECLARED to shift, then it does not impugn the token,
+	   but the token still refers to the rule in case some other rule MAY reduce.
+	
+	This routine (and the stuff that uses it) is coded with the idea that the
+	grammar may leave certain things deliberately non-deterministic. Wherever that
+	is the case, these algorithms will respect it.
+	
+	2. There is a way to improve the treatment of R/R conflicts if it is known in
+	   advance that the table will be used deterministically, or if the R/R is
+	   resolved by rule precedence. It involves a pass over the LR(1) item cores
+	   considering the groups that eventually lead to a R/R conflict (they have the
+	   same suffix and follower): among those groups only the "winning" reduction
+	   item needs to stay in the core. This "normalizes" the LR(1) cores so that
+	   potentially fewer distinct ones might be generated.
+	
+	Alas, idea #2 is not yet implemented. Complex R/R conflicts may still lead to
+	more states than strictly necessary for a deterministic table. In practice,
+	this is unlikely to be a real problem: deterministic tables are usually made
+	from grammars with few LALR conflicts, and in the non-deterministic case
+	nothing is wasted. Nevertheless, this remains an avenue for improvement.
 	"""
 	result = []
 	for q, state in enumerate(graph):
-		seen = collections.Counter(state.shift.keys()) # This picks up some nonterminals but they do no harm.
+		degree = collections.Counter(state.shift.keys()) # This picks up some nonterminals but they do no harm.
 		for rule_id in state.reduce:
 			for token in follow_sets[q,rule_id]:
-				seen[token] += 1
-		bogons = set(token for token, count in seen.items() if count > 1)
-		conflict = ConflictData({token: set() for token in bogons}, {})
+				prefer_shift = token in state.shift and grammar.decide_shift_reduce(token, rule_id) == context_free.RIGHT
+				if not prefer_shift: degree[token] += 1
+		conflicted_tokens = set(token for token, count in degree.items() if count > 1)
+		conflict = ConflictData({token: set() for token in conflicted_tokens}, {})
 		for rule_id in state.reduce:
-			contribution = bogons & follow_sets[q,rule_id]
+			contribution = conflicted_tokens & follow_sets[q,rule_id]
 			conflict.rules[rule_id] = contribution
 			for token in contribution: conflict.tokens[token].add(rule_id)
 		result.append(conflict)
