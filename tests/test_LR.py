@@ -1,6 +1,6 @@
 import unittest
 
-from boozetools import context_free, GLR, LR, interfaces
+from boozetools import context_free, GLR, LR, interfaces, algorithms
 
 def shorthand(cfg:context_free.ContextFreeGrammar, rules:dict):
 	""" Just a quick way to enter a grammar where semantic-value is irrelevant. """
@@ -51,10 +51,10 @@ class TableMethodTester(unittest.TestCase):
 		table.display()
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
-				table.trial_parse(sentence.split())
+				algorithms.trial_parse(table, sentence.split())
 		for sentence in self.bad:
 			with self.subTest(sentence=sentence):
-				try: table.trial_parse(sentence.split())
+				try: algorithms.trial_parse(table, sentence.split())
 				except interfaces.ParseError: pass
 				else: assert False, "This should have raised an exception."
 	def r(self, lhs, rhs:str):

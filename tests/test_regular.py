@@ -33,7 +33,7 @@ class TestNFA(unittest.TestCase):
 		nfa.link(q0, qf, [65, 91, 97, 123])
 		nfa.link_epsilon(q1, q0)
 		def assertion():
-			tokens = list(algorithms.Scanner(text='j', automaton=dfa, rulebase=MockScanRules(), start=None))
+			tokens = list(algorithms.Scanner(text='j', automaton=dfa, rules=MockScanRules(), start=None))
 			self.assertEqual([(1,'j')], tokens)
 		dfa = nfa.subset_construction()
 		assertion()

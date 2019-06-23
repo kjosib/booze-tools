@@ -61,12 +61,12 @@ class FiniteAutomaton:
 		raise NotImplementedError(type(self), FiniteAutomaton.default_initial_condition.__doc__)
 	
 
-class ParserTables:
+class ParseTable:
 	"""
 	This interface captures the operations needed to perform table-driven parsing, as well as a modicum
 	of reasonable error reporting. Note that rules begin at 1, because 0 is the error action.
 	"""
-	def get_translation(self, symbol) -> int: raise NotImplementedError(type(self, 'Because scanners may be oblivious to the order of terminals in the parse table. Zero is reserved for EOT.'))
+	def get_translation(self, symbol) -> int: raise NotImplementedError(type(self, 'Because scanners should not care the order of terminals in the parse table. Zero is reserved for end-of-text.'))
 	def get_action(self, state_id:int, terminal_id) -> int: raise NotImplementedError(type(self), 'Positive -> successor state id. Negative -> rule id for reduction. Zero -> error.')
 	def get_goto(self, state_id:int, nonterminal_id) -> int: raise NotImplementedError(type(self, 'return a successor state id.'))
 	def get_rule(self, rule_id:int) -> tuple: raise NotImplementedError(type(self), 'return a (nonterminal_id, length, message) triple.')
@@ -74,26 +74,6 @@ class ParserTables:
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of the symbol that shifts into this state.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self), 'Return the reduce instruction for interactive-reducing states; zero otherwise.')
 	
-	def trial_parse(self, sentence, *, language=None):
-		"""
-		This quick-and-dirty trial parser will tell you if a sentence is a member of the language by throwing
-		an exception otherwise. It leaves out everything to do with semantic values or parse trees.
-		If you want to wrap your head around shift/reduce parsing, this is where to start.
-		"""
-		def prepare_to_shift(terminal_id) -> int:
-			while True:
-				step = self.get_action(stack[-1], terminal_id)
-				if step > 0: return step # Shift Action
-				elif step == 0: raise ParseError() # Error Action
-				else: # Reduce Action
-					nonterminal_id, length, message = self.get_rule(-1-step)
-					del stack[len(stack)-length:] # Python hiccup: don't let epsilon rules delete the whole stack.
-					stack.append(self.get_goto(stack[-1], nonterminal_id))
-		stack = [self.get_initial(language) if language else 0]
-		for symbol in sentence: stack.append(prepare_to_shift(self.get_translation(symbol)))
-		prepare_to_shift(0)
-		assert len(stack) == 2
-
 class ScanState:
 	"""
 	This is the interface a scanner action can expect to be able to operate on.
@@ -123,19 +103,31 @@ class ScanState:
 
 class ScanRules:
 	"""
-	The interface a scan-in-progress needs about trailing context and how to invoke scan rules.
+	The interface a scan-in-progress needs about:
+		1. trailing context, and
+		2. how to invoke scan rules.
 	"""
 	
 	def get_trailing_context(self, rule_id: int):
 		"""
-		Fixed trailing context is supported: return a negative number of characters to chop from the end of the match.
-		Variable trailing context is supported if the leading stem has fixed length: return a positive (or zero) number.
-		The absence of trailing context should be indicated by returning None.
-
-		It's anticipated that a zero-width stem with trailing context might be used to decide which scan state to enter.
-		At some later date, I may decide to add support for variable leading and trailing portions, but this would
-		require some changes to the scanning algorithm. It COULD be a matter of this method returning a sentinel
-		and then another method returning information sufficient to identify the boundary between stem and trail.
+		Fixed trailing context is supported: return a negative number of characters to chop
+		from the end of the match. Variable trailing context is supported if the leading stem
+		has fixed length: return a positive (or zero) number. The absence of trailing context
+		should be indicated by returning None.
+		
+		It's anticipated that a zero-width stem with trailing context might be used to do things
+		like decide which scan state to enter and then restart the scanner from the same point.
+		
+		It would be a reasonable alternative architecture to design the trailing-context
+		support as a separate object in a chain-of-responsibility between the scanner and
+		driver. The downside is semantic: trailing context is a feature of the scanner-generator
+		and as such should be inseparable from the runtime. It might be a cool performance hack
+		to leave out trailing-context support when the feature is not used but that's the sort
+		of thing that you build into a tool that generates (e.g.) C code from an automaton.
+		
+		At some later date, I may decide to add support for both variable leading and trailing
+		parts of the same rule. That would mean several additional decisions and added complexity,
+		which would definitely justify the alternative design mentioned above.
 		"""
 		raise NotImplementedError(type(self), ScanRules.get_trailing_context.__doc__)
 	

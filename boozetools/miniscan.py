@@ -24,7 +24,7 @@ class Definition(interfaces.ScanRules):
 		return self.__dfa
 	
 	def scan(self, text, *, start=None, env=None):
-		scanner = algorithms.Scanner(text=text, automaton=self.get_dfa(), rulebase=self, start=start)
+		scanner = algorithms.Scanner(text=text, automaton=self.get_dfa(), rules=self, start=start)
 		scanner.env = env
 		return scanner
 		

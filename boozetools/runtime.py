@@ -68,7 +68,7 @@ class CompactDFA(interfaces.FiniteAutomaton):
 	"""
 	This implements the FiniteAutomaton interface (for use with the generic scanner algorithm)
 	by reference to a set of scanner tables that have been built using the MacroParse machinery.
-	It's not the whole story; SymbolicScanRules (defined below) are involved in binding the
+	It's not the whole story; BoundScanRules (defined below) are involved in binding the
 	action specifications to a specific context object.
 	"""
 	def __init__(self, *, dfa:dict, alphabet:dict):
@@ -86,7 +86,7 @@ class CompactDFA(interfaces.FiniteAutomaton):
 	def get_next_state(self, current_state: int, codepoint: int) -> int:
 		return self.delta(current_state, self.classifier.classify(codepoint))
 
-class SymbolicScanRules(interfaces.ScanRules):
+class BoundScanRules(interfaces.ScanRules):
 	"""
 	This binds symbolic scan-action specifications to a specific "driver" or context object.
 	It cannot act alone, but works in concert with the CompactDFA (above) and the generic scan algorithm.
@@ -108,9 +108,9 @@ def mangle(message):
 	if message.startswith(':'): return 'action_'+message[1:]
 	return 'parse_'+message
 
-class SymbolicParserTables(interfaces.ParserTables):
+class CompactHandleFindingAutomaton(interfaces.ParseTable):
 	"""
-	This implements the ParserTables interface (for use with the generic parse algorithm)
+	This implements the ParseTable interface (for use with the generic parse algorithm)
 	by reference to a set of parser tables that have been built using the MacroParse machinery.
 	It's not the whole story: the function `symbolic_reducer(driver)` is involved to build a
 	"combiner" function which the parse algorithm then uses for semantic reductions.
@@ -140,7 +140,7 @@ class SymbolicParserTables(interfaces.ParserTables):
 	
 	def interactive_step(self, state_id: int) -> int: assert False, 'See the constructor.'
 
-def symbolic_reducer(driver):
+def parse_action_bindings(driver):
 	""" Build a reduction function (combiner) for the parse engine out of an arbitrary Python object. """
 	# This is probably reasonably quick as-is, but you're welcome to profile it.
 	def combine(message, attribute_stack):
@@ -152,11 +152,16 @@ def symbolic_reducer(driver):
 
 def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', language=None, interactive=False):
 	"""
-	This generates a function for parsing texts based on a set of tables and supplied drivers.
+	Builds and returns a function for parsing texts based on a set of tables and supplied drivers.
 	
-	It is simple in that no special provisions are made querying the state of a failed scan/parse,
-	and it uses the simple version of the parse algorithm which means at most one token per scan pattern match.
-	But it's fine for many simple applications.
+	It is simple in that it uses the simple version of the parse algorithm which means at most one
+	token per scan pattern match. That is fine for many applications.
+	
+	To facilitate error reporting and lexical tie-ins, the returned function supplies a custom
+	attribute (called `.scanner`) which exposes the current state of the scanner. Thus, you can
+	catch any old exception and see where in some input-text things went pear-shaped.
+	
+	PS: Yes, Virginia. Lexical closures ARE magical!
 	
 	:param tables: Generally the output of boozetools.macroparse.compiler.compile_file, but maybe deserialized.
 	:param scan_driver: needs .scan_foo(...) methods.
@@ -166,10 +171,37 @@ def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', langu
 	:param interactive: True if you want the parser to opportunistically reduce whenever lookahead would not matter.
 	:return: a callable object.
 	"""
+	scan = simple_scanner(tables, scan_driver, start=start)
+	parse = simple_parser(tables, parse_driver, language=language, interactive=interactive)
+	def fn(text):
+		nonlocal fn
+		fn.scanner = scan(text)
+		return parse(fn.scanner)
+	return fn
+
+def simple_scanner(tables, scan_driver, *, start='INITIAL'):
+	"""
+	Builds and returns a function which converts strings into a token-iterators by way of
+	the algorithms.Scanner class and your provided scan_driver object. It's the
+	same driver object for every scan, so any sequencing discipline is up to you.
+	
+	:param tables: Generally the output of boozetools.macroparse.compiler.compile_file, but maybe deserialized.
+	:param driver: needs .scan_foo(...) methods.
+	"""
 	scanner_tables = tables['scanner']
 	dfa = CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet'])
-	scan_rules = SymbolicScanRules(action=scanner_tables['action'], driver=scan_driver)
-	hfa = SymbolicParserTables(tables['parser'])
-	combine = symbolic_reducer(parse_driver)
-	return lambda text: algorithms.parse(hfa, combine, algorithms.Scanner(text=text, automaton=dfa, rulebase=scan_rules, start=start), language=language, interactive=interactive)
-	
+	rules = BoundScanRules(action=scanner_tables['action'], driver=scan_driver)
+	return lambda text: algorithms.Scanner(text=text, automaton=dfa, rules=rules, start=start)
+
+def simple_parser(tables, parse_driver, *, language=None, interactive=False):
+	"""
+	Builds and returns a function which converts a stream of tokens into a semantic value
+	by way of the algorithms.parse(...) function and your provided driver. It's the same
+	driver object for each parse, so any sequencing discipline is up to you.
+
+	:param tables: Generally the output of boozetools.macroparse.compiler.compile_file, but maybe deserialized.
+	:param driver: needs .parse_foo(...) methods.
+	"""
+	hfa = CompactHandleFindingAutomaton(tables['parser'])
+	combine = parse_action_bindings(parse_driver)
+	return lambda each_token: algorithms.parse(hfa, combine, each_token, language=language, interactive=interactive)

@@ -12,7 +12,7 @@ reduce using the earliest-defined applicable rule.
 import collections
 from . import interfaces, pretty, context_free, GLR
 
-class DragonBookTable(interfaces.ParserTables):
+class DragonBookTable(interfaces.ParseTable):
 	"""
 	This is the classic textbook view of a set of parse tables. It's also a reasonably quick implementation
 	if you have a modern amount of RAM in your machine. In days of old, it would be necessary to compress
