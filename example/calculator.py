@@ -47,7 +47,7 @@ class CalculatorDriver:
 
 tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'))
 driver = CalculatorDriver()
-parse = runtime.the_simple_case(tables, driver, driver)
+parse = runtime.the_simple_case(tables, driver, driver, interactive=True)
 
 def main():
 	import sys
