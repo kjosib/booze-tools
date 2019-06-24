@@ -141,3 +141,6 @@ class Scanner(interfaces.ScanState):
 	def current_position(self) -> int:
 		""" As advertised. This was motivated by a desire to produce helpful error messages. """
 		return self.__start
+	def current_span(self):
+		""" Return the position and length of the current match-text for use in error-reporting calls and the like. """
+		return self.__start, self.__mark - self.__start

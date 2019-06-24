@@ -76,7 +76,7 @@ class SourceText:
 		col = index - self.__bounds[row]
 		return row, col
 	
-	def complain(self, index:int, *, width=1, message:str=None):
+	def complain(self, index:int, width=1, *, message:str=None):
 		"""  """
 		row, col = self.find_row_col(index)
 		line = self.content[self.__bounds[row]:self.__bounds[row + 1]]

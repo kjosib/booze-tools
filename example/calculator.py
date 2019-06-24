@@ -13,7 +13,7 @@ variables with the '=' sign.
 
 """
 import operator, math, os
-from boozetools import runtime, interfaces
+from boozetools import runtime, interfaces, failureprone
 from boozetools.macroparse import compiler
 
 class CalculatorDriver:
@@ -53,10 +53,15 @@ def main():
 	import sys
 	driver.parse_help(None)
 	for line in sys.stdin:
-		if line.strip().lower() == 'quit': break
-		if line.strip():
-			try: parse(line.strip())
-			except KeyError: print("-- OCH! No such variable. --")
-			except interfaces.LanguageError: print('-- Not quite sure what that means. Sorry. --')
+		text = line.strip()
+		if text.lower() == 'quit': break
+		elif text:
+			try: parse(text)
+			except KeyError:
+				print(failureprone.illustration(text, *parse.scanner.current_span()))
+				print("-- OCH! No such variable. --")
+			except interfaces.LanguageError:
+				print(failureprone.illustration(text, *parse.scanner.current_span()))
+				print('-- Not quite sure what that means. Sorry. --')
 	
 if __name__ == '__main__': main()
