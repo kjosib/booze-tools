@@ -4,6 +4,7 @@ It provides a runtime interface to compacted scanner and parser tables.
 """
 from boozetools.interfaces import ScanState
 from . import interfaces, charclass, algorithms
+import inspect
 
 def displacement_function(otherwise:callable, *, offset, check, value) -> callable:
 	"""
@@ -92,15 +93,33 @@ class BoundScanRules(interfaces.ScanRules):
 	It cannot act alone, but works in concert with the CompactDFA (above) and the generic scan algorithm.
 	"""
 	def __init__(self, *, action:dict, driver:object):
-		self._parameter   = action['parameter']
+		
+		def bind(message, parameter):
+			method_name = 'scan_' + message
+			fn = getattr(driver, method_name, default_method)
+			if fn is None:
+				raise interfaces.MetaError("Scanner driver has neither method %r nor %r."%(method_name, default_method_name))
+			else:
+				if fn is default_method: method_name = default_method_name
+				arity = len(inspect.signature(fn).parameters)
+				if arity == 1:
+					if parameter is None: return fn
+					else: raise interfaces.MetaError("Message %r is used with parameter %r but handler %r only takes one argument (the scan state) and needs to take a second (the message parameter)."%(message, parameter, method_name))
+				elif arity == 2: return lambda scan_state: fn(scan_state, parameter)
+				else: raise interfaces.MetaError("Scan handler %r takes %d arguments, but needs to take %s."%(method_name, arity, ['two', 'one or two'][parameter is None]))
+		
+		default_method_name = 'default_scan_action'
+		default_method = getattr(driver, default_method_name, None)
 		self._trail       = action['trail']
 		self._line_number = action['line_number']
-		self.__methods = [getattr(driver, 'scan_'+message) for message in action['message']]
+		self.__methods = list(map(bind, action['message'], action['parameter']))
+		self.get_trailing_context = self._trail.__getitem__
 		
-	def get_trailing_context(self, rule_id: int): return self._trail[rule_id]
+	def get_trailing_context(self, rule_id: int):
+		""" NB: This gets overwritten by a direct bound-method on the trailing-context list. """
+		return self._trail[rule_id]
 	
-	def invoke(self, scan_state: ScanState, rule_id:int):
-		return self.__methods[rule_id](scan_state, self._parameter[rule_id])
+	def invoke(self, scan_state: ScanState, rule_id:int): return self.__methods[rule_id](scan_state)
 
 def mangle(message):
 	""" Describes the relation between parse action symbols (from parse rule data) to driver method names. """

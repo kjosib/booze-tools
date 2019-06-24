@@ -39,21 +39,26 @@ class PascalDriver:
 	different kinds of nodes: semantic analysis and IR-code generation become methods on those classes.
 	"""
 	def __init__(self, reserved_words): self.reserved = frozenset(reserved_words)
-	def scan_ignore(self, yy:interfaces.ScanState, p): pass
-	def scan_unterminated_comment(self, yy:interfaces.ScanState, p):
+	def scan_ignore(self, yy:interfaces.ScanState, what_to_ignore):
+		"""
+		The language definition file (pascal.md) provides an argument (comment or whitespace) to the
+		"ignore" scan action, so this function has to consume that argument -- at least for now.
+		"""
+		pass
+	def scan_unterminated_comment(self, yy:interfaces.ScanState):
 		raise interfaces.ScanError(yy.current_position(), 'unterminated comment')
-	def scan_integer(self, yy:interfaces.ScanState, p): return 'integer', int(yy.matched_text())
-	def scan_decimal(self, yy:interfaces.ScanState, p): return 'real', float(yy.matched_text())
-	def scan_scientific_notation(self, yy:interfaces.ScanState, p): return 'real', float(yy.matched_text())
-	def scan_string_constant(self, yy:interfaces.ScanState, p):
+	def scan_integer(self, yy:interfaces.ScanState): return 'integer', int(yy.matched_text())
+	def scan_decimal(self, yy:interfaces.ScanState): return 'real', float(yy.matched_text())
+	def scan_scientific_notation(self, yy:interfaces.ScanState): return 'real', float(yy.matched_text())
+	def scan_string_constant(self, yy:interfaces.ScanState):
 		return 'string_constant', yy.matched_text()[1:-1].replace("''", "'")
-	def scan_identifier(self, yy:interfaces.ScanState, p): return 'identifier', yy.matched_text()
-	def scan_word(self, yy:interfaces.ScanState, p):
+	def scan_identifier(self, yy:interfaces.ScanState): return 'identifier', yy.matched_text()
+	def scan_word(self, yy:interfaces.ScanState):
 		# Checks a table of reserved words.
 		word = yy.matched_text().upper()
 		if word in self.reserved: return word, None
 		else: return 'identifier', word
-	def scan_token(self, yy:interfaces.ScanState, p):
+	def scan_token(self, yy:interfaces.ScanState):
 		text = yy.matched_text()
 		return text, text
 	

@@ -29,11 +29,11 @@ class CalculatorDriver:
 		self.parse_power = operator.pow
 		self.parse_negate = operator.neg
 		self.parse_lookup = self.memory.__getitem__
-	def scan_ignore_whitespace(self, yy:interfaces.ScanState, parameter): pass
-	def scan_punctuation(self, yy:interfaces.ScanState, parameter): return yy.matched_text(), None
-	def scan_real(self, yy:interfaces.ScanState, parameter): return 'number', float(yy.matched_text())
-	def scan_imaginary(self, yy:interfaces.ScanState, parameter): return 'number', float(yy.matched_text()[:-1])*1j
-	def scan_variable(self, yy:interfaces.ScanState, parameter): return 'variable', yy.matched_text()
+	def scan_ignore_whitespace(self, yy:interfaces.ScanState): pass
+	def scan_punctuation(self, yy:interfaces.ScanState): return yy.matched_text(), None
+	def scan_real(self, yy:interfaces.ScanState): return 'number', float(yy.matched_text())
+	def scan_imaginary(self, yy:interfaces.ScanState): return 'number', float(yy.matched_text()[:-1])*1j
+	def scan_variable(self, yy:interfaces.ScanState): return 'variable', yy.matched_text()
 	def parse_evaluate(self, value):
 		print(" -->",value)
 		return value
