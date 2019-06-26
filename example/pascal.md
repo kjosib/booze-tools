@@ -85,7 +85,7 @@ decls(keyword,item) -> :empty | keyword .ssl(item) ';'
 names -> csl(identifier)
 
 ```
-Here is what might be called the backbone structure of a Pasacal program:
+Here is what might be called the backbone structure of a Pascal program:
 ```
 module -> PROGRAM .identifier '(' .names ')' ';' .block '.'
 block -> .labels .const_defs .type_defs .var_defs .subroutines BEGIN .ssl(stmt) END
