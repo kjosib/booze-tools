@@ -12,13 +12,14 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 ========================================
 
 """
-import re, os, collections
+import re, os, collections, typing
 from .. import miniscan, regular, LR, GLR, foundation, interfaces, compaction
 from . import grammar
 
-def compile_file(pathname, *, method=GLR.DEFAULT_TABLE_METHOD) -> dict:
+
+def compile_file(pathname, *, method) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
-	return compile_string(document, method=method).as_compact_form(filename=os.path.basename(pathname))
+	return compile_string(document, method=method).determinize().as_compact_form(filename=os.path.basename(pathname))
 
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
@@ -68,7 +69,17 @@ class TextBookForm:
 		if self.parse_table is not None:
 			self.parse_table.make_csv(pathstem)
 
-def compile_string(document:str, *, method=GLR.DEFAULT_TABLE_METHOD) -> TextBookForm:
+class IntermediateForm(typing.NamedTuple):
+	nfa: regular.NFA
+	scan_actions: list
+	hfa: GLR.HFA
+	def determinize(self) -> TextBookForm:
+		dfa = self.nfa.subset_construction().minimize_states().minimize_alphabet() if self.nfa.states else None
+		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=LR.determinize(self.hfa))
+	def make_dot_file(self, path): self.hfa.make_dot_file(path)
+
+
+def compile_string(document:str, *, method) -> IntermediateForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
@@ -201,9 +212,7 @@ def compile_string(document:str, *, method=GLR.DEFAULT_TABLE_METHOD) -> TextBook
 	
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
 	if condition_definitions: tie_conditions()
-	dfa = nfa.subset_construction().minimize_states().minimize_alphabet() if nfa.states else None
-	hfa = GLR.PARSE_TABLE_METHODS[method](ebnf.sugarless_form())
-	return TextBookForm(dfa=dfa, scan_actions=scan_actions, parse_table=LR.determinize(hfa))
+	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=GLR.PARSE_TABLE_METHODS[method](ebnf.sugarless_form()))
 
 
 def encode_parse_rules(rules:list) -> dict:
@@ -229,7 +238,8 @@ def main():
 	parser.add_argument('--pretty', action='store_true', help='Display uncompressed tables in attractive grid format on STDOUT.')
 	parser.add_argument('--csv', action='store_true', help='Generate CSV versions of uncompressed tables, suitable for inspection.')
 	parser.add_argument('--dev', action='store_true', help='Operate in "development mode" -- which changes from time to time.')
-	parser.add_argument('-m', '--method', choices=GLR.PARSE_TABLE_METHODS, default=GLR.DEFAULT_TABLE_METHOD, type=str.upper, help="Which parser table construction method to use.")
+	parser.add_argument('--dot', action='store_true', help="Create a .dot file for visualizing the parser via the Graphviz package.")
+	parser.add_argument('-m', '--method', choices=GLR.PARSE_TABLE_METHODS, default='LR1', type=str.upper, help="Which parser table construction method to use.")
 	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
 	stem, extension = os.path.splitext(args.source_path)
@@ -239,7 +249,9 @@ def main():
 		exit(1)
 	with(open(args.source_path)) as fh:document = fh.read()
 	try:
-		textbook_form = compile_string(document, method=args.method)
+		intermediate_form = compile_string(document, method=args.method)
+		if args.dot: intermediate_form.make_dot_file(target_path+'.dot')
+		textbook_form = intermediate_form.determinize()
 	except grammar.DefinitionError as e:
 		print(e.args[0], file=sys.stderr)
 		exit(1)

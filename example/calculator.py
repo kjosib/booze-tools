@@ -45,7 +45,7 @@ class CalculatorDriver:
 		print(__doc__)
 		print(self.memory)
 
-tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'))
+tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'), method='LALR')
 driver = CalculatorDriver()
 parse = runtime.the_simple_case(tables, driver, driver, interactive=True)
 

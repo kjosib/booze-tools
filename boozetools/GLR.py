@@ -76,6 +76,20 @@ class HFA(Generic[T]):
 		for s in symbols: q = self.graph[q].shift[s]
 		return q
 	
+	def make_dot_file(self, path):
+		""" Make a file suitable for the "dot" application from the Graphviz package. """
+		with open(path, 'w') as fh:
+			fh.write("digraph {\n")
+			for q, state in enumerate(self.graph):
+				sym = self.bft.breadcrumbs[q] or ''
+				sym = sym.replace('"', r'\"')
+				if sym.endswith('\\'): sym = sym + ' '
+				fh.write("%d [label=\"%d: %s\"]\n"%(q, q, sym))
+				for i in state.shift.values():
+					fh.write("\t%d -> %d\n"%(q,i))
+			fh.write('}\n')
+		pass
+	
 	def trial_parse(self, sentence: Iterable):
 		"""
 		This is intended to be a super-simplistic non-deterministic recognizer: It exists only for
@@ -562,7 +576,5 @@ PARSE_TABLE_METHODS = {
 	'CLR': canonical_lr1,
 	'LR1': minimal_lr1,
 }
-
-DEFAULT_TABLE_METHOD = 'LALR'
 
 

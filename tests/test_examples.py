@@ -55,7 +55,7 @@ class TestMacroJson(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
 		example_folder = os.path.dirname(example.mini_json.__file__)
-		automaton = compiler.compile_file(os.path.join(example_folder, 'json.md'))
+		automaton = compiler.compile_file(os.path.join(example_folder, 'json.md'), method='LALR')
 		# The transition into and back out of JSON should be non-destructive, but it's worth being sure.
 		serialized = standard_json.dumps(automaton)
 		cls.automaton = standard_json.loads(serialized)

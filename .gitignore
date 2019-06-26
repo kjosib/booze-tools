@@ -1,4 +1,4 @@
-*.automaton
+*.automaton*
 *.csv
 
 # Byte-compiled / optimized / DLL files
