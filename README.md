@@ -11,6 +11,8 @@ For now there are three major components. Eventually there will be more. These a
     * supports a macro language for simplifying otherwise-redundant parser specifications.
     * provides a suitable runtime library so the [examples](https://github.com/kjosib/booze-tools/tree/master/example/)
         run and pass the [tests](https://github.com/kjosib/booze-tools/tree/master/tests/).
+    * can prepare parse and scan tables ahead of time (serialized to JSON) or just-in-time according to your needs.
+    * can generate [DOT graphs](https://github.com/kjosib/booze-tools/blob/master/example/json.png) from grammars.
 
 The "minimal-LR(1)" algorithm used here is -- I believe -- provably minimal, even while it
 respects precedence and associativity declarations in the usual way. It is strongly inspired
@@ -31,6 +33,7 @@ Worked examples may be found at [/example/](https://github.com/kjosib/booze-tool
     * MacroParse compiles automatons to JSON, and appropriate run-time support is in the library.
     * Code generation for other languages is foreseeable: translate the JSON and supply a suitable runtime.
 * Performance is accordingly NOT a top priority, but:
+    * the profiler has been used to solve one or two problems,
     * if someone wants to play with the profiler they are welcome, and
     * contributions in that vein will be accepted as long as they are consistent with the higher priorities.
 
