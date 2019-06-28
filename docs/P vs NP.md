@@ -23,12 +23,13 @@ I'd better support that assertion.
 ## Lemma: Linear Time is Sufficient Consideration.
 
 An algorithm either consults its entire input or it does not.
-	* If it does, then at least consulting the input is at least linear in the input.
-	* If it does not, then it rules some portion of that input out from consideration
-		either by non-deterministic oracle or by means of a transitive relation over
-		equivalence-classes on the (abstract) addresses of the inputs. The algorithm
-		is then linear over the portion of the input which it DOES consult in making
-		its computations about the transitive relation on equivalence classes.
+
+* If it does, then at least consulting the input is at least linear in the input.
+* If it does not, then it rules some portion of that input out from consideration
+	either by non-deterministic oracle or by means of a transitive relation over
+	equivalence-classes on the (abstract) addresses of the inputs. The algorithm
+	is then linear over the portion of the input which it DOES consult in making
+	its computations about the transitive relation on equivalence classes.
 
 An algorithm which not linear in the size of the input is still linear in the size
 of some other object: to wit, its "search path" which is equivalent to the number
@@ -57,10 +58,19 @@ tape out to the correct answer?
 
 **Reply:**
 Yes, but just to *test* the answer, not to generate it. That linear factor is exactly
-compensated by the deterministic machine having to *test each* hypothesis, which takes
-linear time *each time* in the Turing model. Irrefutably, for unsorted search,
+compensated by the deterministic machine having to *test each* hypothesis, which
+presumably takes linear time *each time* in the Turing model. For unsorted search,
 non-determinism saves a power of `N` in the asymptote.
 
+**OBJECTION:**
+The deterministic TM could simply drag a copy of the needle through the haystack.
+
+**Reply:**
+Consider the work-factor to actually write out an answer: Unary or binary?
+Where should it start? The classical Turing-machine formulation leaves a great
+many things unspecified. Just assume random-access memory and go with it.
+
+**Synthesis:**
 Unsorted search is an extreme example of a particular kind of function: one for
 which no transitive relation can be relied upon to partition the search space, and
 accordingly no deterministic test can rule out any constant fraction of that space
@@ -183,7 +193,7 @@ Call this impossible, because (as mentioned) there are no universal optimizers.
 Conclusion: The number of simultaneous configurations is the work factor to simulate
 those configurations; there are no shortcuts.
 
-## Lemma: Non-deterministic Bounded Halting is in EXPTIME.
+## Lemma: Non-deterministic Bounded Halting is EXPTIME-hard.
 
 Letting arbitrary non-determinism into the mix allows a Turing machine to be in
 a power-set of configurations, any element of which counts as distinct for the purpose of
