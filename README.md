@@ -44,3 +44,5 @@ There are unit tests. They're not vast and imposing, but they exercise the inter
 
 There is a wiki linked above. It has background and more detail about what this is and how to use it.
 
+# Oh by the way..
+I'm NOT a [crack-pot](https://github.com/kjosib/booze-tools/blob/master/docs/P%20vs%20NP.md). Really I'm not.
