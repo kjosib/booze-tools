@@ -139,51 +139,31 @@ JSON does not require precedence declarations. They will be explained in another
 describing a simple programming language.
 
 ## Productions: value
-There are various conventions for rendering the "produces" arrow in plain text. Because
-these production rules are known to be context-free, the exact shape of the arrow is quite
-unimportant. Therefore, any blob of punctuation marks will be treated as the arrow.
-
-Nonterminals must have identifier names. Terminals are much freer.
-Letter case is not enforced as a distinguishing feature.
-
-For the moment, production-rule macros must be defined before they are used. This is because
-the present grammar definition machinery operates in a single pass, desugaring macros as it
-goes along. Here are the grammar-macro definitions appropriate to a grammar for JSON:
-
-```
-list_of(item) -> :empty | one_or_more(item)
-
-one_or_more(item) -> item :first 
- | .one_or_more(item) ',' .item :append
-```
-
-As may be inferred, `item` is here a formal-parameter to the macros `list_of` and `one_or_more`.
-The macro expansion machinery does the right thing at the context-free-grammar level, but it
-is up to the application to deal properly with, say, message `:first` applying either to a `value`
-or a `key_value_pair` as appropriate. If you're working in a dynamic language, that won't be
-any trouble at all. In one with strict static typing, you'll doubtless have some sort
-of "parse stack entry" type defined: it needs a variant for "list-of-entries".
-
-Last but not least appears the context-free portion of the grammar for JSON syntax, followed
-by more notes about the features and syntax:
-
+Last but not least appears the context-free portion of the grammar for JSON syntax.
+Intermixed with that grammar are plain-language notes explaining the features.
 ```
 value => string | number | object | array | true | false | null
-
-object ::= '{' .list_of(key_value_pair) '}' :object
-
-array = '[' .list_of(value) ']'
-
-key_value_pair -> .string ':' .value
-
-string : '"' .text '"' :string
-
-text ==> :empty
-  | text character :append
-
 ```
 Here, `value` is just a renaming abstraction. These come at zero-cost in run-time or storage,
 because the parse table generator is just smart that way.
+
+
+There are various conventions for rendering the "produces" arrow in plain text. Because
+these production rules are known to be context-free, the exact shape of the arrow is quite
+unimportant. Therefore, any blob of punctuation marks drawn from the set `-=>:<`
+will be treated as the arrow. You can use your own favorite transliteration or
+be inconsistent to prove a point, as is done in this tutorial.
+
+Nonterminals must have identifier names. (That is, they start with a letter, etc.)
+Terminals may follow those same rules, or optionally be any single character within
+either single `'` or double `"` quotes. Letter case is not enforced as a
+distinguishing feature, although you're welcome to use it that way.
+
+```
+string : '"' .text '"' :string
+text ==> :empty
+	| text character :append
+```
 
 The period/dot `.` is prepended to a symbol to make it significant to the semantic action
 at the end of the rule.
@@ -193,24 +173,47 @@ need something like `parse_object(...)` and `parse_string(...)` methods, each
 taking as many arguments as selected symbols. The parse engine is responsible to select
 only the indicated symbols as relevant to your implementation function.
 
-The rule for `array` is an example of a bracketing rule like `E -> '(' .E ')'`, without
-an explicit semantic action. In a case like this, the brackets are dropped out and the
-right thing happens in the parser. In this example, it's necessary that the `:empty`,
-`:first`, and `:append` actions are implemented to build something suitable as an array.
-
 In a production rule, if nothing is marked (dotted) explicitly, then everything is
 selected implicitly. An example of this shortcut is shown in the rules for `text`.
+
+```
+object ::= '{' .list_of(key_value_pair) '}' :object
+key_value_pair -> .string ':' .value
+```
+The definition of `object` makes reference to a macro called `list_of`.
+It will be defined presently.
 
 Notice that the production rule for `key_value_pair` lacks an explicit action, but has
 more than one selected symbol. In this case, the semantic result is just the tuple of
 selected symbols. Rather, that's what the supplied Python runtime does with this. Another
 host language might need its hand held.
 
+Here are the grammar-macro definitions appropriate to a grammar for JSON:
+```
+list_of(item) -> :empty | one_or_more(item)
+
+one_or_more(item) -> item :first 
+	| .one_or_more(item) ',' .item :append
+```
+As may be inferred, `item` is here a formal-parameter to the macros `list_of` and `one_or_more`.
+The macro expansion machinery does the right thing at the context-free-grammar level, but it
+is up to the application to deal properly with, say, message `:first` applying either to a `value`
+or a `key_value_pair` as appropriate. If you're working in a dynamic language, that won't be
+any trouble at all. In one with strict static typing, you'll doubtless have some sort
+of "parse stack entry" type defined: it needs a variant for "list-of-entries".
+```
+array = '[' .list_of(value) ']'
+```
+The rule for `array` is an example of a bracketing rule like `E -> '(' .E ')'`, without
+an explicit semantic action. In a case like this, the brackets are dropped out and the
+right thing happens in the parser. In this example, it's necessary that the `:empty`,
+`:first`, and `:append` actions are implemented to build something suitable as an array.
 
 # Notes:
 
 The semantics of scan actions differ slightly from (current) `miniscan`: Specifically, no particular
-scan/parse integration strategy is implied.
+scan/parse integration strategy is implied -- although there are some convenient
+shortcuts in the `boozetools.runtime` module.
 
 Many languages have a convenient 1:1 relation between patterns and tokens, which facilitates a
 scanner-as-iterator approach: return values from the scan actions and they are implicitly emitted.

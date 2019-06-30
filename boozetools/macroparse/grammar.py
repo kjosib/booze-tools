@@ -17,6 +17,9 @@ from .. import context_free, miniparse, miniscan, interfaces, failureprone, pret
 class DefinitionError(Exception): pass
 
 ### Semantic categories for the breakdown of rewrite rules:
+class Action:
+	def __init__(self, name): self.name = name
+
 class Element:
 	"""
 	Base class of RHS elements.
@@ -25,45 +28,84 @@ class Element:
 		available to any action to its right.
 		Please note: 'capturing' a rule-final action makes no sense and is presently ignored.
 	"""
-	def canonical_symbol(self, bindings:dict) -> str:
-		""" To support the enhancements over plain BNF, each element needs a canonical symbolic expression. """
+	def implement(self, ebnf:"EBNF_Definition", head:str, bindings:dict) -> str:
+		""" Interpreting the MacroParse EBNF variant now seems to require a proper environment... """
 		raise NotImplementedError(type(self))
-
-class Action(Element):
-	def __init__(self, name): self.name = name
-	def canonical_symbol(self, bindings:dict) -> str: return ':'+self.name # Maybe I could pass actions into macros by adjusting this?
 
 class Symbol(Element):
 	def __init__(self, name): self.name = name
-	def canonical_symbol(self, bindings:dict) -> str: return bindings.get(self.name, self.name)
+	
+	def implement(self, ebnf: "EBNF_Definition", head: str, bindings: dict) -> str:
+		return head if self.name == '_' else bindings.get(self.name, self.name)
+
 
 class InlineRenaming(Element):
 	def __init__(self, alternatives):
 		self.alternatives = tuple(alternatives)
 		for a in self.alternatives: assert isinstance(a, Element) and not isinstance(a, Action)
+	
+	def implement(self, ebnf: "EBNF_Definition", head: str, bindings: dict) -> str:
+		alts = [a.implement(ebnf, head, bindings) for a in self.alternatives]
+		symbol = "[%s]"%("|".join(alts))
+		if ebnf.implementing(symbol):
+			for a in alts:
+				ebnf.plain_cfg.rule(symbol, [a], None, None)
+		return symbol
 		
-	def canonical_symbol(self, bindings:dict) -> str: return "[%s]"%("|".join(s.canonical_symbol(bindings) for s in self.alternatives))
 
 class MacroCall(Element):
 	def __init__(self, name, actual_parameters):
 		self.name, self.actual_parameters = name, tuple(actual_parameters)
 		assert isinstance(self.name, str)
 		for a in self.actual_parameters: assert isinstance(a, Element), type(a)
-	def canonical_symbol(self, bindings:dict) -> str: return "%s(%s)"%(self.name, ",".join(s.canonical_symbol(bindings) for s in self.actual_parameters))
+	def canonical_symbol(self, bindings:dict) -> str: return
+	
+	def implement(self, ebnf: "EBNF_Definition", head: str, bindings: dict) -> str:
+		args = [a.implement(ebnf, head, bindings) for a in self.actual_parameters]
+		symbol = "%s(%s)"%(self.name, ",".join(args))
+		if ebnf.implementing(symbol): ebnf.must_elaborate.append((symbol, self.name, args))
+		return symbol
 
 
 class Rewrite:
 	def __init__(self, elements:list, precsym:str=None):
 		self.elements = elements
 		self.precsym = precsym
+		self.line_nr = 0
 		self.message:Action = self.elements.pop(-1) if isinstance(self.elements[-1], Action) else None
 		self.__args = args = []
 		self.size = len(self.elements)
 		for i,elt in enumerate(self.elements):
 			if hasattr(elt, 'capture'): args.append(i)
 		if not args: args.extend(range(self.size)) # Pick up everything if nothing is special.
+	
 	def prefix_capture(self, size:int):
 		return tuple(c - size for c in self.__args if c < size)
+	
+	def install(self, ebnf:"EBNF_Definition", head, bindings):
+		ebnf.error_help.current_line_nr = self.line_nr # Because MACROS.
+		rhs = [elt.implement(ebnf, head, bindings) for elt in self.elements]
+		"""
+		Install one rewrite rule:
+		Does everything necessary to interpret extension forms down to plain BNF,
+		and then enters that into self.plain_bnf as an option for `head`.
+		"""
+		raw_bnf = []
+		for i, elt in enumerate(self.elements):
+			if isinstance(elt, Action):
+				placeholder = ':'+elt.name
+				raw_bnf.append(placeholder)
+				ebnf.internal_action(placeholder, self.prefix_capture(i))
+			else:
+				assert isinstance(elt, Element)
+				raw_bnf.append(elt.implement(ebnf, head, bindings))
+		
+		raw_message = None if self.message is None else self.message.name
+		if len(raw_bnf) == 1 and raw_message is None: attribute = None
+		else:
+			offsets = self.prefix_capture(len(raw_bnf))
+			attribute = (raw_message, offsets, ebnf.error_help.current_line_nr)
+		ebnf.plain_cfg.rule(head, raw_bnf, attribute, self.precsym)
 
 """
 The MacroParse metagrammar contains various repetition constructs. The following functions
@@ -107,7 +149,7 @@ METAGRAMMAR.renaming('terminal', 'name', 'literal')
 
 METAGRAMMAR.renaming('element', 'positional_element')
 @METAGRAMMAR.rule('element', 'capture .positional_element')
-def capture(positional_element:Element) -> Element:
+def _capture_(positional_element:Element) -> Element:
 	positional_element.capture = True
 	return positional_element
 
@@ -119,6 +161,7 @@ METAGRAMMAR.rule('actual_parameter', '[ .' + one_or_more('symbol') + ' ]')(Inlin
 
 METAGRAMMAR.rule('symbol', 'name')(Symbol)    # Normal symbol
 METAGRAMMAR.rule('symbol', 'literal')(Symbol) # Also a normal symbol with a funny name
+METAGRAMMAR.rule('symbol', 'topic')(Symbol)   # Topic symbol; gets its name fixed later.
 METAGRAMMAR.rule('symbol', '.name ( .' + list_of('actual_parameter', ',') + ' )')(MacroCall)
 
 # Sub-language: For specifying precedence and associativity rules:
@@ -137,6 +180,7 @@ METAGRAMMAR.rule('condition', '.name arrow .'+one_or_more('name'))(None)
 LEX = miniscan.Definition()
 LEX.on(r'\s+')(None) # Ignore whitespace
 LEX.on(r'\l\w*')('name') # Identifiers as token type "name".
+LEX.on(r'_/\W')('topic') # Bare underline means "the current production rule head".
 LEX.on(r':\l\w*')(lambda scanner:('message', scanner.matched_text()[1:])) # Strip out the colon for message names
 LEX.on(r'%\l+')(lambda scanner:('pragma_'+scanner.matched_text()[1:], None)) # Build pragma token types from the text.
 LEX.on(r'[.]/\S')('capture') # a dot prefixes a captured element, so it needs to be followed by something.
@@ -168,12 +212,18 @@ class ErrorHelper:
 
 
 class MacroDefinition:
-	def __init__(self, name:str, formals, line_nr:int):
+	def __init__(self, name:str, formals):
 		self.name = name
 		self.formals = tuple(formals)
-		self.line_nr = line_nr
 		self.rewrites = []
 		self.actually_used = False
+	
+	def elaborate(self, ebnf:"EBNF_Definition", head:str, args:list):
+		if len(args) != len(self.formals):
+			raise DefinitionError("Macro \"%s\" called with wrong number of arguments."%self.name)
+		self.actually_used = True
+		for rewrite in self.rewrites:
+			rewrite.install(ebnf, head, dict(zip(self.formals, args)))
 
 ### Grammar object:
 # Please note: The format of an action entry shall be the tuple <message_name, tuple-of-offsets, line_number>.
@@ -188,6 +238,7 @@ class EBNF_Definition:
 		self.inferential_start = None # Use this to infer a start symbol if necessary.
 		self.macro_definitions = {} # name -> MacroDefinition
 		self.implementations = {} # canonical symbol -> line number of first elaboration
+		self.must_elaborate = []
 		self.error_help = error_help
 	
 	def read_precedence_line(self, line:str, line_nr:int):
@@ -197,6 +248,7 @@ class EBNF_Definition:
 	def read_production_line(self, line:str, line_nr:int):
 		""" This is the main interface to defining grammars. Call this repeatedly for each line of the grammar. """
 		head, rewrites = self.error_help.parse(line, line_nr, 'production')
+		for R in rewrites: R.line_nr = line_nr
 		# Set the current head field, or use it unchanged if not specified on this line:
 		if head is None:
 			if self.current_head is None:
@@ -210,7 +262,7 @@ class EBNF_Definition:
 				elif len(set(formals)|{name}) <= len(formals):
 					self.error_help.gripe("All the names used in a macro head declaration must be distinct.")
 				else:
-					head = self.macro_definitions[name] = MacroDefinition(name, formals, line_nr)
+					head = self.macro_definitions[name] = MacroDefinition(name, formals)
 			self.current_head = head
 		# Proceed to do the right thing with supplied rewrite rules on this line:
 		if isinstance(self.current_head, MacroDefinition):
@@ -218,60 +270,9 @@ class EBNF_Definition:
 		else:
 			assert isinstance(head, str)
 			if self.inferential_start is None: self.inferential_start = head
-			for R in rewrites: self.__install(head, R, {})
+			for R in rewrites:
+				R.install(self, head, {})
 		pass
-	
-	def __install(self, head:str, rewrite:Rewrite, bindings:dict):
-		"""
-		Install one rewrite rule:
-		Does everything necessary to interpret extension forms down to plain BNF,
-		and then enters that into self.plain_bnf as an option for `head`.
-		"""
-		raw_bnf = [self.__desugar(E, rewrite, i, bindings) for i, E in enumerate(rewrite.elements)]
-		raw_message = None if rewrite.message is None else rewrite.message.name
-		if len(raw_bnf) == 1 and raw_message is None: attribute = None
-		else:
-			offsets = rewrite.prefix_capture(len(raw_bnf))
-			attribute = (raw_message, offsets, self.error_help.current_line_nr)
-		self.plain_cfg.rule(head, raw_bnf, attribute, rewrite.precsym)
-	
-	def __desugar(self, element:Element, rewrite:Rewrite, position:int, bindings:dict) -> str:
-		"""
-		This is basically a case-statement over the types of symbols that may appear in a right-hand side.
-		It needs to make sure that compound (a.k.a. extended) symbols are properly defined (once) in plain
-		BNF before they get used in a real rule. As such, it contains the core of the macro system.
-		"""
-		canon = element.canonical_symbol(bindings)
-		if isinstance(element, Symbol):
-			return canon
-		elif isinstance(element, Action):
-			if canon in self.implementations: self.error_help.gripe('Internal action %s was first elaborated on line %d; reuse is not (presently) supported.'%(canon, self.implementations[canon]))
-			self.implementations[canon] = self.error_help.current_line_nr
-			attribute = (canon, rewrite.prefix_capture(position), self.error_help.current_line_nr)
-			self.plain_cfg.rule(canon, [], attribute, None)
-			return canon
-		elif isinstance(element, InlineRenaming):
-			if canon not in self.implementations:
-				self.implementations[canon] = self.error_help.current_line_nr
-				for a in element.alternatives: self.plain_cfg.rule(canon, [self.__desugar(a, None, None, bindings)], None, None)
-			return canon
-		elif isinstance(element, MacroCall):
-			if canon not in self.implementations:
-				self.implementations[canon] = self.error_help.current_line_nr
-				# Construct a new binding environment; lexical scope...
-				try: definition = self.macro_definitions[element.name]
-				except KeyError: return self.error_help.gripe('Macro call %s is not yet defined. Please define macros before using them. (This limitation may eventually be lifted.)'%element.name)
-				assert isinstance(definition, MacroDefinition)
-				definition.actually_used = True
-				actual_parameters = [self.__desugar(p, None, None, bindings) for p in element.actual_parameters]
-				if len(actual_parameters) != len(definition.formals): self.error_help.gripe("Macro call %s has %d parameters; expected %d."%(element.name, len(actual_parameters), len(definition.formals)))
-				new_bindings = dict(zip(definition.formals, actual_parameters))
-				for r in definition.rewrites:
-					assert isinstance(r, Rewrite)
-					self.__install(canon, r, new_bindings)
-			return canon
-		
-		assert False, 'Not finished handling %r.'%type(element)
 	
 	def validate(self):
 		unused_macros = sorted(name+':'+str(definition.line_nr) for name, definition in self.macro_definitions.items() if not definition.actually_used)
@@ -284,5 +285,28 @@ class EBNF_Definition:
 	
 	def sugarless_form(self) -> context_free.ContextFreeGrammar:
 		if self.inferential_start: # In other words, if any rules were ever given...
+			while self.must_elaborate:
+				(symbol, name, args) = self.must_elaborate.pop()
+				try: definition = self.macro_definitions[name]
+				except KeyError: raise DefinitionError("At line %d macro \"%s\" is called but never defined."%(self.implementations[symbol], name))
+				else: definition.elaborate(self, symbol, args)
 			self.validate()
 			return self.plain_cfg
+	
+	def internal_action(self, placeholder:str, capture:tuple):
+		if self.implementing(placeholder):
+			attribute = (placeholder, capture, self.error_help.current_line_nr)
+			self.plain_cfg.rule(placeholder, [], attribute, None)
+		else:
+			self.error_help.gripe(
+				'Internal action %s was first elaborated on line %d; reuse is not (presently) supported.' %
+				(placeholder, self.implementations[placeholder])
+			)
+
+	def implementing(self, symbol) -> bool:
+		""" Tells if the current instantiation of a macro-rule is the first; notes the line number where it happened. """
+		if symbol in self.implementations:
+			return False
+		else:
+			self.implementations[symbol] = self.error_help.current_line_nr
+			return True
