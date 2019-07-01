@@ -275,8 +275,8 @@ class EBNF_Definition:
 		pass
 	
 	def validate(self):
-		unused_macros = sorted(name+':'+str(definition.line_nr) for name, definition in self.macro_definitions.items() if not definition.actually_used)
-		if unused_macros: DefinitionError('The following macro(s) were defined but never used: '+', '.join(unused_macros))
+		unused_macros = sorted(name+' at line '+str(definition.rewrites[0].line_nr) for name, definition in self.macro_definitions.items() if not definition.actually_used)
+		if unused_macros: raise DefinitionError('The following macro(s) were defined but never used:\n\t'+'\n\t'.join(unused_macros))
 		if not self.inferential_start: raise DefinitionError("No production rules have been given, so how am I to compile a grammar? (You could give a trivial one...)")
 		if not self.plain_cfg.start:
 			print('Inferring CFG start symbol %r from earliest production because none was given explicitly.'%self.inferential_start)
