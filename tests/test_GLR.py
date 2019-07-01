@@ -27,7 +27,7 @@ class TestGLR0(unittest.TestCase):
 				with self.subTest(sentence=sentence):
 					for hfa in [glr0, glalr, glr1]:
 						try: hfa.trial_parse(sentence)
-						except interfaces.ParseError: pass
+						except interfaces.GeneralizedParseError: pass
 						else: assert False, "%r should not be accepted."%sentence
 
 	def r(self, lhs, rhs:str):

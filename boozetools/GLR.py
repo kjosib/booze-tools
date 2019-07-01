@@ -123,12 +123,12 @@ class HFA(Generic[T]):
 				if lexeme in state.shift: next.append((state.shift[lexeme], stack))
 				for rule_id in state.reductions_before(lexeme): alive.append(reduce(stack, rule_id))
 			alive = next
-			if not alive: raise interfaces.ParseError("Parser died midway at something ungrammatical.")
+			if not alive: raise interfaces.GeneralizedParseError("Parser died midway at something ungrammatical.")
 		for stack in alive:
 			q = stack[0]
 			if q == accept: return True
 			for rule_id in self.graph[q].reductions_before(END): alive.append(reduce(stack, rule_id))
-		raise interfaces.ParseError("Parser recognized a viable prefix, but not a complete sentence.")
+		raise interfaces.GeneralizedParseError("Parser recognized a viable prefix, but not a complete sentence.")
 
 class LR0_State(NamedTuple):
 	"""

@@ -2,9 +2,17 @@
 This file aggregates various exception types and abstract classes which you'll deal with when using BoozeTools.
 """
 
+from . import pretty
+
 class LanguageError(ValueError): pass
 class ScanError(LanguageError): pass
-class ParseError(LanguageError): pass
+class ParseError(LanguageError):
+	def __init__(self, stack_symbols, lookahead, yylval):
+		super(ParseError, self).__init__(stack_symbols, lookahead, yylval)
+		self.stack_symbols, self.lookahead, self.yylval = stack_symbols, lookahead, yylval
+	def condition(self) -> str:
+		return ' '.join(self.stack_symbols) + ' %s %s'%(pretty.DOT, self.lookahead)
+class GeneralizedParseError(LanguageError): pass
 class SemanticError(LanguageError): pass
 class MetaError(LanguageError):
 	""" This gets raised if there's something wrong in the definition of a parser or scanner. """

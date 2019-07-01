@@ -207,7 +207,7 @@ class ErrorHelper:
 		except interfaces.ParseError as e:
 			self.gripe_about(
 				line, metascan.current_position(),
-				'The MacroParse MetaParser got confused. Stack condition was\n\t%r %s %r\nActual point of failure was:'%(e.args[0],pretty.DOT, e.args[1])
+				'The MacroParse MetaParser got confused about:\n\t'+e.condition()
 			)
 
 
