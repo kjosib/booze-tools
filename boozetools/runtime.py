@@ -171,7 +171,7 @@ def parse_action_bindings(driver):
 		else: return tuple(attribute_stack[x] for x in view) # Tuple Collection Rule
 	return combine
 
-def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', language=None, interactive=False):
+def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', language=None, interactive=True):
 	"""
 	Builds and returns a function for parsing texts based on a set of tables and supplied drivers.
 	
@@ -214,7 +214,7 @@ def simple_scanner(tables, scan_driver, *, start='INITIAL'):
 	rules = BoundScanRules(action=scanner_tables['action'], driver=scan_driver)
 	return lambda text: algorithms.Scanner(text=text, automaton=dfa, rules=rules, start=start)
 
-def simple_parser(tables, parse_driver, *, language=None, interactive=False):
+def simple_parser(tables, parse_driver, *, language=None, interactive=True):
 	"""
 	Builds and returns a function which converts a stream of tokens into a semantic value
 	by way of the algorithms.parse(...) function and your provided driver. It's the same
