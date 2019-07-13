@@ -65,11 +65,11 @@ class MiniParse:
 			self.__grammar.rule(lhs, rhs, message, None)
 	
 	def display(self): self.__grammar.display()
-	def get_hfa(self):
+	def get_hfa(self, *, strict=False):
 		if self.__hfa is None:
 			if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the final production rule.')
 			self.__grammar.validate()
-			self.__hfa = LR.determinize(GLR.PARSE_TABLE_METHODS[self.__method](self.__grammar))
+			self.__hfa = LR.determinize(GLR.PARSE_TABLE_METHODS[self.__method](self.__grammar), strict=strict)
 		return self.__hfa
 	def parse(self, each_token, *, language=None):
 		return algorithms.parse(self.get_hfa(), MiniParse.combine, each_token, language=language)

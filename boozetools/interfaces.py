@@ -17,6 +17,8 @@ class SemanticError(LanguageError): pass
 class MetaError(LanguageError):
 	""" This gets raised if there's something wrong in the definition of a parser or scanner. """
 	pass
+class PurityError(MetaError):
+	""" Raised if a grammar has the wrong/undeclared conflicts. """
 
 class Classifier:
 	"""
@@ -81,6 +83,9 @@ class ParseTable:
 	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language.')
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of the symbol that shifts into this state.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self), 'Return the reduce instruction for interactive-reducing states; zero otherwise.')
+	# These next two methods are in support of GLR parsing:
+	def get_nr_states(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
+	def get_split(self, split_id:int) -> list: raise NotImplementedError(type(self), "A list of parse actions of the usual (deterministic) form.")
 	
 class ScanState:
 	"""

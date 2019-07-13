@@ -258,10 +258,3 @@ class ContextFreeGrammar:
 		prec_sym = rule.prec_sym or self.infer_prec_sym(rule.rhs)
 		if prec_sym: return self.token_precedence[prec_sym]
 
-	def decide_reduce_reduce(self, rule_ids):
-		""" This is more art than science. """
-		field = []
-		for r in rule_ids:
-			p = self.determine_rule_precedence(r)
-			if p is not None: field.append((p,r))
-		if field: return min(field)[1]

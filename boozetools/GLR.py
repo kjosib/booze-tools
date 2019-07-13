@@ -16,7 +16,7 @@ and illustrates one method to perform a parallel-parse, but it does not bother t
 parse tree or semantic value. Such things could be added, but preferably atop good means
 for persisting ambiguous parse tables.
 """
-import collections
+import collections, sys
 from typing import NamedTuple, Iterable, TypeVar, Generic, List, Dict, Set, Tuple
 from . import context_free, foundation, interfaces, pretty
 
@@ -248,9 +248,6 @@ def lalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	algorithm in its own right. Second, that function provides the perfect level of
 	abstraction for exploitation later in the minimal-LR(1) construction given later.
 	
-	Keep in mind we're still in non-deterministic parsing land, so I'm not going to
-	worry about precedence declarations at this point. (That's another function.)
-	
 	If we stop here, we get a table that's more efficient than LR(0) for generalized
 	parsing: it will attempt many fewer dead-end reductions before look-ahead tokens
 	that LALR determines not to be in the reduction's follow-set.
@@ -264,7 +261,20 @@ def lalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 				assert isinstance(token, str)
 				if token not in reduce: reduce[token] = [rule_id]
 				else: reduce[token].append(rule_id) # This branch represents an R/R conflict...
-		return LA_State(node.shift, reduce)
+		# At this point, `LA_State(node.shift, reduce)` would be a nice, potentially
+		# non-deterministic HFA state incorporating information about LALR follow sets.
+		# We can do better: Calling upon the "reachable" function causes the resulting
+		# non-deterministic HFA to respect precedence and associativity (P&A) declarations.
+		# This parallels the corresponding call in the true-LR(1) algorithm, simplifies
+		# the construction of a deterministic table, does not change the deterministic
+		# semantics, and may have some subtle implications for GLR semantics in the presence
+		# of P&A declarations. In particular, an invasive high-precedence reduction could
+		# cause trouble. I've not taken the time to work out if that's even a thing, though.
+		# For now, if you want to do GLR parsing, use the minimal_lr1(...) construction.
+		step = reachable(node.shift, reduce, grammar)
+		# Having done that, it's entirely plausible that some unreachable states may
+		# exist. It's probably not worth worrying about.
+		return LA_State(step, reduce)
 	return HFA(
 		graph=[make_lalr_state(q, node) for q, node in enumerate(lr0.graph)],
 		initial=lr0.initial, accept=lr0.accept, grammar=grammar, bft=lr0.bft
@@ -498,25 +508,42 @@ def minimal_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 def reachable(step:dict, reduce:dict, grammar) -> dict:
 	"""
 	The object of this function is to prevent the exploration of useless/unreachable states.
-	As a nice bonus it also applies the precedence declarations to the non-deterministic table,
-	allowing minimal-LR1 mode to do both precedence/associativity and generalized-parsing.
+	It does this by deleting a shift from the "step" dictionary whenever said shift becomes
+	impossible by virtue of P&A declarations. It also deletes useless reductions similarly
+	rendered unavailable, and denotes non-associativity errors by a sentinel empty-tuple.
+	
+	This was developed to help minimal-LR1 mode respect precedence/associativity, but it's
+	equally useful for all modes.
+	
+	NOTE: When shift/reduce/reduce conflicts arise in connection with operator-precedence
+	specifications, the intended semantics for a generalized parse are not always clearly
+	defined. The code below should either behave sensibly or toss an exception.
+	
+	The problem with the bizarre corner cases is they cannot be understood solely in terms
+	of actions the parser might (or might not) take in this state. If they come up, you
+	get a warning printed on STDERR but otherwise the operator-precedence declarations
+	are ignored in that instance.
 	"""
-	for token, rids in list(reduce.items()):
+	for token, rule_id_list in list(reduce.items()):
 		if token not in step: continue
-		if len(rids) > 1:
-			print("R")
-			rule_id = grammar.decide_reduce_reduce(rids)
-			if rule_id is None: continue # If we can't decide among rules, none have precedence and so the shift won't decide either.
-			else: reduce[token] = [rule_id] # Conversely, we can eliminate all but the strongest rule from contention.
-		else: rule_id = rids[0]
-		decision = grammar.decide_shift_reduce(token, rule_id)
-		if decision == context_free.LEFT: del step[token]
-		elif decision == context_free.RIGHT: del reduce[token]
-		elif decision == context_free.NONASSOC:
+		decide = [grammar.decide_shift_reduce(token, rule_id) for rule_id in rule_id_list]
+		ways = set(decide)
+		assert context_free.BOGUS not in ways, "This is guaranteed by grammar.validate(...), called earlier."
+		if len(ways) == 1:
+			decision = ways.pop()
+			if decision == context_free.LEFT: del step[token]
+			elif decision == context_free.RIGHT: del reduce[token]
+			elif decision == context_free.NONASSOC:
+				del step[token]
+				reduce[token] = ()
+			else: assert decision is None
+		elif ways == {context_free.LEFT, context_free.NONASSOC}:
 			del step[token]
-			reduce[token] = ()
-		elif decision == context_free.BOGUS: raise context_free.RuleProducesBogusToken(rule_id)
-		else: pass
+			reduce[token] = tuple(r for r,d in zip(rule_id_list, decide) if d == context_free.LEFT)
+		elif ways == {context_free.RIGHT, None}:
+			reduce[token] = tuple(r for r, d in zip(rule_id_list, decide) if d != context_free.RIGHT)
+		else:
+			print("Fair Warning:", token, "triggers a bizarre operator-precedence corner case.", file=sys.stderr)
 	return step
 
 

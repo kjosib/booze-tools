@@ -43,11 +43,15 @@ class TableMethodTester(unittest.TestCase):
 		self.g.start.append('S')
 		self.good = []
 		self.bad = []
+		self.pure = True
 	@staticmethod
 	def construct(cfg) -> GLR.HFA: raise NotImplementedError()
 	def tearDown(self):
-		print(self.g.find_first_and_epsilon())
-		table = LR.determinize(self.construct(self.g))
+		try: table = LR.determinize(self.construct(self.g), strict=True)
+		except interfaces.PurityError:
+			assert not self.pure
+			if self.good or self.bad: table = LR.determinize(self.construct(self.g), strict=False)
+			else: return
 		table.display()
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
@@ -88,6 +92,7 @@ class TestLALR(TableMethodTester):
 		self.R('S:x|S y x')
 	def test_05_shift_reduce_conflict(self):
 		self.R('S: E | S + S')
+		self.pure = False
 	def test_06_deep_renaming(self):
 		self.R('S:A')
 		self.R('A:B')
@@ -108,8 +113,10 @@ class TestLALR(TableMethodTester):
 		]
 	def test_12_new(self):
 		mysterious_reduce_conflict(self.g)
+		self.pure = False
 		self.good = ['a c d', 'b c e', ]
 		self.bad = ['a c e', 'b c d', ] # This is because X is chosen over Y, being defined earlier.
+		
 
 class TestCLR(TableMethodTester):
 	construct = staticmethod(GLR.canonical_lr1)

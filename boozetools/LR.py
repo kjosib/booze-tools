@@ -10,7 +10,7 @@ becomes a matter of policy: The usual convention is to shift when possible, or o
 reduce using the earliest-defined applicable rule.
 """
 import collections
-from . import interfaces, pretty, context_free, GLR
+from . import interfaces, pretty, GLR
 
 class DragonBookTable(interfaces.ParseTable):
 	"""
@@ -93,7 +93,7 @@ def consider(hfa, q, lookahead, options):
 	in the usual way: This does represent a data-coupling, but one that's unlikely to change,
 	so I'm not too worried about it just now.
 	
-	In conclusion: Let the GLR... objects format parse-states for human consumption.
+	In conclusion: Let the objects defined in GLR.py format parse-states for human consumption.
 	"""
 	hfa.display_situation(q, lookahead)
 	for x in options:
@@ -112,7 +112,11 @@ def consider(hfa, q, lookahead, options):
 			print("Do we reduce:  %s -> %s" % (rule.lhs, ' '.join(rule.rhs)))
 
 
-def determinize(hfa:GLR.HFA[GLR.LA_State], *, strict: bool = False) -> DragonBookTable:
+def determinize(hfa:GLR.HFA[GLR.LA_State], *, strict: bool) -> DragonBookTable:
+	"""
+	This function does NOT worry about precedence and associativity declarations:
+	It assumes that concern has already been taken care of in the input HFA.
+	"""
 	grammar = hfa.grammar
 	assert GLR.END not in grammar.symbols
 	terminals = [GLR.END]+sorted(grammar.apparent_terminals())
@@ -132,30 +136,20 @@ def determinize(hfa:GLR.HFA[GLR.LA_State], *, strict: bool = False) -> DragonBoo
 				# This is how GLR.reachable(...) communicates a non-association situation.
 				essential_errors.add((q,idx))
 				continue
-			# TODO: this loop has much in common with GLR.reachable(...). Far better would be to incorporate its use
-			#       into all the look-ahead modes and let this module only handle inadequacies not otherwise resolved.
 			if len(rule_ids) > 1:
-				rule_id = grammar.decide_reduce_reduce(rule_ids)
-				if rule_id is None:
-					conflict[symbol].update(-1-r for r in rule_ids)
-					rule_id = min(rule_ids)
+				conflict[symbol].update(-1-r for r in rule_ids)
+				rule_id = min(rule_ids)
 			else: rule_id = rule_ids[0]
 			reduce = -1 - rule_id
 			prior = action_row[idx]
 			if prior == 0: action_row[idx] = reduce
-			else:
-				decision = grammar.decide_shift_reduce(symbol, rule_id)
-				if decision == context_free.LEFT: action_row[idx] = reduce
-				elif decision == context_free.RIGHT: pass
-				elif decision == context_free.NONASSOC: essential_errors.add((q, idx))
-				elif decision == context_free.BOGUS: raise context_free.RuleProducesBogusToken(rule_id)
-				else: conflict[symbol].update([prior, reduce])
+			else: conflict[symbol].update([prior, reduce])
 		if conflict:
 			pure = False
 			for symbol, options in conflict.items(): consider(hfa, q, symbol, options)
 		action.append(action_row)
 	for q, t in essential_errors: action[q][t] = 0
-	if strict: assert pure
+	if strict and not pure: raise interfaces.PurityError()
 	for q in hfa.accept: action[q][0] = q
 	return DragonBookTable(
 		initial=dict(zip(grammar.start, hfa.initial)),

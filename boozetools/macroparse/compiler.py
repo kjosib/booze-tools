@@ -17,7 +17,7 @@ from .. import miniscan, regular, LR, GLR, foundation, interfaces, compaction
 from . import grammar
 
 
-def compile_file(pathname, *, method) -> dict:
+def compile_file(pathname, *, method, strict=False) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
 	return compile_string(document, method=method).determinize().as_compact_form(filename=os.path.basename(pathname))
 
@@ -73,9 +73,9 @@ class IntermediateForm(typing.NamedTuple):
 	nfa: regular.NFA
 	scan_actions: list
 	hfa: GLR.HFA
-	def determinize(self) -> TextBookForm:
+	def determinize(self, *, strict=False) -> TextBookForm:
 		dfa = self.nfa.subset_construction().minimize_states().minimize_alphabet() if self.nfa.states else None
-		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=LR.determinize(self.hfa))
+		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=LR.determinize(self.hfa, strict=strict))
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
