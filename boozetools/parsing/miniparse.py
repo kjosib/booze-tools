@@ -1,6 +1,7 @@
 """ No frills. Plenty useful. """
 
-from . import context_free, algorithms, interfaces, LR, GLR
+from ..support import interfaces
+from . import LR, GLR, context_free, shift_reduce
 
 
 class MiniParse:
@@ -72,7 +73,7 @@ class MiniParse:
 			self.__hfa = LR.determinize(GLR.PARSE_TABLE_METHODS[self.__method](self.__grammar), strict=strict)
 		return self.__hfa
 	def parse(self, each_token, *, language=None):
-		return algorithms.parse(self.get_hfa(), MiniParse.combine, each_token, language=language)
+		return shift_reduce.parse(self.get_hfa(), MiniParse.combine, each_token, language=language)
 	
 	@staticmethod
 	def combine(message, attribute_stack:list):

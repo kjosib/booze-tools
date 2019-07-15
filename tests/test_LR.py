@@ -1,18 +1,20 @@
 import unittest
 
-from boozetools import context_free, GLR, LR, interfaces, algorithms
+from boozetools.support import interfaces
+from boozetools.parsing import LR, GLR, context_free, shift_reduce
 
-def shorthand(cfg:context_free.ContextFreeGrammar, rules:dict):
+
+def shorthand(cfg: context_free.ContextFreeGrammar, rules:dict):
 	""" Just a quick way to enter a grammar where semantic-value is irrelevant. """
 	for lhs, rhs in rules.items():
 		for alt in rhs.split('|'):
 			cfg.rule(lhs, list(alt), None if len(alt)==1 else 0)
 
-def mysterious_reduce_conflict(cfg:context_free.ContextFreeGrammar):
+def mysterious_reduce_conflict(cfg: context_free.ContextFreeGrammar):
 	""" This is your standard way to trigger a "mysterious" reduce/reduce conflict in LALR. """
 	shorthand(cfg, {'S':'aXd|aYe|bXe|bYd', 'X':'c', 'Y':'c',})
 
-def mysterious_invasive_conflict(cfg:context_free.ContextFreeGrammar):
+def mysterious_invasive_conflict(cfg: context_free.ContextFreeGrammar):
 	"""
 	This example comes from the IELR paper, page 945.
 	It's a simple grammar for a language with four members; the grammar is not LR(1) due to an
@@ -55,10 +57,10 @@ class TableMethodTester(unittest.TestCase):
 		table.display()
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
-				algorithms.trial_parse(table, sentence.split())
+				shift_reduce.trial_parse(table, sentence.split())
 		for sentence in self.bad:
 			with self.subTest(sentence=sentence):
-				try: algorithms.trial_parse(table, sentence.split())
+				try: shift_reduce.trial_parse(table, sentence.split())
 				except interfaces.ParseError: pass
 				else: assert False, "This should have raised an exception."
 	def r(self, lhs, rhs:str):

@@ -2,12 +2,13 @@
 
 import typing, operator
 
-from . import foundation, charset, charclass, pretty, interfaces
+from ..support import foundation, pretty, interfaces
+from ..scanning import charclass, charset
 
 
 class DFA(interfaces.FiniteAutomaton):
 	"""  """
-	def __init__(self, *, alphabet:interfaces.Classifier, initial:dict, final:dict, states:list):
+	def __init__(self, *, alphabet: interfaces.Classifier, initial:dict, final:dict, states:list):
 		self.alphabet = alphabet
 		self.width = self.alphabet.cardinality()
 		self.initial = initial
@@ -89,7 +90,7 @@ class DFA(interfaces.FiniteAutomaton):
 		print('%d non-error cells, or %0.2f%%'%(X, 100*X/(Q*W)))
 	
 	def make_csv(self, pathstem):
-		pretty.write_csv_grid(pathstem+'.dfa.csv', [
+		pretty.write_csv_grid(pathstem + '.dfa.csv', [
 			[q, self.final.get(q), '', *row]
 			for q, row in enumerate(self.states)
 		])

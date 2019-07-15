@@ -1,8 +1,24 @@
 """
-This file aggregates various exception types and abstract classes which you'll deal with when using BoozeTools.
+This file aggregates various abstract classes and exception types which BoozeTools deals in.
+
+There's a principle of object-oriented design which says "ask not for data, but for help."
+At first glance the ADTs for FiniteAutomaton and ParseTable appear to respect that dictum
+only by its violation, as suggested by all these `get_foobar` methods. What gives?
+
+Quite a bit, actually: The scanning and parsing algorithms are data-driven, but the essential
+nature of those algorithms should not care about the internal structure and organization of that
+data, so long as the proper relevant questions may be answered. This provides the flexibility
+to plug in different types of compaction (or no compaction at all) without a complete re-write.
+
+A good modular interface exposes abstract data types and the operations among those types.
+The methods on FiniteAutomaton and ParseTable are exactly those needed for the interesting
+data-driven algorithms they support, without regard to their internal structure.
+
+On a separate note, you could make a good case for splitting this file in twain. Maybe later.
 """
 
 from . import pretty
+
 
 class LanguageError(ValueError): pass
 class ScanError(LanguageError): pass
@@ -74,7 +90,7 @@ class FiniteAutomaton:
 class ParseTable:
 	"""
 	This interface captures the operations needed to perform table-driven parsing, as well as a modicum
-	of reasonable error reporting. Note that rules begin at 1, because 0 is the error action.
+	of reasonable error reporting. Again, no particular structure or organization is implied.
 	"""
 	def get_translation(self, symbol) -> int: raise NotImplementedError(type(self, 'Because scanners should not care the order of terminals in the parse table. Zero is reserved for end-of-text.'))
 	def get_action(self, state_id:int, terminal_id) -> int: raise NotImplementedError(type(self), 'Positive -> successor state id. Negative -> rule id for reduction. Zero -> error.')
@@ -84,7 +100,7 @@ class ParseTable:
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of the symbol that shifts into this state.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self), 'Return the reduce instruction for interactive-reducing states; zero otherwise.')
 	# These next two methods are in support of GLR parsing:
-	def get_nr_states(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
+	def get_split_offset(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
 	def get_split(self, split_id:int) -> list: raise NotImplementedError(type(self), "A list of parse actions of the usual (deterministic) form.")
 	
 class ScanState:

@@ -1,5 +1,5 @@
 import typing, collections, itertools
-from . import pretty, foundation
+from ..support import foundation, pretty
 
 LEFT, RIGHT, NONASSOC, BOGUS = object(), object(), object(), object()
 

@@ -1,6 +1,7 @@
 """ JSON is JavaScript Object Notation. See http://www.json.org/ for more. Python has a standard library for JSON, so this is just a worked example. """
 
-from boozetools import miniparse, miniscan
+from boozetools.parsing import miniparse
+from boozetools.scanning import miniscan
 
 ###################################################################################
 #  Begin with a scanner definition:

@@ -3,7 +3,8 @@ This
 """
 
 import bisect
-from . import interfaces, pretty
+from ..support import pretty, interfaces
+
 
 class SimpleClassifier(interfaces.Classifier):
 	def __init__(self, bounds):

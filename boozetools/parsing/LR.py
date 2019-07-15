@@ -10,7 +10,9 @@ becomes a matter of policy: The usual convention is to shift when possible, or o
 reduce using the earliest-defined applicable rule.
 """
 import collections
-from . import interfaces, pretty, GLR
+from ..support import pretty, interfaces
+from ..parsing import GLR
+
 
 class DragonBookTable(interfaces.ParseTable):
 	"""
@@ -112,14 +114,14 @@ def consider(hfa, q, lookahead, options):
 			print("Do we reduce:  %s -> %s" % (rule.lhs, ' '.join(rule.rhs)))
 
 
-def determinize(hfa:GLR.HFA[GLR.LA_State], *, strict: bool) -> DragonBookTable:
+def determinize(hfa: GLR.HFA[GLR.LA_State], *, strict: bool) -> DragonBookTable:
 	"""
 	This function does NOT worry about precedence and associativity declarations:
 	It assumes that concern has already been taken care of in the input HFA.
 	"""
 	grammar = hfa.grammar
 	assert GLR.END not in grammar.symbols
-	terminals = [GLR.END]+sorted(grammar.apparent_terminals())
+	terminals = [GLR.END] + sorted(grammar.apparent_terminals())
 	translate = {t:i for i,t in enumerate(terminals)}
 	nonterminals = sorted(grammar.symbol_rule_ids.keys())
 	##### Determinize the result:

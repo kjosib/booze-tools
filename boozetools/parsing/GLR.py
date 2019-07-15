@@ -18,7 +18,8 @@ for persisting ambiguous parse tables.
 """
 import collections, sys
 from typing import NamedTuple, Iterable, TypeVar, Generic, List, Dict, Set, Tuple
-from . import context_free, foundation, interfaces, pretty
+from ..support import foundation, pretty, interfaces
+from ..parsing import context_free
 
 END = '<END>' # An artificial "end-of-text" terminal-symbol.
 
@@ -140,7 +141,7 @@ class LR0_State(NamedTuple):
 	def reductions_before(self, lexeme): return self.reduce
 
 
-def lr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LR0_State]:
+def lr0_construction(grammar: context_free.ContextFreeGrammar) -> HFA[LR0_State]:
 	"""
 	In broad strokes, this is a subset-construction with a sophisticated means
 	to identify successor-states. The keys (by which nodes are identified) are
@@ -181,7 +182,7 @@ def lr0_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LR0_State]:
 
 
 class UnitReductionEliminator:
-	def __init__(self, grammar:context_free.ContextFreeGrammar, bft:foundation.BreadthFirstTraversal):
+	def __init__(self, grammar: context_free.ContextFreeGrammar, bft: foundation.BreadthFirstTraversal):
 		self.bft = bft
 		self.unit_rules = {}
 		self.eligible_rhs = set()
@@ -232,7 +233,7 @@ class LA_State(NamedTuple):
 	def reductions_before(self, lexeme): return self.reduce.get(lexeme, ())
 
 
-def lalr_construction(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
+def lalr_construction(grammar: context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	"""
 	Building a non-deterministic LALR(1)-style table is a direct extension of the LR(0)
 	construction. LR(0) tables tend to have lots of inadequate states. If we figure out
@@ -318,7 +319,7 @@ def lalr_first_and_follow(lr0:HFA[LR0_State]) -> Tuple[list, dict]:
 			token_sets[k] = tokens
 	return token_sets, follow
 
-def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
+def canonical_lr1(grammar: context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	"""
 	Before embarking on a quest to produce a minimal-LR(1) table by sophisticated
 	methods, it's worth learning how to produce the maximal-LR(1) table by (some
@@ -357,7 +358,7 @@ def canonical_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	)
 
 def abstract_lr1_construction(
-		grammar:context_free.ContextFreeGrammar, *,
+		grammar: context_free.ContextFreeGrammar, *,
 		front, note_reduce, initial_item, lr0_catalog,
 ) -> HFA[LA_State]:
 	"""
@@ -411,7 +412,7 @@ def find_transparent(epsilon:Set[str], right_hand_sides:List[List[str]]):
 	return lambda rule_id, position: thresholds[rule_id] <= position
 
 
-def minimal_lr1(grammar:context_free.ContextFreeGrammar) -> HFA[LA_State]:
+def minimal_lr1(grammar: context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	"""
 	This amounts to a hybrid of LALR and Canonical LR(1) in which only the conflicted
 	parts are reconsidered in greater detail. Details of the approach are in the

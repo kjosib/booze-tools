@@ -1,5 +1,7 @@
 """ Hook regular expression patterns up to method calls on a scanner object. """
-from . import miniparse, charset, algorithms, regular, interfaces
+from ..support import interfaces
+from ..parsing import miniparse
+from . import regular, charset, recognition
 
 PRELOAD = {'ASCII': {k: regular.CharClass(cls) for k, cls in charset.POSIX.items()}}
 
@@ -24,7 +26,7 @@ class Definition(interfaces.ScanRules):
 		return self.__dfa
 	
 	def scan(self, text, *, start=None, env=None):
-		scanner = algorithms.Scanner(text=text, automaton=self.get_dfa(), rules=self, start=start)
+		scanner = recognition.Scanner(text=text, automaton=self.get_dfa(), rules=self, start=start)
 		scanner.env = env
 		return scanner
 		
@@ -67,7 +69,7 @@ class Definition(interfaces.ScanRules):
 			return fn
 		return decorator
 	def condition(self, *condition): return ConditionContext(self, *condition)
-	def invoke(self, scan_state:interfaces.ScanState, rule_id:int):
+	def invoke(self, scan_state: interfaces.ScanState, rule_id:int):
 		action = self.__actions[rule_id]
 		if callable(action): return action(scan_state)
 		if isinstance(action, str): return action, scan_state.matched_text()
@@ -165,7 +167,7 @@ def _BEGIN_():
 	def _bracket_reference(scanner):
 		name = scanner.matched_text()[1:-1]
 		try: return 'reference', scanner.env[name]
-		except KeyError: raise interfaces.MetaError(repr(name)+' is not a defined subexpression name.')
+		except KeyError: raise interfaces.MetaError(repr(name) + ' is not a defined subexpression name.')
 	def _shorthand_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1]]
 	def _dot_reference(scanner): return 'reference', scanner.env['DOT']
 	def _hex_escape(scanner): return 'c', int(scanner.matched_text()[2:], 16)

@@ -19,12 +19,13 @@ and provided for later.
 import collections
 from . import foundation
 
+
 def most_common(row, *, default=0):
 	""" Return the most-common element in the array; break ties arbitrarily. """
 	C = collections.Counter(row)
 	return C.most_common(1)[0][0] if C else default
 
-def is_homogenous(row):
+def is_homogeneous(row):
 	return len(row) < 2 or all(r == row[0] for r in row)
 	
 def compress_dfa_matrix(*, initial:dict, matrix:list, final:dict) -> dict:
@@ -235,7 +236,7 @@ def compress_goto_table(goto_table:list) -> dict:
 	def significant_cells(index, vector): return [v for x,v in zip(index, vector) if x is None and bool(v)]
 	def homogenize(vector):
 		if len(vector) < 1: return -1
-		if is_homogenous(vector): return vector[0]
+		if is_homogeneous(vector): return vector[0]
 	def compact(target_index, second_index, read):
 		# This takes some pains to keep the quotient list small. It could be very slightly better...
 		tmp = [(homogenize(significant_cells(second_index, read(r))), r) for r in remaining(target_index)]

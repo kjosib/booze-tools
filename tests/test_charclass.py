@@ -1,5 +1,5 @@
 import unittest
-from boozetools import charset
+from boozetools.scanning import charset
 
 
 class TestCharClass(unittest.TestCase):

@@ -1,47 +1,63 @@
 import unittest
 
-from boozetools import context_free, GLR, interfaces, LR
+from boozetools.support import interfaces
+from boozetools.parsing import GLR, context_free
 
-class TestGLR0(unittest.TestCase):
+
+class GrammarTester(unittest.TestCase):
 	
 	def setUp(self):
 		print(self._testMethodName)
 		self.cfg = context_free.ContextFreeGrammar()
 		self.cfg.start.append('S')
-		self.good = []
-		self.bad = []
 		self.pathological = False
-	def tearDown(self):
-		try: self.cfg.validate()
-		except context_free.Fault: assert self.pathological, "Grammar %r should have validated."%self._testMethodName
-		else:
-			assert not self.pathological, "Grammar %r should not have validated."%self._testMethodName
-			glr0 = GLR.lr0_construction(self.cfg)
-			glalr = GLR.lalr_construction(self.cfg)
-			glr1 = GLR.canonical_lr1(self.cfg)
-			for sentence in self.good:
-				with self.subTest(sentence=sentence):
-					for hfa in [glr0, glalr, glr1]:
-						assert hfa.trial_parse(sentence)
-			for sentence in self.bad:
-				with self.subTest(sentence=sentence):
-					for hfa in [glr0, glalr, glr1]:
-						try: hfa.trial_parse(sentence)
-						except interfaces.GeneralizedParseError: pass
-						else: assert False, "%r should not be accepted."%sentence
-
-	def r(self, lhs, rhs:str):
+	
+	def r(self, lhs, rhs: str):
 		rhs = rhs.split()
-		self.cfg.rule(lhs.strip(), rhs, None if len(rhs)==1 else len(self.cfg.rules), None)
-
+		self.cfg.rule(lhs.strip(), rhs, None if len(rhs) == 1 else len(self.cfg.rules), None)
+	
 	def R(self, text):
 		lhs, rest = text.split(':')
 		for rhs in rest.split('|'): self.r(lhs, rhs)
 	
-	def RR(self, rules:str):
+	def RR(self, rules: str):
 		for text in rules.splitlines():
 			text = text.strip()
 			if text: self.R(text)
+
+	def check_postcondition(self): raise NotImplementedError(type(self))
+
+	def tearDown(self):
+		try: self.cfg.validate()
+		except context_free.Fault: assert self.pathological, "Grammar %r should have validated." % self._testMethodName
+		else:
+			assert not self.pathological, "Grammar %r should not have validated."%self._testMethodName
+			self.check_postcondition()
+	
+class TestTableConstructions(GrammarTester):
+	
+	def setUp(self):
+		super().setUp()
+		self.good = []
+		self.bad = []
+	
+	def check_postcondition(self):
+		constructions = [
+			GLR.lr0_construction(self.cfg),
+			GLR.lalr_construction(self.cfg),
+			GLR.canonical_lr1(self.cfg),
+			GLR.minimal_lr1(self.cfg),
+		]
+		for sentence in self.good:
+			with self.subTest(sentence=sentence):
+				for hfa in constructions:
+					assert hfa.trial_parse(sentence)
+		for sentence in self.bad:
+			with self.subTest(sentence=sentence):
+				for hfa in constructions:
+					try: hfa.trial_parse(sentence)
+					except interfaces.GeneralizedParseError: pass
+					else: assert False, "%r should not be accepted." % sentence
 	
 	def test_00_non_lalr(self):
 		""" This grammar is LR1, but not LALR. """
@@ -128,3 +144,9 @@ class TestGLR0(unittest.TestCase):
 		self.R('S: E | S x')
 		self.R('E: | y | E S')
 		self.pathological = True
+
+class TestBruteForceAndIgnorance(GrammarTester):
+	
+	def check_postcondition(self):
+		hfa = GLR.minimal_lr1(self.cfg)
+		

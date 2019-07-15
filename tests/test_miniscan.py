@@ -1,5 +1,6 @@
 import unittest
-from boozetools import charset, miniscan, interfaces, regular
+from boozetools.support import interfaces
+from boozetools.scanning import regular, miniscan, charset
 
 M = miniscan.META
 P = miniscan.PRELOAD['ASCII']

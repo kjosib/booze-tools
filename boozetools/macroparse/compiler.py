@@ -13,7 +13,9 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 
 """
 import re, os, collections, typing
-from .. import miniscan, regular, LR, GLR, foundation, interfaces, compaction
+from ..support import foundation, compaction, interfaces
+from ..parsing import LR, GLR
+from ..scanning import regular, miniscan
 from . import grammar
 
 
@@ -23,7 +25,7 @@ def compile_file(pathname, *, method, strict=False) -> dict:
 
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
-	def __init__(self, *, dfa:regular.DFA, scan_actions:list, parse_table:LR.DragonBookTable):
+	def __init__(self, *, dfa: regular.DFA, scan_actions:list, parse_table: LR.DragonBookTable):
 		self.dfa = dfa
 		self.scan_actions = scan_actions
 		self.parse_table = parse_table
@@ -112,7 +114,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 		def note_pattern(pattern):
 			# Now patterns that share a trail length can also share a rule ID number.
 			try: bol, expression, trail = miniscan.analyze_pattern(pattern, env)
-			except interfaces.MetaError as e: raise grammar.DefinitionError('At line '+str(line_number)+': '+repr(e.args))
+			except interfaces.MetaError as e: raise grammar.DefinitionError('At line ' + str(line_number) + ': ' + repr(e.args))
 			except interfaces.LanguageError as e: raise grammar.DefinitionError('Malformed pattern on line %d.' % line_number) from e
 			else: pending_patterns[trail].append((bol, expression))
 		if current_line_text.endswith('|'):
@@ -212,7 +214,8 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
 	if condition_definitions: tie_conditions()
-	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=GLR.PARSE_TABLE_METHODS[method](ebnf.sugarless_form()))
+	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=
+	GLR.PARSE_TABLE_METHODS[method](ebnf.sugarless_form()))
 
 
 def encode_parse_rules(rules:list) -> dict:

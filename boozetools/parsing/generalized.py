@@ -41,7 +41,7 @@ paragraph) but the non-determinism must be resolved for each node bottom-up so t
 node has at most one semantic value.
 """
 
-from . import interfaces
+from ..support import interfaces
 
 NODE_STATE = 0
 NODE_PRIOR = 1
@@ -68,10 +68,10 @@ class BruteForceAndIgnorance:
 		Each node is a tuple of (state_id, prior_node, semantic_value), accessed
 			by field numbers given as the global constants above.
 	"""
-	def __init__(self, table:interfaces.ParseTable, driver, language=None):
+	def __init__(self, table: interfaces.ParseTable, driver, language=None):
 		self.__table = table
 		self.__driver = driver
-		self.__nr_states = table.get_nr_states()
+		self.__nr_states = table.get_split_offset()
 		self.__tos = [(table.get_initial(language), None, None)]
 	
 	def consume(self, terminal, semantic):

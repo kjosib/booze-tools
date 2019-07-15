@@ -12,7 +12,10 @@ class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
 
-from .. import context_free, miniparse, miniscan, interfaces, failureprone, pretty
+from ..support import failureprone, interfaces
+from ..scanning import miniscan
+from ..parsing import context_free, miniparse
+
 
 class DefinitionError(Exception): pass
 
@@ -167,10 +170,10 @@ METAGRAMMAR.rule('symbol', '.name ( .' + list_of('actual_parameter', ',') + ' )'
 # Sub-language: For specifying precedence and associativity rules:
 METAGRAMMAR.rule('precedence', '.associativity .'+one_or_more('terminal'))(None)
 
-METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x:context_free.LEFT)
-METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x:context_free.RIGHT)
-METAGRAMMAR.rule('associativity', 'pragma_nonassoc')(lambda x:context_free.NONASSOC)
-METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda x:context_free.BOGUS)
+METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x: context_free.LEFT)
+METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x: context_free.RIGHT)
+METAGRAMMAR.rule('associativity', 'pragma_nonassoc')(lambda x: context_free.NONASSOC)
+METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda x: context_free.BOGUS)
 
 # Sub-language: For specifying the connections between scan conditions:
 METAGRAMMAR.rule('condition', 'name')(lambda x:(x,[]))
@@ -203,7 +206,7 @@ class ErrorHelper:
 		self.current_line_nr = line_nr
 		metascan = LEX.scan(line)
 		try: return METAGRAMMAR.parse(metascan, language=language)
-		except interfaces.ScanError as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r"%e.args[1])
+		except interfaces.ScanError as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
 		except interfaces.ParseError as e:
 			self.gripe_about(
 				line, metascan.current_position(),

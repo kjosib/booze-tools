@@ -4,7 +4,9 @@ import json as standard_json
 import example.mini_json, example.macro_json, example.calculator
 
 from boozetools.macroparse import compiler
-from boozetools import runtime, algorithms
+from boozetools.parsing import shift_reduce
+from boozetools.support import runtime
+from boozetools.scanning import recognition
 
 # See https://json.org/example.html
 GLOSSARY_JSON = """
@@ -65,7 +67,7 @@ class TestMacroJson(unittest.TestCase):
 		pass
 	
 	def macroscan_json(self, text):
-		return algorithms.Scanner(text=text, automaton=self.dfa, rules=self.scan_rules, start='INITIAL')
+		return recognition.Scanner(text=text, automaton=self.dfa, rules=self.scan_rules, start='INITIAL')
 	
 	def test_00_macroparse_compiled_scanner(self):
 		def parse(text):
@@ -78,7 +80,7 @@ class TestMacroJson(unittest.TestCase):
 		parser_data = self.automaton['parser']
 		spt = runtime.CompactHandleFindingAutomaton(parser_data)
 		combine = runtime.parse_action_bindings(example.macro_json.ExampleJSON())
-		parse_tester(self, lambda text: algorithms.parse(spt, combine, self.macroscan_json(text)))
+		parse_tester(self, lambda text: shift_reduce.parse(spt, combine, self.macroscan_json(text)))
 		pass
 
 class TestCalculator(unittest.TestCase):

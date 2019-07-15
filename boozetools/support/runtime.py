@@ -1,10 +1,15 @@
 """
-This module is the dual of `compaction.py`:
-It provides a runtime interface to compacted scanner and parser tables.
+This module needs to be split into several parts, because it is doing too many different things.
+
+1. It provides a mechanism to read the compacted scanning and parsing tables, prepared earlier.
+2. It supplies one means to bind rule-actions to driver-objects. (It would be nice to support a few more styles.)
+3. It provides a convenient runtime interface to the most common use cases.
 """
-from boozetools.interfaces import ScanState
-from . import interfaces, charclass, algorithms
+
 import inspect, functools
+from . import interfaces
+from ..scanning import recognition, charclass
+from ..parsing import shift_reduce
 
 def displacement_function(otherwise:callable, *, offset, check, value) -> callable:
 	"""
@@ -99,16 +104,16 @@ class BoundScanRules(interfaces.ScanRules):
 			try: fn = getattr(driver, method_name)
 			except AttributeError:
 				if default_method is None:
-					raise interfaces.MetaError("Scanner driver has neither method %r nor %r."%(method_name, default_method_name))
+					raise interfaces.MetaError("Scanner driver has neither method %r nor %r." % (method_name, default_method_name))
 				else:
 					fn = functools.partial(default_method, message)
 					method_name = "%s(%r, ...)"%(default_method_name, message)
 			arity = len(inspect.signature(fn).parameters)
 			if arity == 1:
 				if parameter is None: return fn
-				else: raise interfaces.MetaError("Message %r is used with parameter %r but handler %r only takes one argument (the scan state) and needs to take a second (the message parameter)."%(message, parameter, method_name))
+				else: raise interfaces.MetaError("Message %r is used with parameter %r but handler %r only takes one argument (the scan state) and needs to take a second (the message parameter)." % (message, parameter, method_name))
 			elif arity == 2: return lambda scan_state: fn(scan_state, parameter)
-			else: raise interfaces.MetaError("Scan handler %r takes %d arguments, but needs to take %s."%(method_name, arity, ['two', 'one or two'][parameter is None]))
+			else: raise interfaces.MetaError("Scan handler %r takes %d arguments, but needs to take %s." % (method_name, arity, ['two', 'one or two'][parameter is None]))
 		
 		default_method_name = 'default_scan_action'
 		default_method = getattr(driver, default_method_name, None)
@@ -121,7 +126,7 @@ class BoundScanRules(interfaces.ScanRules):
 		""" NB: This gets overwritten by a direct bound-method on the trailing-context list. """
 		return self._trail[rule_id]
 	
-	def invoke(self, scan_state: ScanState, rule_id:int): return self.__methods[rule_id](scan_state)
+	def invoke(self, scan_state: interfaces.ScanState, rule_id:int): return self.__methods[rule_id](scan_state)
 
 def mangle(message):
 	""" Describes the relation between parse action symbols (from parse rule data) to driver method names. """
@@ -212,7 +217,7 @@ def simple_scanner(tables, scan_driver, *, start='INITIAL'):
 	scanner_tables = tables['scanner']
 	dfa = CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet'])
 	rules = BoundScanRules(action=scanner_tables['action'], driver=scan_driver)
-	return lambda text: algorithms.Scanner(text=text, automaton=dfa, rules=rules, start=start)
+	return lambda text: recognition.Scanner(text=text, automaton=dfa, rules=rules, start=start)
 
 def simple_parser(tables, parse_driver, *, language=None, interactive=True):
 	"""
@@ -225,4 +230,4 @@ def simple_parser(tables, parse_driver, *, language=None, interactive=True):
 	"""
 	hfa = CompactHandleFindingAutomaton(tables['parser'])
 	combine = parse_action_bindings(parse_driver)
-	return lambda each_token: algorithms.parse(hfa, combine, each_token, language=language, interactive=interactive)
+	return lambda each_token: shift_reduce.parse(hfa, combine, each_token, language=language, interactive=interactive)

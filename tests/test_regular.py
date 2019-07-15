@@ -1,6 +1,8 @@
 import unittest
 
-from boozetools import regular, interfaces, algorithms
+from boozetools.support import interfaces
+from boozetools.scanning import regular, recognition
+
 
 class MockScanRules(interfaces.ScanRules):
 	def invoke(self, scan_state, action): return action, scan_state.matched_text()
@@ -33,7 +35,7 @@ class TestNFA(unittest.TestCase):
 		nfa.link(q0, qf, [65, 91, 97, 123])
 		nfa.link_epsilon(q1, q0)
 		def assertion():
-			tokens = list(algorithms.Scanner(text='j', automaton=dfa, rules=MockScanRules(), start=None))
+			tokens = list(recognition.Scanner(text='j', automaton=dfa, rules=MockScanRules(), start=None))
 			self.assertEqual([(1,'j')], tokens)
 		dfa = nfa.subset_construction()
 		assertion()

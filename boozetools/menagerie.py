@@ -5,8 +5,8 @@ This module is quite deliberately not maintained.
 
 Then again, project direction has changed before.
 """
-from . import foundation
-from .compaction import most_common, is_homogenous
+from .support import foundation
+from .support.compaction import most_common, is_homogeneous
 
 def multi_append(table:dict, row:dict):
 	"""
@@ -64,16 +64,16 @@ def modified_aho_corasick_encoding(*, initial: dict, matrix: list, final: dict, 
 		default = most_common(row)
 		index = [k for k, x in enumerate(row) if x != default]
 		data = [row[k] for k in index]
-		cost = len(index) + (1 if is_homogenous(data) else len(data))
+		cost = len(index) + (1 if is_homogeneous(data) else len(data))
 		for j in range(i):
 			if failover_path_length[j] <= depth[i]:
 				try_index = [k for k, x in enumerate(states[j]) if x != row[k]]
 				try_data = [row[k] for k in try_index]
-				try_cost = len(try_index) + (1 if is_homogenous(try_data) else len(try_data))
+				try_cost = len(try_index) + (1 if is_homogeneous(try_data) else len(try_data))
 				if try_cost < cost: default, index, data, cost = -2 - j, try_index, try_data, try_cost
 		# Append the chosen encoding into the structure:
 		if cost < len(row):  # If the compression actually saves space on this row:
-			if is_homogenous(data): data = data[0] if data else default
+			if is_homogeneous(data): data = data[0] if data else default
 			multi_append(delta, {'default': default, 'index': index, 'data': data})
 			failover_path_length.append(0 if default > -2 else 1 + failover_path_length[-2 - default])
 		else:  # Otherwise, a dense storage format is indicated by eliding the list of indices.
