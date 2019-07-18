@@ -19,7 +19,7 @@ for persisting ambiguous parse tables.
 import collections, sys
 from typing import NamedTuple, Iterable, TypeVar, Generic, List, Dict, Set, Tuple
 from ..support import foundation, pretty, interfaces
-from ..parsing import context_free
+from . import context_free
 
 END = '<END>' # An artificial "end-of-text" terminal-symbol.
 
@@ -71,6 +71,10 @@ class HFA(Generic[T]):
 		head, *tail = self.bft.shortest_path_to(q)
 		print('==============\nIn language %r, consider:' % self.grammar.start[self.initial.index(head)])
 		print('\t' + ' '.join(map(self.bft.breadcrumbs.__getitem__, tail)), pretty.DOT, lookahead)
+	
+	def earley_core(self, q:int):
+		""" Maybe we need to know the core-items that a state began from, stripped of look-ahead powers. """
+		return sorted(set((r,p) for r, p, *_ in self.bft.traversal[q]))
 	
 	def traverse(self, q: int, symbols:Iterable) -> int:
 		""" Starting in state q, follow the shifts for symbols, and return the resulting state ID. """
@@ -608,7 +612,11 @@ class DragonBookTable(interfaces.ParseTable):
 	This is a reasonable implementation as-is if you have a modern amount of RAM in your
 	machine. In days of old, it would be necessary to compress the parse tables. Today,
 	that's still not such a bad idea if you can pre-compute the tables. The compaction
-	submodule contains some code for a typical method of parser table compression.
+	submodule contains some code for a typical method of parser table compression, and
+	the runtime submodule implements the ParseTable interface atop a compressed table.
+	
+	Design note: There's a temptation to make the constructor take an HFA object, but
+	that limits the ways you can instantiate this class. See the function `tabulate(...)`.
 	"""
 	
 	def __init__(self, *, initial: dict, action: list, goto: list, essential_errors: set, rules: list, terminals: list,
@@ -679,52 +687,122 @@ class DragonBookTable(interfaces.ParseTable):
 		return self.splits[split_id]
 
 
-def consider(hfa, q, lookahead, options):
-	"""
-	This function was originally intended as a way to visualize the branches of a conflict.
-	In its original form a bunch of context was available; I've gratuitously stripped that away
-	and now I want to break this down to the bits we actually need.
-	
-	BreadthFirstTraversal.traversal[x] was used to grab the core parse items in order to
-	visualize the state reached by shifting the lookahead token if that shift is viable.
-	Such really belongs as a method on the state: soon it will move there.
-	
-	The "options" list contains numeric candidate ACTION instructions which are interpreted
-	in the usual way: This does represent a data-coupling, but one that's unlikely to change,
-	so I'm not too worried about it just now.
-	
-	In conclusion: Let the objects defined in automata.py format parse-states for human consumption.
-	"""
-	hfa.display_situation(q, lookahead)
-	for x in options:
-		if x > 0:
-			print("Do we shift into:")
-			left_parts, right_parts = [], []
-			for r, p, *_ in hfa.bft.traversal[x]:
-				rhs = hfa.grammar.rules[r].rhs
-				left_parts.append(' '.join(rhs[:p]))
-				right_parts.append(' '.join(rhs[p:]))
-			align = max(map(len, left_parts)) + 10
-			for l, r in zip(left_parts, right_parts):
-				print(' ' * (align - len(l)) + l + '  ' + pretty.DOT + '  ' + r)
-		else:
-			rule = hfa.grammar.rules[-x - 1]
-			print("Do we reduce:  %s -> %s" % (rule.lhs, ' '.join(rule.rhs)))
 
 
-def determinize(hfa: HFA[LA_State], *, strict: bool) -> DragonBookTable:
+class ParsingStyle:
 	"""
+	There are three main ways to deal with inadequacies (non-determinism) remaining
+	after application of any P&A declarations:
+		1. Pure: Inadequacies are considered a grammar bug.
+		2. Deterministic: Inadequacies are resolved to shift, or to use the earliest-defined rule.
+		3. Generalized: Inadequacies are converted to parser-split entries.
+	
+	Probably the correct choice of style should be reflected in the grammar definition somehow.
+	"""
+	
+	def decide_inadequacy(self, q:int, look_ahead:str, shift:int, rule_ids:Iterable) -> int:
+		""" Called in all non-deterministic situations. """
+		raise NotImplementedError(type(self))
+	
+	def any_splits(self):
+		""" Return nothing, or a list of splits for use in non-deterministic parsing algorithms. """
+		raise NotImplementedError(type(self))
+
+	def report(self, hfa):
+		""" Give user-feedback about any observed challenges. """
+		raise NotImplementedError(type(self))
+
+class DeterministicStyle(ParsingStyle):
+	
+	def __init__(self, strict:bool):
+		self.conflicts = collections.defaultdict(list)
+		self.strict = strict
+	
+	def decide_inadequacy(self, q:int, look_ahead: str, shift: int, rule_ids: Iterable) -> int:
+		self.conflicts[q, look_ahead].extend(rule_ids)
+		return shift or encode_reduce(min(rule_ids))
+	
+	def any_splits(self):
+		pass
+	
+	def report(self, hfa):
+		"""
+		This function was originally intended as a way to visualize the branches of a conflict.
+		In its original form a bunch of context was available; I've gratuitously stripped that away
+		and now I want to break this down to the bits we actually need.
+		
+		BreadthFirstTraversal.traversal[x] was used to grab the core parse items in order to
+		visualize the state reached by shifting the lookahead token if that shift is viable.
+		Such really belongs as a method on the state: soon it will move there.
+		
+		The "options" list contains numeric candidate ACTION instructions which are interpreted
+		in the usual way: This does represent a data-coupling, but one that's unlikely to change,
+		so I'm not too worried about it just now.
+		
+		In conclusion: Let the objects defined in automata.py format parse-states for human consumption.
+		"""
+		for (q, lookahead), rule_ids in sorted(self.conflicts.items()):
+			hfa.display_situation(q, lookahead)
+			if lookahead in hfa.graph[q]:
+				shift = hfa.graph[q][lookahead]
+				print("Do we shift into:")
+				left_parts, right_parts = [], []
+				for r, p in hfa.earley_core(shift):
+					rhs = hfa.grammar.rules[r].rhs
+					left_parts.append(' '.join(rhs[:p]))
+					right_parts.append(' '.join(rhs[p:]))
+				align = max(map(len, left_parts)) + 10
+				for l, r in zip(left_parts, right_parts):
+					print(' ' * (align - len(l)) + l + '  ' + pretty.DOT + '  ' + r)
+			for r in rule_ids:
+				rule = hfa.grammar.rules[r]
+				print("Do we reduce:  %s -> %s" % (rule.lhs, ' '.join(rule.rhs)))
+		if self.strict and self.conflicts: raise interfaces.PurityError()
+
+
+class GeneralizedStyle(ParsingStyle):
+	
+	def __init__(self, splits_offset:int):
+		self.offset = splits_offset
+		self.splits = []
+	
+	def decide_inadequacy(self, q: int, look_ahead: str, shift: int, rule_ids: Iterable) -> int:
+		split = []
+		if shift: split.append(shift)
+		for r in rule_ids: split.append(-1-r)
+		return self.offset + foundation.allocate(self.splits, split)
+	
+	def any_splits(self):
+		return self.splits
+	
+	def report(self, hfa):
+		print(len(self.splits), "non-deterministic situation(s) encountered.")
+
+
+def encode_reduce(rule_id:int) -> int:
+	""" See interface.ParseTable.get_action. """
+	return -1 - rule_id
+
+def tabulate(hfa: HFA[LA_State], *, style:ParsingStyle) -> DragonBookTable:
+	"""
+	Having an HFA based on State objects, this function produces a corresponding
+	dense-matrix-style parse table of the sort typically shown in textbook descriptions
+	of LR-style parsing automata.
+	
 	This function does NOT worry about precedence and associativity declarations:
-	It assumes that concern has already been taken care of in the input HFA.
+	It assumes that concern has already been taken care of in the input HFA -
+	principally by the interaction of function `reachable(...)` with the P&A bits.
+	
+	Any residual inadequacies of the grammar are delegated to the `style` object for
+	resolution.
 	"""
 	grammar = hfa.grammar
 	assert END not in grammar.symbols
 	terminals = [END] + sorted(grammar.apparent_terminals())
 	translate = {t:i for i,t in enumerate(terminals)}
 	nonterminals = sorted(grammar.symbol_rule_ids.keys())
-	##### Determinize the result:
+	##### Tabulate the states into dense matrices ACTION and GOTO:
 	action, goto, essential_errors = [], [], set()
-	pure = True
 	conflict = collections.defaultdict(set)
 	for q, state in enumerate(hfa.graph):
 		goto.append([state.shift.get(s, 0) for s in nonterminals])
@@ -732,25 +810,18 @@ def determinize(hfa: HFA[LA_State], *, strict: bool) -> DragonBookTable:
 		conflict.clear()
 		for symbol, rule_ids in state.reduce.items():
 			idx = translate[symbol]
+			shift = action_row[idx]
 			if rule_ids is ():
-				# This is how GLR.reachable(...) communicates a non-association situation.
+				# This is how function `reachable(...)` communicates a non-association situation.
+				assert shift == 0
 				essential_errors.add((q,idx))
-				continue
-			if len(rule_ids) > 1:
-				conflict[symbol].update(-1-r for r in rule_ids)
-				rule_id = min(rule_ids)
-			else: rule_id = rule_ids[0]
-			reduce = -1 - rule_id
-			prior = action_row[idx]
-			if prior == 0: action_row[idx] = reduce
-			else: conflict[symbol].update([prior, reduce])
-		if conflict:
-			pure = False
-			for symbol, options in conflict.items(): consider(hfa, q, symbol, options)
+			elif shift == 0 and len(rule_ids) == 1:
+				action_row[idx] = encode_reduce(rule_ids[0])
+			else: action_row[idx] = style.decide_inadequacy(q, symbol, shift, rule_ids)
 		action.append(action_row)
 	for q, t in essential_errors: action[q][t] = 0
-	if strict and not pure: raise interfaces.PurityError()
 	for q in hfa.accept: action[q][0] = q
+	style.report(hfa)
 	return DragonBookTable(
 		initial=dict(zip(grammar.start, hfa.initial)),
 		action=action,
@@ -760,6 +831,7 @@ def determinize(hfa: HFA[LA_State], *, strict: bool) -> DragonBookTable:
 		terminals=terminals,
 		nonterminals=nonterminals,
 		breadcrumbs=hfa.bft.breadcrumbs,
+		splits=style.any_splits()
 	)
 
 

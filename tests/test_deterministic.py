@@ -49,10 +49,10 @@ class TableMethodTester(unittest.TestCase):
 	@staticmethod
 	def construct(cfg) -> automata.HFA: raise NotImplementedError()
 	def tearDown(self):
-		try: table = automata.determinize(self.construct(self.g), strict=True)
+		try: table = automata.tabulate(self.construct(self.g), style=automata.DeterministicStyle(True))
 		except interfaces.PurityError:
 			assert not self.pure
-			if self.good or self.bad: table = automata.determinize(self.construct(self.g), strict=False)
+			if self.good or self.bad: table = automata.tabulate(self.construct(self.g), style=automata.DeterministicStyle(False))
 			else: return
 		table.display()
 		for sentence in self.good:

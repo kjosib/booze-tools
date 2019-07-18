@@ -70,7 +70,8 @@ class MiniParse:
 		if self.__hfa is None:
 			if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the final production rule.')
 			self.__grammar.validate()
-			self.__hfa = automata.determinize(automata.PARSE_TABLE_METHODS[self.__method](self.__grammar), strict=strict)
+			parse_style = automata.DeterministicStyle(strict)
+			self.__hfa = automata.tabulate(automata.PARSE_TABLE_METHODS[self.__method](self.__grammar), style=parse_style)
 		return self.__hfa
 	def parse(self, each_token, *, language=None):
 		return shift_reduce.parse(self.get_hfa(), MiniParse.combine, each_token, language=language)
