@@ -14,7 +14,7 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 """
 import re, os, collections, typing
 from ..support import foundation, compaction, interfaces
-from ..parsing import LR, GLR
+from ..parsing import automata
 from ..scanning import regular, miniscan
 from . import grammar
 
@@ -25,7 +25,7 @@ def compile_file(pathname, *, method, strict=False) -> dict:
 
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
-	def __init__(self, *, dfa: regular.DFA, scan_actions:list, parse_table: LR.DragonBookTable):
+	def __init__(self, *, dfa: regular.DFA, scan_actions:list, parse_table: automata.DragonBookTable):
 		self.dfa = dfa
 		self.scan_actions = scan_actions
 		self.parse_table = parse_table
@@ -74,10 +74,10 @@ class TextBookForm:
 class IntermediateForm(typing.NamedTuple):
 	nfa: regular.NFA
 	scan_actions: list
-	hfa: GLR.HFA
+	hfa: automata.HFA
 	def determinize(self, *, strict=False) -> TextBookForm:
 		dfa = self.nfa.subset_construction().minimize_states().minimize_alphabet() if self.nfa.states else None
-		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=LR.determinize(self.hfa, strict=strict))
+		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=automata.determinize(self.hfa, strict=strict))
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
@@ -215,7 +215,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
 	if condition_definitions: tie_conditions()
 	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=
-	GLR.PARSE_TABLE_METHODS[method](ebnf.sugarless_form()))
+	automata.PARSE_TABLE_METHODS[method](ebnf.sugarless_form()))
 
 
 def encode_parse_rules(rules:list) -> dict:
@@ -242,7 +242,7 @@ def main():
 	parser.add_argument('--csv', action='store_true', help='Generate CSV versions of uncompressed tables, suitable for inspection.')
 	parser.add_argument('--dev', action='store_true', help='Operate in "development mode" -- which changes from time to time.')
 	parser.add_argument('--dot', action='store_true', help="Create a .dot file for visualizing the parser via the Graphviz package.")
-	parser.add_argument('-m', '--method', choices=GLR.PARSE_TABLE_METHODS, default='LR1', type=str.upper, help="Which parser table construction method to use.")
+	parser.add_argument('-m', '--method', choices=automata.PARSE_TABLE_METHODS, default='LR1', type=str.upper, help="Which parser table construction method to use.")
 	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
 	stem, extension = os.path.splitext(args.source_path)

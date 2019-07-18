@@ -1,7 +1,7 @@
 """ No frills. Plenty useful. """
 
 from ..support import interfaces
-from . import LR, GLR, context_free, shift_reduce
+from . import automata, context_free, shift_reduce
 
 
 class MiniParse:
@@ -9,7 +9,7 @@ class MiniParse:
 	def __init__(self, *start, method='LALR'):
 		self.__grammar = context_free.ContextFreeGrammar()
 		self.__grammar.start.extend(start)
-		self.__hfa: LR.DragonBookTable = None
+		self.__hfa: automata.DragonBookTable = None
 		self.__awaiting_action = False
 		self.__method = method
 	
@@ -70,7 +70,7 @@ class MiniParse:
 		if self.__hfa is None:
 			if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the final production rule.')
 			self.__grammar.validate()
-			self.__hfa = LR.determinize(GLR.PARSE_TABLE_METHODS[self.__method](self.__grammar), strict=strict)
+			self.__hfa = automata.determinize(automata.PARSE_TABLE_METHODS[self.__method](self.__grammar), strict=strict)
 		return self.__hfa
 	def parse(self, each_token, *, language=None):
 		return shift_reduce.parse(self.get_hfa(), MiniParse.combine, each_token, language=language)

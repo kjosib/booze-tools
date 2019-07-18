@@ -1,7 +1,7 @@
 import unittest
 
 from boozetools.support import interfaces
-from boozetools.parsing import GLR, context_free
+from boozetools.parsing import automata, context_free, generalized
 
 
 class GrammarTester(unittest.TestCase):
@@ -43,10 +43,10 @@ class TestTableConstructions(GrammarTester):
 	
 	def check_postcondition(self):
 		constructions = [
-			GLR.lr0_construction(self.cfg),
-			GLR.lalr_construction(self.cfg),
-			GLR.canonical_lr1(self.cfg),
-			GLR.minimal_lr1(self.cfg),
+			automata.lr0_construction(self.cfg),
+			automata.lalr_construction(self.cfg),
+			automata.canonical_lr1(self.cfg),
+			automata.minimal_lr1(self.cfg),
 		]
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
@@ -121,7 +121,7 @@ class TestTableConstructions(GrammarTester):
 		"""
 		self.R('S: X c')
 		self.R('X : X a')
-		print(GLR.lr0_construction(self.cfg).graph[0].shift)
+		print(automata.lr0_construction(self.cfg).graph[0].shift)
 		self.pathological = True
 
 	def test_07_pathology_mutual_no_base_case(self):
@@ -148,5 +148,5 @@ class TestTableConstructions(GrammarTester):
 class TestBruteForceAndIgnorance(GrammarTester):
 	
 	def check_postcondition(self):
-		hfa = GLR.minimal_lr1(self.cfg)
+		hfa = automata.minimal_lr1(self.cfg)
 		

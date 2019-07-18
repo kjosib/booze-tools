@@ -159,7 +159,7 @@ def compress_action_table(matrix: list, essential_errors: set) -> dict:
 	This parsing library doesn't yet support error productions, so I'm only going to worry
 	about the first case for now. Error productions might be a nice enhancement.
 
-	The encoding of actions here is the same as is used in context_free.DragonBookTable.
+	The encoding of actions here is the same as is used in automata.DragonBookTable.
 	"""
 	
 	def find_default_reduction(row: list) -> int:

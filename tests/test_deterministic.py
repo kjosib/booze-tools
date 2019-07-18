@@ -1,7 +1,7 @@
 import unittest
 
 from boozetools.support import interfaces
-from boozetools.parsing import LR, GLR, context_free, shift_reduce
+from boozetools.parsing import automata, context_free, shift_reduce
 
 
 def shorthand(cfg: context_free.ContextFreeGrammar, rules:dict):
@@ -47,12 +47,12 @@ class TableMethodTester(unittest.TestCase):
 		self.bad = []
 		self.pure = True
 	@staticmethod
-	def construct(cfg) -> GLR.HFA: raise NotImplementedError()
+	def construct(cfg) -> automata.HFA: raise NotImplementedError()
 	def tearDown(self):
-		try: table = LR.determinize(self.construct(self.g), strict=True)
+		try: table = automata.determinize(self.construct(self.g), strict=True)
 		except interfaces.PurityError:
 			assert not self.pure
-			if self.good or self.bad: table = LR.determinize(self.construct(self.g), strict=False)
+			if self.good or self.bad: table = automata.determinize(self.construct(self.g), strict=False)
 			else: return
 		table.display()
 		for sentence in self.good:
@@ -72,7 +72,7 @@ class TableMethodTester(unittest.TestCase):
 
 class TestLALR(TableMethodTester):
 	
-	construct = staticmethod(GLR.lalr_construction)
+	construct = staticmethod(automata.lalr_construction)
 	
 	def test_00_single_rename(self):
 		self.R('S:r')
@@ -121,7 +121,7 @@ class TestLALR(TableMethodTester):
 		
 
 class TestCLR(TableMethodTester):
-	construct = staticmethod(GLR.canonical_lr1)
+	construct = staticmethod(automata.canonical_lr1)
 	def test_invasive(self):
 		mysterious_invasive_conflict(self.g)
 		self.good = ['a a a', 'b a b', 'b a a b',]
@@ -131,7 +131,7 @@ class TestCLR(TableMethodTester):
 		self.good = ['a c d', 'a c e', 'b c d', 'b c e']
 
 class TestLR1(TableMethodTester):
-	construct = staticmethod(GLR.minimal_lr1)
+	construct = staticmethod(automata.minimal_lr1)
 	def test_invasive(self):
 		mysterious_invasive_conflict(self.g)
 		self.good = ['a a a', 'b a b', 'b a a b',]
