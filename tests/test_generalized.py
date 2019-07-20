@@ -145,8 +145,3 @@ class TestTableConstructions(GrammarTester):
 		self.R('E: | y | E S')
 		self.pathological = True
 
-class TestBruteForceAndIgnorance(GrammarTester):
-	
-	def check_postcondition(self):
-		hfa = automata.minimal_lr1(self.cfg)
-		

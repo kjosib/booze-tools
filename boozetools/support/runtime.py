@@ -152,6 +152,9 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 		self.rule = parser['rule']
 		messages = [(mangle(m), v) if m or v else None for (m,v) in zip(self.rule['message'], self.rule['view'])]
 		self.get_rule = list(zip(self.rule['head'], self.rule['size'], messages)).__getitem__
+		if 'splits' in parser:
+			self.get_split_offset = parser['action']['reduce'].__len__ # Gets the number of states.
+			self.get_split = parser['splits'].__getitem__
 		
 	def get_translation(self, symbol) -> int: assert False, 'See the constructor.'
 	def get_action(self, state_id: int, terminal_id) -> int: assert False, 'See the constructor.'
@@ -161,10 +164,13 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 	def get_initial(self, language) -> int: return self.initial[language]
 	def get_breadcrumb(self, state_id: int) -> str:
 		bcid = self.breadcrumbs[state_id]
+		if bcid is None: return ''
 		if bcid < len(self.terminals): return self.terminals[bcid]
 		else: return self.nonterminals[bcid-len(self.terminals)]
 	
 	def interactive_step(self, state_id: int) -> int: assert False, 'See the constructor.'
+	def get_split_offset(self) -> int: assert False, 'See the constructor.'
+	def get_split(self, split_id: int) -> list: assert False, 'See the constructor.'
 
 def parse_action_bindings(driver):
 	""" Build a reduction function (combiner) for the parse engine out of an arbitrary Python object. """

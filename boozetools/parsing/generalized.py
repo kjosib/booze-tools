@@ -69,6 +69,7 @@ class BruteForceAndIgnorance:
 			by field numbers given as the global constants above.
 	"""
 	def __init__(self, table: interfaces.ParseTable, driver, language=None):
+		""" Please note this takes a driver not a combiner: it does its own selection of arguments from the stack. """
 		self.__table = table
 		self.__driver = driver
 		self.__nr_states = table.get_split_offset()
@@ -106,8 +107,8 @@ class BruteForceAndIgnorance:
 	def __shift(self, state_id, top, semantic):
 		shift = state_id, top, semantic
 		while True:
-			action = self.__table.interactive_step(state_id)
-			if action < 0: shift = self.__reduction(-1-action, shift)
+			action = self.__table.interactive_step(shift[NODE_STATE])
+			if action < 0: shift = self.__reduction(-1 - action, shift)
 			else: break
 		self.__next.append(shift)
 	
@@ -129,7 +130,7 @@ class BruteForceAndIgnorance:
 	def __view(top, view):
 		"""
 		Recall that each element of view is a negative offset from the end of a notional
-		list-style stack, so in particular -1 is top-of-stack, and also these are
+		linked-list-style stack, so in particular -1 is top-of-stack, and also these are
 		presently constrained to appear in increasing order (starting negative and
 		growing closer to zero).
 		"""

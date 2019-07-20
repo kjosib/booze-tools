@@ -4,7 +4,7 @@ import json as standard_json
 import example.mini_json, example.macro_json, example.calculator
 
 from boozetools.macroparse import compiler
-from boozetools.parsing import shift_reduce
+from boozetools.parsing import shift_reduce, generalized
 from boozetools.support import runtime
 from boozetools.scanning import recognition
 
@@ -33,6 +33,8 @@ GLOSSARY_JSON = """
     }
 }
 """
+example_folder = os.path.dirname(example.mini_json.__file__)
+
 
 def parse_tester(self:unittest.TestCase, parse):
 	# Smoke Test
@@ -56,7 +58,6 @@ class TestMiniJson(unittest.TestCase):
 class TestMacroJson(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
-		example_folder = os.path.dirname(example.mini_json.__file__)
 		automaton = compiler.compile_file(os.path.join(example_folder, 'json.md'), method='LALR')
 		# The transition into and back out of JSON should be non-destructive, but it's worth being sure.
 		serialized = standard_json.dumps(automaton)
@@ -106,3 +107,41 @@ class TestCalculator(unittest.TestCase):
 		]:
 			with self.subTest(text=text):
 				self.assertAlmostEqual(example.calculator.parse(text), expect)
+
+class SimpleParseDriver:
+	""" Act as a stand-in for parsing non-deterministic things as needed for the tests. """
+	@staticmethod
+	def parse_nothing(): return ()
+
+class TestNonDeterministic(unittest.TestCase):
+	
+	@classmethod
+	def setUpClass(cls) -> None:
+		automaton = compiler.compile_file(os.path.join(example_folder, 'nondeterministic_grammar.md'), method='LR1')
+		cls.parse_table = runtime.CompactHandleFindingAutomaton(automaton['parser'])
+	
+	def try_palindromes(self, make_parser):
+		long = 'abbabbaaababaaaabbbbbbbaaaabaabbaabaaaabababaaaaba'
+		for string in [
+			'abba',
+			'ababa',
+			'abbbba',
+			'abbbbba',
+			'abbabba',
+			(long + long[::-1]),
+		]:
+			with self.subTest('Palindrome: '+string):
+				parser = make_parser()
+				for c in string: parser.consume(c, c)
+				result = parser.finish()
+				assert len(result) == 1
+				tree = result[0]
+				while isinstance(tree, tuple) and tree:
+					assert tree[0] == tree[2]
+					tree = tree[1]
+				if tree: assert isinstance(tree, str) and len(tree)==1
+	
+	def test_brute_force_and_ignorance(self):
+		self.try_palindromes(lambda:generalized.BruteForceAndIgnorance(self.parse_table, SimpleParseDriver(), language="Palindrome"))
+	
+	

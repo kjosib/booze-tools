@@ -16,6 +16,7 @@ from ..support import failureprone, interfaces
 from ..scanning import miniscan
 from ..parsing import context_free, miniparse
 
+NONDET = object()
 
 class DefinitionError(Exception): pass
 
@@ -168,7 +169,9 @@ METAGRAMMAR.rule('symbol', 'topic')(Symbol)   # Topic symbol; gets its name fixe
 METAGRAMMAR.rule('symbol', '.name ( .' + list_of('actual_parameter', ',') + ' )')(MacroCall)
 
 # Sub-language: For specifying precedence and associativity rules:
+NAMES = one_or_more('name')
 METAGRAMMAR.rule('precedence', '.associativity .'+one_or_more('terminal'))(None)
+METAGRAMMAR.rule('precedence', 'pragma_nondeterministic .'+NAMES)(lambda x:(NONDET, x))
 
 METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x: context_free.LEFT)
 METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x: context_free.RIGHT)
@@ -177,7 +180,7 @@ METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda x: context_free.BOGUS)
 
 # Sub-language: For specifying the connections between scan conditions:
 METAGRAMMAR.rule('condition', 'name')(lambda x:(x,[]))
-METAGRAMMAR.rule('condition', '.name arrow .'+one_or_more('name'))(None)
+METAGRAMMAR.rule('condition', '.name arrow .'+NAMES)(None)
 
 ### The lexeme definitions for production rule lines are as follows:
 LEX = miniscan.Definition()
@@ -243,10 +246,12 @@ class EBNF_Definition:
 		self.implementations = {} # canonical symbol -> line number of first elaboration
 		self.must_elaborate = []
 		self.error_help = error_help
+		self.nondeterministic_symbols = set()
 	
 	def read_precedence_line(self, line:str, line_nr:int):
 		direction, symbols = self.error_help.parse(line, line_nr, 'precedence')
-		self.plain_cfg.assoc(direction, symbols)
+		if direction is NONDET: self.nondeterministic_symbols.update(symbols)
+		else: self.plain_cfg.assoc(direction, symbols)
 
 	def read_production_line(self, line:str, line_nr:int):
 		""" This is the main interface to defining grammars. Call this repeatedly for each line of the grammar. """

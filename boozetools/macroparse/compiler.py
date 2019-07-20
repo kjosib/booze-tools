@@ -50,7 +50,7 @@ class TextBookForm:
 		if table is None: return
 		symbol_index = {s: i for i, s in enumerate(table.terminals + table.nonterminals)}
 		symbol_index[None] = None
-		return {
+		form = {
 			'initial': table.initial,
 			'action': compaction.compress_action_table(table.action_matrix, table.essential_errors),
 			'goto': compaction.compress_goto_table(table.goto_matrix),
@@ -59,6 +59,8 @@ class TextBookForm:
 			'breadcrumbs': [symbol_index[s] for s in table.breadcrumbs],
 			'rule': encode_parse_rules(table.rule_table),
 		}
+		if table.splits: form['splits'] = table.splits
+		return form
 	def pretty_print(self):
 		if self.dfa is not None:
 			self.dfa.stats()
@@ -75,14 +77,10 @@ class IntermediateForm(typing.NamedTuple):
 	nfa: regular.NFA
 	scan_actions: list
 	hfa: automata.HFA
-	parse_style:str
-	def determinize(self, *, strict=False) -> TextBookForm:
+	parse_style:automata.ParsingStyle
+	def determinize(self) -> TextBookForm:
 		dfa = self.nfa.subset_construction().minimize_states().minimize_alphabet() if self.nfa.states else None
-		if self.parse_style == 'default': style = automata.DeterministicStyle(False)
-		elif self.parse_style == 'pure': style = automata.DeterministicStyle(True)
-		elif self.parse_style == 'generalized': style = automata.GeneralizedStyle(len(self.hfa.graph))
-		else: assert False, self.parse_style
-		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=automata.tabulate(self.hfa, style=style))
+		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=automata.tabulate(self.hfa, style=self.parse_style))
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
@@ -219,11 +217,12 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
 	if condition_definitions: tie_conditions()
-	return IntermediateForm(
-		nfa=nfa, scan_actions=scan_actions,
-		hfa=automata.PARSE_TABLE_METHODS[method](ebnf.sugarless_form()),
-		parse_style='pure',
-	)
+	hfa = automata.PARSE_TABLE_METHODS[method](ebnf.sugarless_form())
+	if ebnf.nondeterministic_symbols:
+		style = automata.GeneralizedStyle(len(hfa.graph), ebnf.nondeterministic_symbols)
+	else:
+		style = automata.DeterministicStyle(False)
+	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=hfa, parse_style=style,)
 
 
 def encode_parse_rules(rules:list) -> dict:

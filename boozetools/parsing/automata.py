@@ -762,9 +762,10 @@ class DeterministicStyle(ParsingStyle):
 
 class GeneralizedStyle(ParsingStyle):
 	
-	def __init__(self, splits_offset:int):
+	def __init__(self, splits_offset:int, nondeterministic_symbols:set):
 		self.offset = splits_offset
 		self.splits = []
+		self.nondeterministic_symbols = nondeterministic_symbols
 	
 	def decide_inadequacy(self, q: int, look_ahead: str, shift: int, rule_ids: Iterable) -> int:
 		split = []
