@@ -5,6 +5,19 @@ from . import regular, charset, recognition
 
 PRELOAD = {'ASCII': {k: regular.CharClass(cls) for k, cls in charset.POSIX.items()}}
 
+class PatternError(Exception): pass
+class BadReferenceError(PatternError):
+	"""
+	Raised if a pattern refers to a subexpression name not defined in the context of the analysis.
+	args are the offending reference and the span within the pattern (offset/length pair) where it appears.
+	"""
+class TrailingContextError(PatternError):
+	"""
+	Raised if pattern has both variable-sized stem and variable-sized trailing context.
+	This is not supported at this time.
+	"""
+
+
 class Definition(interfaces.ScanRules):
 	def __init__(self, *, minimize=True, mode='ASCII'):
 		self.__actions = []
@@ -76,10 +89,11 @@ class Definition(interfaces.ScanRules):
 		assert action is None
 
 def analyze_pattern(pattern:str, env):
-	try: bol, expression, trailing_context = rex.parse(META.scan(pattern, env=env))
-	except interfaces.ParseError as e:
-		sequence = [token[0] for token in META.scan(pattern, env=env)]
-		raise interfaces.MetaError('Broken regular expression pattern', pattern, 'scanned as', sequence) from e
+	scanner = META.scan(pattern, env=env)
+	try: bol, expression, trailing_context = rex.parse(scanner)
+	except BadReferenceError as e:
+		pos,size = scanner.current_span()
+		raise BadReferenceError("column %d: %r %s"%(pos+1, pattern[pos:pos+size], e.args[0]))
 	assert isinstance(expression, regular.Regular)
 	if not trailing_context: trail = None
 	else:
@@ -88,7 +102,7 @@ def analyze_pattern(pattern:str, env):
 		expression = regular.Sequence(expression, trailing_context)
 		if trail: trail = -trail
 		elif stem: trail = stem
-		else: raise interfaces.SemanticError(pattern, 'Variable stem and variable trailing context are not presently supported in the same pattern.')
+		else: raise TrailingContextError('Variable stem and variable trailing context in the same pattern are not presently supported.')
 	return bol, expression, trail
 
 class ConditionContext:
@@ -143,7 +157,7 @@ rex.rule('Item', 'short')(lambda c:c.cls)
 @rex.rule('Item', 'reference')
 def classref(subex: regular.Regular):
 	if isinstance(subex, regular.CharClass): return subex.cls
-	else: raise interfaces.SemanticError('Reference is not to a character class, and so cannot be used within one.')
+	else: raise BadReferenceError('Reference is not to a character class, and so cannot be used within one.')
 
 META = Definition()
 def _BEGIN_():
@@ -167,7 +181,7 @@ def _BEGIN_():
 	def _bracket_reference(scanner):
 		name = scanner.matched_text()[1:-1]
 		try: return 'reference', scanner.env[name]
-		except KeyError: raise interfaces.MetaError(repr(name) + ' is not a defined subexpression name.')
+		except KeyError: raise BadReferenceError("Undefined sub-pattern reference")
 	def _shorthand_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1]]
 	def _dot_reference(scanner): return 'reference', scanner.env['DOT']
 	def _hex_escape(scanner): return 'c', int(scanner.matched_text()[2:], 16)
@@ -226,7 +240,7 @@ def _BEGIN_():
 		in_class.install_rule(expression=txt('-'), action=_metatoken)
 		in_class.install_rule(expression=txt('-]'), trail=-1, action=_arbitrary_character)
 	with META.condition(None, '[') as anywhere:
-		anywhere.install_rule(expression=seq(txt('{'), regular.Plus(ref('alpha')), txt('}'), ), action=_bracket_reference)
+		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.Plus(ref('word')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\')
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]: META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
 		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharClass([64, 128])), action=_control)

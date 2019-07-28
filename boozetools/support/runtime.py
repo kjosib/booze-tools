@@ -11,6 +11,28 @@ from . import interfaces
 from ..scanning import recognition, charclass
 from ..parsing import shift_reduce
 
+class DriverError(Exception):
+	"""
+	This is an exception wrapper around any exception NOT deriving from LanguageError
+	which may be raised in the process of trying to invoke a parse action or scan action.
+
+	In order to see the ACTUAL problem at the BOTTOM of the stack trace (and hide all the
+	stack frames involved in the bowels of the parse engine), do something like:
+
+	parse = runtime.the_simple_case(tables(), driver, driver, interactive=True)
+	try: goal = parse(text.content)
+	except runtime.DriverError as e:
+		text.complain(*parse.scanner.current_span(), message=str(e.args))
+		raise e.__cause__ from None
+	except interfaces.ScanError as e:
+		... complain about a scan error ...
+	except interfaces.ParseError as e:
+		... complain about a parse error ...
+
+	Maybe code like this will eventually become a convenience method...
+	"""
+
+
 def displacement_function(otherwise:callable, *, offset, check, value) -> callable:
 	"""
 	(make a) Reader for a perfect-hash such as built at compaction.encode_displacement_function.
@@ -104,16 +126,16 @@ class BoundScanRules(interfaces.ScanRules):
 			try: fn = getattr(driver, method_name)
 			except AttributeError:
 				if default_method is None:
-					raise interfaces.MetaError("Scanner driver has neither method %r nor %r." % (method_name, default_method_name))
+					raise DriverError("Scanner driver has neither method %r nor %r." % (method_name, default_method_name))
 				else:
 					fn = functools.partial(default_method, message)
 					method_name = "%s(%r, ...)"%(default_method_name, message)
 			arity = len(inspect.signature(fn).parameters)
 			if arity == 1:
 				if parameter is None: return fn
-				else: raise interfaces.MetaError("Message %r is used with parameter %r but handler %r only takes one argument (the scan state) and needs to take a second (the message parameter)." % (message, parameter, method_name))
+				else: raise DriverError("Message %r is used with parameter %r but handler %r only takes one argument (the scan state) and needs to take a second (the message parameter)." % (message, parameter, method_name))
 			elif arity == 2: return lambda scan_state: fn(scan_state, parameter)
-			else: raise interfaces.MetaError("Scan handler %r takes %d arguments, but needs to take %s." % (method_name, arity, ['two', 'one or two'][parameter is None]))
+			else: raise DriverError("Scan handler %r takes %d arguments, but needs to take %s." % (method_name, arity, ['two', 'one or two'][parameter is None]))
 		
 		default_method_name = 'default_scan_action'
 		default_method = getattr(driver, default_method_name, None)
@@ -126,7 +148,10 @@ class BoundScanRules(interfaces.ScanRules):
 		""" NB: This gets overwritten by a direct bound-method on the trailing-context list. """
 		return self._trail[rule_id]
 	
-	def invoke(self, scan_state: interfaces.ScanState, rule_id:int): return self.__methods[rule_id](scan_state)
+	def invoke(self, scan_state: interfaces.ScanState, rule_id:int):
+		try: return self.__methods[rule_id](scan_state)
+		except interfaces.LanguageError: raise
+		except Exception as e: raise DriverError("Trying to scan rule "+str(rule_id)) from e
 
 def mangle(message):
 	""" Describes the relation between parse action symbols (from parse rule data) to driver method names. """
@@ -177,7 +202,10 @@ def parse_action_bindings(driver):
 	# This is probably reasonably quick as-is, but you're welcome to profile it.
 	def combine(message, attribute_stack):
 		method, view = message
-		if method is not None:return getattr(driver, method)(*(attribute_stack[x] for x in view))
+		if method is not None:
+			args = tuple(attribute_stack[x] for x in view)
+			try: return getattr(driver, method)(*args)
+			except Exception as e: raise DriverError(method, list(map(type, args))) from e
 		elif len(view) == 1: return attribute_stack[view[0]] # Bracketing rule
 		else: return tuple(attribute_stack[x] for x in view) # Tuple Collection Rule
 	return combine

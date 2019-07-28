@@ -29,10 +29,10 @@ class ParseError(LanguageError):
 	def condition(self) -> str:
 		return ' '.join(self.stack_symbols) + ' %s %s'%(pretty.DOT, self.lookahead)
 class GeneralizedParseError(LanguageError): pass
-class SemanticError(LanguageError): pass
+
 class MetaError(LanguageError):
 	""" This gets raised if there's something wrong in the definition of a parser or scanner. """
-	pass
+
 class PurityError(MetaError):
 	""" Raised if a grammar has the wrong/undeclared conflicts. """
 
@@ -129,6 +129,10 @@ class ScanState:
 		raise NotImplementedError
 	def current_position(self) -> int:
 		""" As advertised. This was motivated by a desire to produce helpful error messages. """
+		raise NotImplementedError
+	def current_span(self):
+		""" Return the position and length of the current match-text for use in error-reporting calls and the like. """
+		raise NotImplementedError
 
 class ScanRules:
 	"""

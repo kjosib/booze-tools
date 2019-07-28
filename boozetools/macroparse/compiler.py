@@ -89,12 +89,20 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
 	# Each major sub-language is line-oriented and interpreted with one of the following five subroutines:
+	
+	def handle_meta_exception(e: Exception):
+		if isinstance(e, miniscan.PatternError):
+			raise grammar.DefinitionError('At line %d: %s'%(line_number, e.args[0])) from None
+		elif isinstance(e, interfaces.LanguageError):
+			raise grammar.DefinitionError('At line %d: Malformed pattern.' % line_number) from None
+		else: raise e
 
 	def definitions():
 		name, regex = current_line_text.split(None, 1)
 		if name in env: raise grammar.DefinitionError('You cannot redefine named subexpression %r at line %d.'%(name, line_number))
 		if not re.fullmatch(r'[A-Za-z][A-Za-z_]+', name): raise grammar.DefinitionError('Subexpression %r ought to obey the rule at line %d.'%(name, line_number))
-		env[name] = miniscan.rex.parse(miniscan.META.scan(regex, env=env), language='Regular')
+		try: env[name] = miniscan.rex.parse(miniscan.META.scan(regex, env=env), language='Regular')
+		except Exception as e: handle_meta_exception(e)
 		assert isinstance(env[name], regular.Regular), "This would be a bug."
 	
 	def conditions():
@@ -117,8 +125,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 		def note_pattern(pattern):
 			# Now patterns that share a trail length can also share a rule ID number.
 			try: bol, expression, trail = miniscan.analyze_pattern(pattern, env)
-			except interfaces.MetaError as e: raise grammar.DefinitionError('At line ' + str(line_number) + ': ' + repr(e.args))
-			except interfaces.LanguageError as e: raise grammar.DefinitionError('Malformed pattern on line %d.' % line_number) from e
+			except Exception as e: handle_meta_exception(e)
 			else: pending_patterns[trail].append((bol, expression))
 		if current_line_text.endswith('|'):
 			pattern = current_line_text[:-1].strip()

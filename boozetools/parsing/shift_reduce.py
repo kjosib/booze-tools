@@ -32,7 +32,7 @@ def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 	assert len(stack) == 2
 
 
-def parse(table: interfaces.ParseTable, combine, each_token, *, language=None, interactive=False):
+def parse(table: interfaces.ParseTable, combine, each_token, *, language=None, interactive=True):
 	"""
 	The canonical table-driven LR parsing algorithm. As much as possible is left abstract.
 	Perhaps unfortunately, there's no explicit support for location tracking here, although
