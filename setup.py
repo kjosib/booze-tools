@@ -2,8 +2,14 @@ import setuptools
 
 setuptools.setup(
 	name='booze-tools',
-	version='0.3.0',
-	packages=['boozetools', 'boozetools.macroparse'],
+	version='0.3.1.post0',
+	packages=[
+		'boozetools',
+		'boozetools.macroparse',
+		'boozetools.parsing',
+		'boozetools.scanning',
+		'boozetools.support',
+	],
 	description='A panoply of tools for parsing and lexical analysis',
 	long_description=open('README.md').read(),
 	long_description_content_type="text/markdown",
