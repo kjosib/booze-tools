@@ -5,7 +5,7 @@ import example.mini_json, example.macro_json, example.calculator
 
 from boozetools.macroparse import compiler
 from boozetools.parsing import shift_reduce, generalized
-from boozetools.support import runtime
+from boozetools.support import runtime, interfaces
 from boozetools.scanning import recognition
 
 # See https://json.org/example.html
@@ -113,6 +113,10 @@ class SimpleParseDriver:
 	@staticmethod
 	def parse_nothing(): return ()
 
+LONG_STRING = 'abbabbaaababaaaabbbbbbbaaaabaabbaabaaaabababaaaaba'
+LONG_STRING = LONG_STRING + LONG_STRING[::-1] + 'a'
+PALINDROMES = ['abba', 'ababa', 'abbbba', 'abbbbba', 'abbabba', (LONG_STRING + LONG_STRING[::-1])]
+
 class TestNonDeterministic(unittest.TestCase):
 	
 	@classmethod
@@ -120,18 +124,12 @@ class TestNonDeterministic(unittest.TestCase):
 		automaton = compiler.compile_file(os.path.join(example_folder, 'nondeterministic_grammar.md'), method='LR1')
 		cls.parse_table = runtime.CompactHandleFindingAutomaton(automaton['parser'])
 	
-	def try_palindromes(self, make_parser):
-		long = 'abbabbaaababaaaabbbbbbbaaaabaabbaabaaaabababaaaaba'
-		for string in [
-			'abba',
-			'ababa',
-			'abbbba',
-			'abbbbba',
-			'abbabba',
-			(long + long[::-1]),
-		]:
+	# @unittest.skip('time trials')
+	def test_brute_force_and_ignorance(self):
+		for string in PALINDROMES:
 			with self.subTest('Palindrome: '+string):
-				parser = make_parser()
+				print(string)
+				parser = generalized.BruteForceAndIgnorance(self.parse_table, SimpleParseDriver(), language="Palindrome")
 				for c in string: parser.consume(c, c)
 				result = parser.finish()
 				assert len(result) == 1
@@ -140,8 +138,21 @@ class TestNonDeterministic(unittest.TestCase):
 					assert tree[0] == tree[2]
 					tree = tree[1]
 				if tree: assert isinstance(tree, str) and len(tree)==1
+		parser = generalized.BruteForceAndIgnorance(self.parse_table, SimpleParseDriver(), language="Palindrome")
+		for c in LONG_STRING: parser.consume(c, c)
+		try: result = parser.finish()
+		except interfaces.GeneralizedParseError: pass
+		else: assert False
+
 	
-	def test_brute_force_and_ignorance(self):
-		self.try_palindromes(lambda:generalized.BruteForceAndIgnorance(self.parse_table, SimpleParseDriver(), language="Palindrome"))
+	# @unittest.skip('time trials')
+	def test_gss_trial_palindromes(self):
+		for string in PALINDROMES:
+			print(string)
+			with self.subTest('Palindrome: '+string):
+				generalized.gss_trial_parse(self.parse_table, string, language="Palindrome")
+		try: generalized.gss_trial_parse(self.parse_table, LONG_STRING, language="Palindrome")
+		except interfaces.GeneralizedParseError: pass
+		else: assert False
 	
 	

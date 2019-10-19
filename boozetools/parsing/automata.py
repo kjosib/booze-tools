@@ -700,7 +700,7 @@ class ParsingStyle:
 	Probably the correct choice of style should be reflected in the grammar definition somehow.
 	"""
 	
-	def decide_inadequacy(self, q:int, look_ahead:str, shift:int, rule_ids:Iterable) -> int:
+	def decide_inadequacy(self, q:int, look_ahead:str, shift:int, rule_ids:Iterable, rules:list) -> int:
 		""" Called in all non-deterministic situations. """
 		raise NotImplementedError(type(self))
 	
@@ -718,7 +718,7 @@ class DeterministicStyle(ParsingStyle):
 		self.conflicts = collections.defaultdict(list)
 		self.strict = strict
 	
-	def decide_inadequacy(self, q:int, look_ahead: str, shift: int, rule_ids: Iterable) -> int:
+	def decide_inadequacy(self, q:int, look_ahead: str, shift: int, rule_ids: Iterable, rules:list) -> int:
 		self.conflicts[q, look_ahead].extend(rule_ids)
 		return shift or encode_reduce(min(rule_ids))
 	
@@ -767,10 +767,10 @@ class GeneralizedStyle(ParsingStyle):
 		self.splits = []
 		self.nondeterministic_symbols = nondeterministic_symbols
 	
-	def decide_inadequacy(self, q: int, look_ahead: str, shift: int, rule_ids: Iterable) -> int:
+	def decide_inadequacy(self, q: int, look_ahead: str, shift: int, rule_ids: Iterable, rules:list) -> int:
 		split = []
 		if shift: split.append(shift)
-		for r in rule_ids: split.append(-1-r)
+		for r in sorted(rule_ids, key=lambda i:len(rules[i].rhs)): split.append(-1-r)
 		return self.offset + foundation.allocate(self.splits, split)
 	
 	def any_splits(self):
@@ -818,7 +818,7 @@ def tabulate(hfa: HFA[LA_State], *, style:ParsingStyle) -> DragonBookTable:
 				essential_errors.add((q,idx))
 			elif shift == 0 and len(rule_ids) == 1:
 				action_row[idx] = encode_reduce(rule_ids[0])
-			else: action_row[idx] = style.decide_inadequacy(q, symbol, shift, rule_ids)
+			else: action_row[idx] = style.decide_inadequacy(q, symbol, shift, rule_ids, grammar.rules)
 		action.append(action_row)
 	for q, t in essential_errors: action[q][t] = 0
 	for q in hfa.accept: action[q][0] = q
