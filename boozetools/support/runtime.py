@@ -11,28 +11,6 @@ from . import interfaces
 from ..scanning import recognition, charclass
 from ..parsing import shift_reduce
 
-class DriverError(Exception):
-	"""
-	This is an exception wrapper around any exception NOT deriving from LanguageError
-	which may be raised in the process of trying to invoke a parse action or scan action.
-
-	In order to see the ACTUAL problem at the BOTTOM of the stack trace (and hide all the
-	stack frames involved in the bowels of the parse engine), do something like:
-
-	parse = runtime.the_simple_case(tables(), driver, driver, interactive=True)
-	try: goal = parse(text.content)
-	except runtime.DriverError as e:
-		text.complain(*parse.scanner.current_span(), message=str(e.args))
-		raise e.__cause__ from None
-	except interfaces.ScanError as e:
-		... complain about a scan error ...
-	except interfaces.ParseError as e:
-		... complain about a parse error ...
-
-	Maybe code like this will eventually become a convenience method...
-	"""
-
-
 def displacement_function(otherwise:callable, *, offset, check, value) -> callable:
 	"""
 	(make a) Reader for a perfect-hash such as built at compaction.encode_displacement_function.
@@ -126,16 +104,16 @@ class BoundScanRules(interfaces.ScanRules):
 			try: fn = getattr(driver, method_name)
 			except AttributeError:
 				if default_method is None:
-					raise DriverError("Scanner driver has neither method %r nor %r." % (method_name, default_method_name))
+					raise interfaces.DriverError("Scanner driver has neither method %r nor %r." % (method_name, default_method_name))
 				else:
 					fn = functools.partial(default_method, message)
 					method_name = "%s(%r, ...)"%(default_method_name, message)
 			arity = len(inspect.signature(fn).parameters)
 			if arity == 1:
 				if parameter is None: return fn
-				else: raise DriverError("Message %r is used with parameter %r but handler %r only takes one argument (the scan state) and needs to take a second (the message parameter)." % (message, parameter, method_name))
+				else: raise interfaces.DriverError("Message %r is used with parameter %r but handler %r only takes one argument (the scan state) and needs to take a second (the message parameter)." % (message, parameter, method_name))
 			elif arity == 2: return lambda scan_state: fn(scan_state, parameter)
-			else: raise DriverError("Scan handler %r takes %d arguments, but needs to take %s." % (method_name, arity, ['two', 'one or two'][parameter is None]))
+			else: raise interfaces.DriverError("Scan handler %r takes %d arguments, but needs to take %s." % (method_name, arity, ['two', 'one or two'][parameter is None]))
 		
 		default_method_name = 'default_scan_action'
 		default_method = getattr(driver, default_method_name, None)
@@ -151,7 +129,7 @@ class BoundScanRules(interfaces.ScanRules):
 	def invoke(self, scan_state: interfaces.ScanState, rule_id:int):
 		try: return self.__methods[rule_id](scan_state)
 		except interfaces.LanguageError: raise
-		except Exception as e: raise DriverError("Trying to scan rule "+str(rule_id)) from e
+		except Exception as e: raise interfaces.DriverError("Trying to scan rule "+str(rule_id)) from e
 
 def mangle(message):
 	""" Describes the relation between parse action symbols (from parse rule data) to driver method names. """
@@ -170,7 +148,7 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 		self.get_action, self.interactive_step = parser_action_function(**parser['action'])
 		self.get_goto = parser_goto_function(**parser['goto'])
 		self.terminals = parser['terminals']
-		self.get_translation = {symbol:i for i,symbol in enumerate(self.terminals)}.__getitem__
+		self.__translation = {symbol:i for i,symbol in enumerate(self.terminals)}
 		self.nonterminals = parser['nonterminals']
 		self.initial = parser['initial']
 		self.breadcrumbs = parser['breadcrumbs']
@@ -181,7 +159,10 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 			self.get_split_offset = parser['action']['reduce'].__len__ # Gets the number of states.
 			self.get_split = parser['splits'].__getitem__
 		
-	def get_translation(self, symbol) -> int: assert False, 'See the constructor.'
+	def get_translation(self, symbol) -> int:
+		try: return self.__translation[symbol]
+		except KeyError: raise interfaces.BadToken()
+	
 	def get_action(self, state_id: int, terminal_id) -> int: assert False, 'See the constructor.'
 	def get_goto(self, state_id: int, nonterminal_id) -> int: assert False, 'See the constructor.'
 	def get_rule(self, rule_id: int) -> tuple: assert False, 'See the constructor.'
@@ -205,7 +186,7 @@ def parse_action_bindings(driver):
 		if method is not None:
 			args = tuple(attribute_stack[x] for x in view)
 			try: return getattr(driver, method)(*args)
-			except Exception as e: raise DriverError(method, list(map(type, args))) from e
+			except Exception as e: raise interfaces.DriverError("Trying to call method "+repr(method), list(map(type, args))) from e
 		elif len(view) == 1: return attribute_stack[view[0]] # Bracketing rule
 		else: return tuple(attribute_stack[x] for x in view) # Tuple Collection Rule
 	return combine

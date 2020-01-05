@@ -33,7 +33,7 @@ class Definition(interfaces.ScanRules):
 	
 	def get_dfa(self) -> interfaces.FiniteAutomaton:
 		if self.__dfa is None:
-			if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the final pattern!')
+			if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the final pattern!')
 			self.__dfa = self.__nfa.subset_construction()
 			if self.__minimize: self.__dfa = self.__dfa.minimize_states().minimize_alphabet()
 		return self.__dfa
@@ -71,7 +71,7 @@ class Definition(interfaces.ScanRules):
 		@scanner_definition.on(r'[A-Za-z_]+')
 		def word(scanner): return ('word', scanner.matched_text()) # Return a token.
 		"""
-		if self.__awaiting_action: raise interfaces.MetaError('You forgot to provide the action for the previous pattern!')
+		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the previous pattern!')
 		self.__awaiting_action = True
 		bol, expression, trail = analyze_pattern(pattern, self.__subexpressions)
 		def decorator(fn):

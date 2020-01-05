@@ -20,21 +20,46 @@ On a separate note, you could make a good case for splitting this file in twain.
 from . import pretty
 
 
-class LanguageError(ValueError): pass
-class ScanError(LanguageError): pass
+class LanguageError(ValueError):
+	""" Base class of all exceptions arising from the language machinery. """
+
+class ScanError(LanguageError):
+	""" Raised if and when the scanner gets blocked. """
+
+class BadToken(LanguageError):
+	""" Raised if the scanner provides a token type which the parse table does not define. """
+
 class ParseError(LanguageError):
+	""" Raised if the parser gets lost trying to reconstruct the structure of a phrase. """
 	def __init__(self, stack_symbols, lookahead, yylval):
 		super(ParseError, self).__init__(stack_symbols, lookahead, yylval)
 		self.stack_symbols, self.lookahead, self.yylval = stack_symbols, lookahead, yylval
 	def condition(self) -> str:
 		return ' '.join(self.stack_symbols) + ' %s %s'%(pretty.DOT, self.lookahead)
+
 class GeneralizedParseError(LanguageError): pass
 
-class MetaError(LanguageError):
-	""" This gets raised if there's something wrong in the definition of a parser or scanner. """
+class DriverError(Exception):
+	"""
+	This is an exception wrapper around any exception NOT deriving from LanguageError
+	which may be raised in the process of trying to invoke a parse action or scan action.
 
-class PurityError(MetaError):
-	""" Raised if a grammar has the wrong/undeclared conflicts. """
+	In order to see the ACTUAL problem at the BOTTOM of the stack trace (and hide all the
+	stack frames involved in the bowels of the parse engine), do something like:
+
+	parse = runtime.the_simple_case(tables(), driver, driver, interactive=True)
+	try: goal = parse(text.content)
+	except interfaces.DriverError as e:
+		text.complain(*parse.scanner.current_span(), message=str(e.args))
+		raise e.__cause__ from None
+	except interfaces.ScanError as e:
+		... complain about a scan error ...
+	except interfaces.ParseError as e:
+		... complain about a parse error ...
+
+	Maybe code like this will eventually become a convenience method...
+	"""
+
 
 class Classifier:
 	"""

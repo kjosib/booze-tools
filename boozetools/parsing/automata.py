@@ -25,6 +25,9 @@ END = '<END>' # An artificial "end-of-text" terminal-symbol.
 
 T = TypeVar('T')
 
+class PurityError(ValueError):
+	""" Raised if a grammar has the wrong/undeclared conflicts. """
+
 class HFA(Generic[T]):
 	"""
 	HFA is short for "Handle-Finding Automaton", which is clunky to repeat all over the place.
@@ -757,7 +760,7 @@ class DeterministicStyle(ParsingStyle):
 			for r in rule_ids:
 				rule = hfa.grammar.rules[r]
 				print("Do we reduce:  %s -> %s" % (rule.lhs, ' '.join(rule.rhs)))
-		if self.strict and self.conflicts: raise interfaces.PurityError()
+		if self.strict and self.conflicts: raise PurityError()
 
 
 class GeneralizedStyle(ParsingStyle):

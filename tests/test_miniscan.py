@@ -94,7 +94,7 @@ class TestMiniScan(unittest.TestCase):
 		s = miniscan.Definition()
 		s.on('ernie$')('ernie') # match ernie, but only at the end.
 		s.on(r'bert/\s+and') # match bert, but only if " and" follows. However, forget to provide an action,
-		with self.assertRaises(interfaces.MetaError):
+		with self.assertRaises(AssertionError):
 			s.on('.')(None) # triggering an exception at the next attempt to define a pattern.
 
 	def test_10_charclass_intersection(self):

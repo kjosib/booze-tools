@@ -41,5 +41,5 @@ class TestMiniParse(unittest.TestCase):
 	def test_02_forgotten_action(self):
 		b = miniparse.MiniParse('S')
 		b.rule('S', 'a B')
-		with self.assertRaises(interfaces.MetaError):
+		with self.assertRaises(AssertionError):
 			b.rule('B', 'b c')
