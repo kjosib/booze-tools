@@ -25,15 +25,23 @@ class Scanner(interfaces.ScanState):
 		self.__text = text
 		self.__automaton = automaton
 		self.__rules = rules
-		self.__condition = automaton.get_condition(start)
+		self.enter(start)
 		self.__stack = []
 		self.__start, self.__mark = None, None
 	
-	def enter(self, condition): self.__condition = self.__automaton.get_condition(condition)
-	def pop(self): self.__condition = self.__stack.pop()
+	def enter(self, condition):
+		self.__condition_name = condition
+		self.__condition = self.__automaton.get_condition(condition)
+		
+	def pop(self):
+		self.enter(self.__stack.pop())
+		
 	def push(self, condition):
-		self.__stack.append(self.__condition)
+		self.__stack.append(self.__condition_name)
 		self.enter(condition)
+		
+	def current_condition(self):
+		return self.__condition_name
 	
 	def matched_text(self) -> str:
 		""" As advertised. """

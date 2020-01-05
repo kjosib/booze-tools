@@ -139,25 +139,28 @@ class ScanState:
 	
 	def enter(self, condition):
 		""" Enter the scan condition named by parameter `condition`. """
-		raise NotImplementedError
+		raise NotImplementedError(type(self))
 	def push(self, condition):
 		""" Save the current scan condition to a stack, and enter the scan state named by parameter `condition`. """
-		raise NotImplementedError
+		raise NotImplementedError(type(self))
 	def pop(self):
 		""" Enter the scan condition popped from the top of the stack. """
-		raise NotImplementedError
+		raise NotImplementedError(type(self))
 	def matched_text(self) -> str:
 		""" Return the text currently matched. """
-		raise NotImplementedError
+		raise NotImplementedError(type(self))
 	def less(self, nr_chars:int):
 		""" Put back characters into the stream to be matched: This also provides the mechanism for fixed trailing context. """
-		raise NotImplementedError
+		raise NotImplementedError(type(self))
 	def current_position(self) -> int:
 		""" As advertised. This was motivated by a desire to produce helpful error messages. """
-		raise NotImplementedError
+		raise NotImplementedError(type(self))
 	def current_span(self):
 		""" Return the position and length of the current match-text for use in error-reporting calls and the like. """
-		raise NotImplementedError
+		raise NotImplementedError(type(self))
+	def current_condition(self) -> str:
+		""" Return the most recently entered (or pushed, or popped) start-condition name, which is super-helpful debugging scanners. """
+		raise NotImplementedError(type(self))
 
 class ScanRules:
 	"""

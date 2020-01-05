@@ -161,7 +161,7 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 		
 	def get_translation(self, symbol) -> int:
 		try: return self.__translation[symbol]
-		except KeyError: raise interfaces.BadToken()
+		except KeyError: raise interfaces.BadToken(symbol)
 	
 	def get_action(self, state_id: int, terminal_id) -> int: assert False, 'See the constructor.'
 	def get_goto(self, state_id: int, nonterminal_id) -> int: assert False, 'See the constructor.'
