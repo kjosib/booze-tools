@@ -57,7 +57,7 @@ class TextBookForm:
 			'terminals': table.terminals,
 			'nonterminals': table.nonterminals,
 			'breadcrumbs': [symbol_index[s] for s in table.breadcrumbs],
-			'rule': encode_parse_rules(table.rule_table),
+			'rule': encode_parse_rules(table.rule_table, table.constructors, table.rule_origin),
 		}
 		if table.splits: form['splits'] = table.splits
 		return form
@@ -232,15 +232,9 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=hfa, parse_style=style,)
 
 
-def encode_parse_rules(rules:list) -> dict:
+def encode_parse_rules(rules:list, constructors:list, origins:list) -> dict:
 	assert isinstance(rules, list), type(rules)
-	result = {'head': [], 'size': [], 'message': [], 'view':[], 'line_number':[]}
-	unit = (None, None, None)
-	for head, size, attribute in rules:
-		message, view, line_nr = unit if attribute is None else attribute
-		for k,v in {'head': head, 'size':size, 'message': message, 'view':view, 'line_number':line_nr}.items():
-			result[k].append(v)
-	return result
+	return {'rules': rules, 'line_number': origins, 'constructor': constructors, }
 
 def main():
 	import sys, argparse, json

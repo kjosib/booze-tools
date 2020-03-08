@@ -47,10 +47,10 @@ class AbstractGeneralizedParser:
 	"""
 	Before I get too deep into it, let's lay out the general structure of a generalized parse:
 	"""
-	def __init__(self, table: interfaces.ParseTable, driver, language=None):
+	def __init__(self, table: interfaces.ParseTable, combine, language=None):
 		""" Please note this takes a driver not a combiner: it does its own selection of arguments from the stack. """
 		self._table = table
-		self._driver = driver
+		self._combine = combine
 		self._nr_states = table.get_split_offset()
 		self.reset(table.get_initial(language))
 	
@@ -137,14 +137,11 @@ class BruteForceAndIgnorance(AbstractGeneralizedParser):
 		self.__next.append(shift)
 	
 	def __reduction(self, rule_id, top):
-		nonterminal_id, length, message = self._table.get_rule(rule_id)
-		if message is None: semantic = top[self.NODE_SEMANTIC]
+		nonterminal_id, length, cid, view = self._table.get_rule(rule_id)
+		if cid < 0: semantic = self.__view(top, (cid,))[0]
 		else:
-			method, view = message
 			args = self.__view(top, view)
-			if method is not None: semantic = getattr(self._driver, method)(*args)
-			elif len(view) == 1: semantic = args[0] # Bracketing rule
-			else: semantic = tuple(args)
+			semantic = self._combine(cid, args)
 		while length > 0:
 			length -= 1
 			top = top[self.NODE_PRIOR]
@@ -235,7 +232,7 @@ def gss_trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 		I think if you perform the shortest reductions first, the right things happen.
 		Can this be encoded in the sequence of alternatives given?
 		"""
-		nonterminal_id, length, message = table.get_rule(rule_id)
+		nonterminal_id, length, cid, view = table.get_rule(rule_id)
 		for origin_node in node.all_paths(length):
 			goto_state_id = table.get_goto(origin_node.state_id, nonterminal_id)
 			if goto_state_id in top_of_stack:

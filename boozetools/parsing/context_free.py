@@ -1,4 +1,13 @@
-import typing, collections, itertools
+"""
+Attributed context-free grammar with operator-precedence and associativity declarations.
+
+This file is basically all about the data structure, with relatively little intrinsic
+functionality beyond simple queries. That's because the kinds of work people might do
+to a model of a grammar extends far beyond the specific applications here included.
+"""
+
+import collections, itertools
+from typing import List, Optional, NamedTuple, Hashable, Sequence
 from ..support import foundation, pretty
 
 LEFT, RIGHT, NONASSOC, BOGUS = object(), object(), object(), object()
@@ -13,12 +22,6 @@ class UnreachableSymbols(Fault): pass
 class IllFoundedSymbols(Fault): pass
 class RenamingLoop(Fault): pass
 class EpsilonLoop(Fault): pass
-
-class Rule(typing.NamedTuple):
-	lhs: str
-	rhs: tuple
-	attribute: object
-	prec_sym: typing.Optional[str]
 
 class ContextFreeGrammar:
 	"""
@@ -50,9 +53,11 @@ class ContextFreeGrammar:
 		body = [[i, rule.lhs, rule.rhs, rule.attribute] for i,rule in enumerate(self.rules)]
 		pretty.print_grid([head] + body)
 
-	def rule(self, lhs:str, rhs:(list, tuple), attribute:object, prec_sym=None):
+	def rule(self, lhs:str, rhs:List[str], prec_sym, constructor:Hashable, places:(list, tuple, int), origin):
 		"""
 		This is your basic mechanism to install arbitrary plain-jane BNF rules.
+		It provides the consistency checks better than if you were to instantiate Rule directly.
+		
 		For the sake of simplicity, at this layer symbols are all strings.
 		Duplicate rules are rejected by raising an exception.
 		
@@ -60,15 +65,23 @@ class ContextFreeGrammar:
 		
 		:param rhs: this "right-hand-side" sequence of symbols.
 		
-		:param attribute: This is uninterpreted, except in one simple manner:
-		if the attribute is `None` and the right-hand-side contains only a single symbol,
-		then the production is considered a unit/renaming rule, and the parser tables
-		will optimize this rule to a zero-cost abstraction (wherever possible).
-		
 		:param prec_sym: Set the precedence of this reduction explicitly according to that
 		of the given symbol as previously declared. If this is not supplied and the table
 		construction algorithm finds it necessary, method infer_prec_sym(...) implements
 		default processing on the right-hand-side.
+		
+		:param constructor: and
+		:param places: designate the semantics for the attribute synthesis portion of the
+		rule specification. If `constructor` is `None`, then places is expected to be the
+		significant-symbol index into the RHS for a renaming or bracketing rule. Otherwise,
+		`places` should be a list/tuple of such indices relevant to the given constructor.
+		Note: At this level we don't interpret constructors further.
+		
+		Note: unit/renaming productions are recognized, and the parser tables will optimize
+		such rules to a zero-cost abstraction wherever possible.
+		
+		:param origin: Use this to indicate the provenance of the rule. It can be a source
+		line number, or whatever else makes sense in your application.
 		
 		:return: Nothing.
 		
@@ -78,13 +91,14 @@ class ContextFreeGrammar:
 		to leave the semantic-stack unchanged.
 		"""
 		if lhs in self.token_precedence: raise NonTerminalsCannotHavePrecedence(lhs)
-		assert attribute is not None or len(rhs) == 1, 'There are no shortcuts at this layer.'
 		self.symbols.add(lhs)
 		self.symbols.update(rhs)
 		if lhs not in self.symbol_rule_ids: self.symbol_rule_ids[lhs] = []
+		if isinstance(places, int): assert constructor is None and 0 <= places < len(rhs)
+		else: assert isinstance(places, (list, tuple)) and all(p<len(rhs) for p in places), places
 		sri = self.symbol_rule_ids[lhs]
 		if any(self.rules[rule_id].rhs == rhs for rule_id in sri): raise DuplicateRule(lhs, rhs)
-		sri.append(foundation.allocate(self.rules, Rule(lhs, rhs, attribute, prec_sym)))
+		sri.append(foundation.allocate(self.rules, Rule(lhs, rhs, prec_sym, constructor, places, origin)))
 	
 	def augmented_rules(self) -> list:
 		"""
@@ -124,7 +138,7 @@ class ContextFreeGrammar:
 		work = [(i,0) for i in range(len(self.rules))]
 		while work:
 			r,p = work.pop()
-			lhs, rhs, _, _ = self.rules[r]
+			lhs, rhs, _, _, _, _ = self.rules[r]
 			if p == len(rhs):
 				epsilon.add(lhs)
 				if lhs in hangar: work.extend(hangar.pop(lhs))
@@ -182,7 +196,7 @@ class ContextFreeGrammar:
 		""" If a symbol may be replaced by itself (possibly indirectly) then it is diseased. """
 		broken = set()
 		renames = collections.defaultdict(set)
-		for lhs, rhs, _, _ in self.rules:
+		for lhs, rhs, _, _, _, _ in self.rules:
 			if len(rhs) == 1:
 				if lhs == rhs[0]: broken.add(lhs)
 				else: renames[lhs].add(rhs[0])
@@ -195,7 +209,7 @@ class ContextFreeGrammar:
 		first, epsilon = self.find_first_and_epsilon()
 		reaches = collections.defaultdict(set)
 		broken = set()
-		for lhs, rhs, _, _ in self.rules:
+		for lhs, rhs, _, _, _, _ in self.rules:
 			epsilon_prefix = list(itertools.takewhile(epsilon.__contains__, rhs))
 			if not epsilon_prefix: continue
 			if epsilon_prefix[0] == lhs: epsilon_prefix.pop(0)
@@ -257,4 +271,18 @@ class ContextFreeGrammar:
 		rule = self.rules[rule_id]
 		prec_sym = rule.prec_sym or self.infer_prec_sym(rule.rhs)
 		if prec_sym: return self.token_precedence[prec_sym]
+
+class Rule(NamedTuple):
+	# The first few fields define the actual grammar
+	lhs: str
+	rhs: List[str]
+	prec_sym: Optional[str]
+	# The next couple deal with the idea of attribute synthesis
+	constructor: Hashable
+	places: Sequence[int]
+	# Last is all about the provenance of the rule, which is important in debugging.
+	origin: object
+	
+	def is_rename(self):
+		return self.constructor is None and len(self.rhs) == 1 and self.places == 0
 

@@ -194,7 +194,7 @@ class UnitReductionEliminator:
 		self.unit_rules = {}
 		self.eligible_rhs = set()
 		for rule_id, rule in enumerate(grammar.rules):
-			if rule.attribute is None and len(rule.rhs) == 1:
+			if rule.is_rename():
 				self.unit_rules[rule_id] = rule.lhs
 				self.eligible_rhs.add(rule.rhs[0])
 
@@ -633,8 +633,17 @@ class DragonBookTable(interfaces.ParseTable):
 		nontranslate = {symbol: i for i, symbol in enumerate(nonterminals)}
 		self.terminals, self.nonterminals = terminals, nonterminals
 		self.breadcrumbs = breadcrumbs
-		self.rule_table = [(nontranslate[rule.lhs], len(rule.rhs), rule.attribute) for rule in rules]
-		self.get_rule = self.rule_table.__getitem__
+		self.constructors = [None, *(set(rule.constructor for rule in rules) - {None})]
+		ctrans = {c:i for i,c in enumerate(self.constructors)}
+		def translate_rule(rule:context_free.Rule):
+			size = len(rule.rhs)
+			if isinstance(rule.places, int):
+				assert rule.constructor is None
+				c,p = rule.places-size, ()
+			else: c,p = ctrans[rule.constructor], tuple(x-size for x in rule.places)
+			return nontranslate[rule.lhs], size, c, p
+		self.rule_table = list(map(translate_rule, rules))
+		self.rule_origin = [rule.origin for rule in rules]
 		self.splits = splits # A non-deterministic table just needs one extra bit: this list of lists.
 		
 		interactive = []
@@ -645,6 +654,9 @@ class DragonBookTable(interfaces.ParseTable):
 			else: interactive.append(0)
 		for q, t in essential_errors: interactive[q] = False
 		self.interactive_step = self.interactive_rule_for = interactive.__getitem__
+	
+	def get_rule(self, rule_id: int) -> tuple:
+		return self.rule_table[rule_id]
 	
 	def get_translation(self, symbol) -> int: return self.translate[symbol]  # This gets replaced ...
 	

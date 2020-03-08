@@ -2,6 +2,23 @@
 This file gives the essential shift-reduce algorithm for parsing with with LR-family parse tables.
 The exact form of the table is not important to this exposition, so this module treats the parse
 table as an abstract data type defined and implemented elsewhere.
+
+A word on reductions:
+-------------------------
+There must be a table of rules consisting of:
+	left-hand side non-terminal symbol (an ID number),
+	rule length (the number of states to pop after computing the reduction),
+	"message" -- generally, a "constructor" symbol and a vector of stack offsets to parameters.
+
+As a minor optimization (or perhaps, dirty trick) in the past, I'd allowed the "message" portion
+to be `None` as a hint that this was going to be a unit-reduction rule. However, I no longer think
+that's best. Such renaming-rules are usually optimized out of the tables to begin with. Bracketing
+rules are the next most common: those with only one non-void right-hand symbol. They are also a
+superset of the few remaining unit-reductions, and common enough in practice.
+
+Anyway, the new idea keeps the two parts of the message separate: `constructor_id, view`.
+Bracketing rules are encoded with a negative `constructor_id`, and the combiner is responsible
+for positive `constructor_id` numbers.
 """
 
 from ..support import interfaces
@@ -22,8 +39,9 @@ def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 				stack_symbols = [table.get_breadcrumb(q) for q in stack[1:]]
 				raise interfaces.ParseError(stack_symbols, symbol if terminal_id else '<<END>>', None)  # Error Action
 			else:  # Reduce Action
-				nonterminal_id, length, message = table.get_rule(-1 - step)
-				del stack[len(stack) - length:]  # Python hiccup: don't let epsilon rules delete the whole stack.
+				nonterminal_id, length, constructor_id, view = table.get_rule(-1 - step)
+				if length: # Python hiccup: don't let epsilon rules delete the whole stack.
+					del stack[ - length:]
 				stack.append(table.get_goto(stack[-1], nonterminal_id))
 	
 	stack = [table.get_initial(language) if language else 0]
@@ -48,9 +66,10 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None, i
 	def tos() -> int: return state_stack[-1]
 	def reduce(rule_id):
 		assert rule_id >= 0
-		nonterminal_id, length, message = table.get_rule(rule_id)
-		attribute = semantic_stack[-1] if message is None else combine(message, semantic_stack)
-		if length:
+		nonterminal_id, length, constructor_id, view = table.get_rule(rule_id)
+		if constructor_id < 0: attribute = semantic_stack[constructor_id]
+		else: attribute = combine(constructor_id, [semantic_stack[offset] for offset in view])
+		if length: # Python hiccup: don't let epsilon rules delete the whole stack.
 			del state_stack[-length:]
 			del semantic_stack[-length:]
 		state_stack.append(table.get_goto(tos(), nonterminal_id))

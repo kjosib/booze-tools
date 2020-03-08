@@ -14,7 +14,7 @@ class GrammarTester(unittest.TestCase):
 	
 	def r(self, lhs, rhs: str):
 		rhs = rhs.split()
-		self.cfg.rule(lhs.strip(), rhs, None if len(rhs) == 1 else len(self.cfg.rules), None)
+		self.cfg.rule(lhs.strip(), rhs, None, 'x', (), None)
 	
 	def R(self, text):
 		lhs, rest = text.split(':')

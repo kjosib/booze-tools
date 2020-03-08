@@ -1,6 +1,6 @@
 """ No frills. Plenty useful. """
 
-from ..support import interfaces
+from ..support import interfaces, foundation
 from . import automata, context_free, shift_reduce
 
 
@@ -25,8 +25,8 @@ class MiniParse:
 			if symbol.startswith('.'):
 				rhs[i] = symbol[1:]
 				args.append(i)
-		if not args: args = range(len(rhs)) # Pick up everything if nothing is special.
-		return tuple(rhs), tuple(x-len(rhs) for x in args)
+		if not args: args = tuple(range(len(rhs))) # Pick up everything if nothing is special.
+		return tuple(rhs), args
 	
 	def rule(self, lhs:str, rhs:str, prec_sym=None):
 		"""
@@ -46,11 +46,11 @@ class MiniParse:
 			assert self.__awaiting_action
 			self.__awaiting_action = False
 			if fn is None:
-				if len(rhs) == 1: message = None # Unit/renaming rule
-				elif len(offsets) == 1: message = ((lambda x:x), offsets) # Bracketing rule
-				else: message = (lambda *x:x, offsets) # Tuple collection rule
-			else: message = (fn, offsets)
-			self.__grammar.rule(lhs, rhs, message, prec_sym)
+				if len(rhs) == 1: con,plc = None,0 # Unit/renaming rule
+				elif len(offsets) == 1: con,plc = None, offsets[0]  # Bracketing rule
+				else: con,plc = _collect_tuple, offsets
+			else: con,plc = fn, offsets
+			self.__grammar.rule(lhs, rhs, prec_sym, con,plc, None)
 		return decorate
 	
 	def renaming(self, lhs:str, *alternatives):
@@ -60,10 +60,10 @@ class MiniParse:
 		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the prior production rule.')
 		for branch in alternatives:
 			rhs, offsets = MiniParse.__analyze(branch)
-			if len(rhs) == 1: message = None  # Unit/renaming rule
-			elif len(offsets) == 1: message = ((lambda x: x), offsets)  # Bracketing rule
+			if len(rhs) == 1: con, plc = None, 0  # Unit/renaming rule
+			elif len(offsets) == 1: con, plc = None, offsets[0]  # Bracketing rule
 			else: raise AssertionError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.' % branch)
-			self.__grammar.rule(lhs, rhs, message, None)
+			self.__grammar.rule(lhs, rhs, None, con, plc, None)
 	
 	def display(self): self.__grammar.display()
 	def get_hfa(self, *, strict=False):
@@ -74,9 +74,8 @@ class MiniParse:
 			self.__hfa = automata.tabulate(automata.PARSE_TABLE_METHODS[self.__method](self.__grammar), style=parse_style)
 		return self.__hfa
 	def parse(self, each_token, *, language=None):
-		return shift_reduce.parse(self.get_hfa(), MiniParse.combine, each_token, language=language)
+		hfa = self.get_hfa()
+		constructors = hfa.constructors
+		return shift_reduce.parse(hfa, lambda cid,args:constructors[cid](*args), each_token, language=language)
 	
-	@staticmethod
-	def combine(message, attribute_stack:list):
-		fn, offsets = message
-		return fn(*(attribute_stack[x] for x in offsets))
+def _collect_tuple(*items): return items

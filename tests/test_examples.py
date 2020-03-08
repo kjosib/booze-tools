@@ -5,7 +5,7 @@ import example.mini_json, example.macro_json, example.calculator
 
 from boozetools.macroparse import compiler
 from boozetools.parsing import shift_reduce, generalized
-from boozetools.support import runtime, interfaces
+from boozetools.support import runtime, interfaces, expansion
 from boozetools.scanning import recognition
 
 # See https://json.org/example.html
@@ -63,7 +63,7 @@ class TestMacroJson(unittest.TestCase):
 		serialized = standard_json.dumps(automaton)
 		cls.automaton = standard_json.loads(serialized)
 		scanner_data = cls.automaton['scanner']
-		cls.dfa = runtime.CompactDFA(dfa=scanner_data['dfa'], alphabet=scanner_data['alphabet'])
+		cls.dfa = expansion.CompactDFA(dfa=scanner_data['dfa'], alphabet=scanner_data['alphabet'])
 		cls.scan_rules = runtime.BoundScanRules(action=scanner_data['action'], driver=example.macro_json.ExampleJSON())
 		pass
 	
@@ -79,8 +79,8 @@ class TestMacroJson(unittest.TestCase):
 	
 	def test_01_macroparse_compiled_parser(self):
 		parser_data = self.automaton['parser']
-		spt = runtime.CompactHandleFindingAutomaton(parser_data)
-		combine = runtime.parse_action_bindings(example.macro_json.ExampleJSON())
+		spt = expansion.CompactHandleFindingAutomaton(parser_data)
+		combine = runtime.parse_action_bindings(example.macro_json.ExampleJSON(), spt.message_catalog)
 		parse_tester(self, lambda text: shift_reduce.parse(spt, combine, self.macroscan_json(text)))
 		pass
 
@@ -122,14 +122,15 @@ class TestNonDeterministic(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		automaton = compiler.compile_file(os.path.join(example_folder, 'nondeterministic_grammar.md'), method='LR1')
-		cls.parse_table = runtime.CompactHandleFindingAutomaton(automaton['parser'])
+		cls.parse_table = expansion.CompactHandleFindingAutomaton(automaton['parser'])
 	
 	# @unittest.skip('time trials')
 	def test_brute_force_and_ignorance(self):
+		combine = runtime.parse_action_bindings(SimpleParseDriver(), self.parse_table.message_catalog)
 		for string in PALINDROMES:
 			with self.subTest('Palindrome: '+string):
 				print(string)
-				parser = generalized.BruteForceAndIgnorance(self.parse_table, SimpleParseDriver(), language="Palindrome")
+				parser = generalized.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
 				for c in string: parser.consume(c, c)
 				result = parser.finish()
 				assert len(result) == 1
@@ -138,7 +139,7 @@ class TestNonDeterministic(unittest.TestCase):
 					assert tree[0] == tree[2]
 					tree = tree[1]
 				if tree: assert isinstance(tree, str) and len(tree)==1
-		parser = generalized.BruteForceAndIgnorance(self.parse_table, SimpleParseDriver(), language="Palindrome")
+		parser = generalized.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
 		for c in LONG_STRING: parser.consume(c, c)
 		try: result = parser.finish()
 		except interfaces.GeneralizedParseError: pass

@@ -104,12 +104,12 @@ class Rewrite:
 				assert isinstance(elt, Element)
 				raw_bnf.append(elt.implement(ebnf, head, bindings))
 		
-		raw_message = None if self.message is None else self.message.name
-		if len(raw_bnf) == 1 and raw_message is None: attribute = None
+		if self.message is None:
+			con = None
+			plc = self.__args[0] if len(self.__args) == 1 else self.__args
 		else:
-			offsets = self.prefix_capture(len(raw_bnf))
-			attribute = (raw_message, offsets, ebnf.error_help.current_line_nr)
-		ebnf.plain_cfg.rule(head, raw_bnf, attribute, self.precsym)
+			con, plc = self.message.name, self.__args
+		ebnf.plain_cfg.rule(head, raw_bnf, self.precsym, con, plc, ebnf.error_help.current_line_nr)
 
 """
 The MacroParse metagrammar contains various repetition constructs. The following functions
