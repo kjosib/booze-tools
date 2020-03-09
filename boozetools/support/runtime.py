@@ -72,7 +72,7 @@ def parse_action_bindings(driver, message_catalog):
 			raise interfaces.DriverError("while parsing "+repr(message), list(map(type, args))) from e
 	return combine
 
-def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', language=None, interactive=True):
+def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', language=None):
 	"""
 	Builds and returns a function for parsing texts based on a set of tables and supplied drivers.
 	
@@ -90,11 +90,10 @@ def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', langu
 	:param parse_driver: needs .parse_foo(...) methods. This may be the same object as scan_driver.
 	:param start: Optionally, the start-state for the scanner DFA.
 	:param language: Optionally, the start-symbol for the parser.
-	:param interactive: True if you want the parser to opportunistically reduce whenever lookahead would not matter.
 	:return: a callable object.
 	"""
 	scan = simple_scanner(tables, scan_driver, start=start)
-	parse = simple_parser(tables, parse_driver, language=language, interactive=interactive)
+	parse = simple_parser(tables, parse_driver, language=language)
 	def fn(text):
 		nonlocal fn
 		fn.scanner = scan(text)
@@ -115,7 +114,7 @@ def simple_scanner(tables, scan_driver, *, start=None):
 	rules = BoundScanRules(action=scanner_tables['action'], driver=scan_driver)
 	return lambda text: recognition.Scanner(text=text, automaton=dfa, rules=rules, start=start or dfa.default_initial_condition())
 
-def simple_parser(tables, parse_driver, *, language=None, interactive=True):
+def simple_parser(tables, parse_driver, *, language=None):
 	"""
 	Builds and returns a function which converts a stream of tokens into a semantic value
 	by way of the algorithms.parse(...) function and your provided driver. It's the same
@@ -126,4 +125,4 @@ def simple_parser(tables, parse_driver, *, language=None, interactive=True):
 	"""
 	hfa = expansion.CompactHandleFindingAutomaton(tables['parser'])
 	combine = parse_action_bindings(parse_driver, hfa.message_catalog)
-	return lambda each_token: shift_reduce.parse(hfa, combine, each_token, language=language, interactive=interactive)
+	return lambda each_token: shift_reduce.parse(hfa, combine, each_token, language=language)

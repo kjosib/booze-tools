@@ -35,9 +35,9 @@ def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 		while True:
 			step = table.get_action(stack[-1], terminal_id)
 			if step > 0: return step  # Shift Action
-			elif step == 0:
+			elif step == 0:  # Error Action
 				stack_symbols = [table.get_breadcrumb(q) for q in stack[1:]]
-				raise interfaces.ParseError(stack_symbols, symbol if terminal_id else '<<END>>', None)  # Error Action
+				raise interfaces.ParseError(stack_symbols, symbol if terminal_id else '<<END>>', None)
 			else:  # Reduce Action
 				nonterminal_id, length, constructor_id, view = table.get_rule(-1 - step)
 				if length: # Python hiccup: don't let epsilon rules delete the whole stack.
@@ -50,7 +50,7 @@ def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 	assert len(stack) == 2
 
 
-def parse(table: interfaces.ParseTable, combine, each_token, *, language=None, interactive=True):
+def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 	"""
 	The canonical table-driven LR parsing algorithm. As much as possible is left abstract.
 	Perhaps unfortunately, there's no explicit support for location tracking here, although
@@ -59,7 +59,6 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None, i
 	:param combine: Responsible to provide the result of a reduction on the semantic stack.
 	:param each_token: Iterable source of <terminal, semantic> pairs.
 	:param language: Choice of starting language, for multi-language tables.
-	:param interactive: Whether the parser should reduce interactively.
 	:return: Whatever the last combine(...) call returns as the semantic value of the sentence.
 	"""
 	state_stack, semantic_stack = [0 if language is None else table.get_initial(language)], []
@@ -86,11 +85,13 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None, i
 	for symbol, semantic in each_token:
 		state_stack.append(prepare_to_shift(table.get_translation(symbol)))
 		semantic_stack.append(semantic)
-		if interactive:
-			while True:
-				step = table.interactive_step(tos())
-				if step < 0: reduce(-step-1)
-				else: break
+		# Having shifted the token, the parser ought to perform interactive reductions
+		# until another token is strictly necessary to make a decision. Such behavior
+		# can be left out of batch-process parsers, but error reporting is affected.
+		while True:
+			step = table.interactive_step(tos())
+			if step < 0: reduce(-step-1)
+			else: break
 	prepare_to_shift(0)
 	return semantic_stack[0]
 
