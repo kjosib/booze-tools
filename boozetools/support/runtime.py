@@ -23,7 +23,7 @@ class BoundScanRules(interfaces.ScanRules):
 			try: fn = getattr(driver, method_name)
 			except AttributeError:
 				if default_method is None:
-					raise interfaces.DriverError("Scanner driver has neither method %r nor %r." % (method_name, default_method_name))
+					raise interfaces.DriverError("IterableScanner driver has neither method %r nor %r." % (method_name, default_method_name))
 				else:
 					fn = functools.partial(default_method, message)
 					method_name = "%s(%r, ...)"%(default_method_name, message)
@@ -45,7 +45,7 @@ class BoundScanRules(interfaces.ScanRules):
 		""" NB: This gets overwritten by a direct bound-method on the trailing-context list. """
 		return self._trail[rule_id]
 	
-	def invoke(self, scan_state: interfaces.ScanState, rule_id:int):
+	def invoke(self, scan_state: interfaces.Scanner, rule_id:int):
 		try: return self.__methods[rule_id](scan_state)
 		except interfaces.LanguageError: raise
 		except Exception as e: raise interfaces.DriverError("Trying to scan rule "+str(rule_id)) from e
@@ -103,7 +103,7 @@ def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', langu
 def simple_scanner(tables, scan_driver, *, start=None):
 	"""
 	Builds and returns a function which converts strings into a token-iterators by way of
-	the algorithms.Scanner class and your provided scan_driver object. It's the
+	the algorithms.IterableScanner class and your provided scan_driver object. It's the
 	same driver object for every scan, so any sequencing discipline is up to you.
 	
 	:param tables: Generally the output of boozetools.macroparse.compiler.compile_file, but maybe deserialized.
@@ -112,7 +112,7 @@ def simple_scanner(tables, scan_driver, *, start=None):
 	scanner_tables = tables['scanner']
 	dfa = expansion.CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet'])
 	rules = BoundScanRules(action=scanner_tables['action'], driver=scan_driver)
-	return lambda text: recognition.Scanner(text=text, automaton=dfa, rules=rules, start=start or dfa.default_initial_condition())
+	return lambda text: recognition.IterableScanner(text=text, automaton=dfa, rules=rules, start=start or dfa.default_initial_condition())
 
 def simple_parser(tables, parse_driver, *, language=None):
 	"""

@@ -2,6 +2,7 @@
 
 from boozetools.parsing import miniparse
 from boozetools.scanning import miniscan
+from boozetools.support.interfaces import Scanner
 
 ###################################################################################
 #  Begin with a scanner definition:
@@ -16,60 +17,68 @@ lexemes.let('signedInteger', r'-?(0|{wholeNumber})')
 lexemes.let('fractionalPart', r'\.\d+')
 lexemes.let('exponent', r'[Ee][-+]?\d+')
 
-# Now we can write some pattern/action pairs. The parser module expects to get (token, value) pairs, which
-# we can return from the action. You can write it as a decorator, which is convenient if significant
-# computation determines which token to return...
+# Now we can write some pattern/action pairs.
+# The miniscan module offers several ways.
+# One way is as a decorator for an arbitrary function:
+# This is  convenient if significant computation determines which token
+# (or indeed, how many tokens) to emit.
 @lexemes.on('{signedInteger}')
-def match_integer(scanner):
-	return 'number', int(scanner.matched_text())
+def match_integer(yy:Scanner):
+	# It's sort of assumed you'll be connecting a mini-scanner up to a mini-parser.
+	# The parser module expects to get (token, value, start, end) quads, but the
+	# scanner handles the start and end. You just call the `.token(...)` method
+	# on the parameter, which is a scanning context.
+	yy.token('number', int(yy.matched_text()))
 
-# Or take advantage of lambda notation:
-lexemes.on('{signedInteger}{fractionalPart}?{exponent}?')(lambda scanner: ('number', float(scanner.matched_text())))
+# The above pattern is fairly common: take the matched text and
+# the semantic value is some function of the matched text, while the token kind
+# is constant for the pattern. There's a shortcut for this sort of thing:
+lexemes.token_map('number', '{signedInteger}{fractionalPart}?{exponent}?', float)
 
 # It's easy to ignore whitespace:
-lexemes.on('\s+')(None)
+lexemes.ignore('\s+')
 
 # Punctuation will appear as such in the production rules.
-lexemes.on(r'[][{}:,]')(lambda scanner: (scanner.matched_text(), None))
+@lexemes.on(r'[][{}:,]')
+def punctuation(yy):
+	# Note that `None` is the default semantic value for a token
+	# if all you supply is a token kind.
+	yy.token(yy.matched_text())
 
 # You can dynamically generate your pattern...
 reserved_words = {'true': True, 'false': False, 'null': None}
 @lexemes.on('|'.join(reserved_words.keys()))
-def match_reserved_word(scanner):
-	word = scanner.matched_text()
-	return word, reserved_words[word]
+def match_reserved_word(yy):
+	word = yy.matched_text()
+	yy.token(word, reserved_words[word])
 
 # You can make alternate scan conditions just by asking for them:
 in_string = lexemes.condition('seen_double_quote')
 
 # We'll need a way in and back out again:
 @lexemes.on('"')
-def enter_string(scanner):
-	scanner.enter('seen_double_quote')
-	return '"', None
+def enter_string(yy):
+	yy.enter('seen_double_quote')
+	yy.token('"')
 
 @in_string.on('"')
-def leave_string(scanner):
-	scanner.enter(None)
-	return '"', None
+def leave_string(yy):
+	yy.enter(None)
+	yy.token('"')
 
 # Match normal characters in bulk:
-in_string.on(r'[^\\"]+')(lambda scanner:('character', scanner.matched_text()))
+# .token is similar to .token_map, but the match text is exactly the semantic value.
+in_string.token('character', r'[^\\"]+')
 
 # Simple escapes: quote, solidus, reverse solidus:
-in_string.on(r'\\["/\\]')(lambda scanner:('character', scanner.matched_text()[1]))
+in_string.token_map('character', r'\\["/\\]', lambda text:text[1])
 
 # Shorthand letter escapes:
 escapes = {'b': 8, 't': 9, 'n': 10, 'f': 12, 'r': 13, }
-in_string.on(r'\\[bfnrt]')(lambda scanner:('character', chr(escapes[scanner.matched_text()[1]])))
+in_string.token_map('character', r'\\[bfnrt]', lambda text: chr(escapes[text[1]]))
 
 # Arbitrary Unicode BMP code point:
-@in_string.on(r'\\u{xdigit}{4}')
-def unicode_escape(scanner):
-	hex = scanner.matched_text()[2:]
-	value = int(hex, 16)
-	return 'character', chr(value)
-
+in_string.token_map('character', r'\\u{xdigit}{4}', lambda text:chr(int(text[2:],16)))
 
 ###################################################################################
 #  Follow that up with a context-free grammar. It's made a bit less wonderful by not having grammar macros yet...

@@ -1,4 +1,6 @@
 """ Hook regular expression patterns up to method calls on a scanner object. """
+from boozetools.support.interfaces import Scanner
+
 from ..support import interfaces
 from ..parsing import miniparse
 from . import regular, charset, recognition
@@ -17,6 +19,8 @@ class TrailingContextError(PatternError):
 	This is not supported at this time.
 	"""
 
+class ScanError(Exception):
+	""" Raised if a mini-scanner gets blocked. Parameter is the string offset where it happened.. """
 
 class Definition(interfaces.ScanRules):
 	def __init__(self, *, minimize=True, mode='ASCII'):
@@ -39,7 +43,7 @@ class Definition(interfaces.ScanRules):
 		return self.__dfa
 	
 	def scan(self, text, *, start=None, env=None):
-		scanner = recognition.Scanner(text=text, automaton=self.get_dfa(), rules=self, start=start)
+		scanner = recognition.IterableScanner(text=text, automaton=self.get_dfa(), rules=self, start=start)
 		scanner.env = env
 		return scanner
 		
@@ -63,13 +67,30 @@ class Definition(interfaces.ScanRules):
 		expression.encode(src, dst, self.__nfa, rank)
 		return rule_id
 	
-	def let(self, name:str, pattern:str): self.install_subexpression(name, rex.parse(META.scan(pattern, env=self.__subexpressions), language='Regular'))
+	def let(self, name:str, pattern:str):
+		self.install_subexpression(name, rex.parse(META.scan(pattern, env=self.__subexpressions), language='Regular'))
+	
+	def token(self, kind:str, pattern:str, *, rank=0, condition=None):
+		""" This says every member of the pattern has token kind=kind and semantic=matched text. """
+		@self.on(pattern, rank=rank, condition=condition)
+		def action(yy:Scanner): yy.token(kind, yy.matched_text())
+	
+	def token_map(self, kind:str, pattern:str, fn:callable, *, rank=0, condition=None):
+		""" Every member of the pattern has token kind=kind and semantic=fn(matched text). """
+		@self.on(pattern, rank=rank, condition=condition)
+		def action(yy:Scanner): yy.token(kind, fn(yy.matched_text()))
+
+	def ignore(self, pattern:str, *, rank=0, condition=None):
+		""" Tell Scanner to ignore what matches the pattern. """
+		@self.on(pattern, rank=rank, condition=condition)
+		def action(yy:Scanner): pass
+
 	def on(self, pattern:str, *, condition=None, rank=0):
 		"""
 		For instance:
 		scanner_definition.on('r#[^\n]+')(None) # Ignore comments
 		@scanner_definition.on(r'[A-Za-z_]+')
-		def word(scanner): return ('word', scanner.matched_text()) # Return a token.
+		def word(yy): yy.token('word', scanner.matched_text())
 		"""
 		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the previous pattern!')
 		self.__awaiting_action = True
@@ -77,16 +98,20 @@ class Definition(interfaces.ScanRules):
 		def decorator(fn):
 			assert self.__awaiting_action
 			self.__awaiting_action = False
-			assert callable(fn) or isinstance(fn, str) or fn is None
+			assert callable(fn)
 			self.install_rule(action=fn, expression=expression, bol=bol, condition=condition, trail=trail, rank=rank)
 			return fn
 		return decorator
 	def condition(self, *condition): return ConditionContext(self, *condition)
-	def invoke(self, scan_state: interfaces.ScanState, rule_id:int):
+	
+	def invoke(self, yy: interfaces.Scanner, rule_id:int):
 		action = self.__actions[rule_id]
-		if callable(action): return action(scan_state)
-		if isinstance(action, str): return action, scan_state.matched_text()
-		assert action is None
+		if callable(action): action(yy)
+		else: assert action is None
+	
+	def blocked(self, yy: Scanner):
+		raise ScanError(yy.current_position())
+
 
 def analyze_pattern(pattern:str, env):
 	scanner = META.scan(pattern, env=env)
@@ -112,9 +137,11 @@ class ConditionContext:
 		self.__condition = condition
 	def __enter__(self): return self
 	def __exit__(self, exc_type, exc_val, exc_tb): pass
-	def on(self, pattern, *, rank=0): return self.__definition.on(pattern, condition=self.__condition, rank=rank)
+	def on(self, pattern, *, rank=0): return self.__definition.on(pattern, rank=rank, condition=self.__condition)
 	def install_rule(self, **kwargs): return self.__definition.install_rule(condition=self.__condition, **kwargs)
-
+	def token(self, kind:str, pattern:str, *, rank=0): self.__definition.token(kind, pattern, rank=rank, condition=self.__condition)
+	def token_map(self, kind:str, pattern:str, fn:callable, *, rank=0): self.__definition.token_map(kind, pattern, fn, rank=rank, condition=self.__condition)
+	def ignore(self, pattern:str, *, rank=0): self.__definition.ignore(pattern, rank=rank, condition=self.__condition)
 
 #########################
 # A pattern parser is easy to build using the miniparse module:
@@ -167,31 +194,34 @@ def _BEGIN_():
 		return head
 	def txt(s):return seq(*(regular.CharClass(charset.singleton(ord(_))) for _ in s))
 	
-	def _metatoken(scanner):return scanner.matched_text(), None
+	def _metatoken(yy): yy.token(yy.matched_text(), None)
 	def _and_then(condition):
 		def fn(scanner):
+			_metatoken(scanner)
 			scanner.enter(condition)
-			return _metatoken(scanner)
 		return fn
 	def _instead(condition):
 		def fn(scanner):
 			scanner.less(0)
 			scanner.enter(condition)
 		return fn
-	def _bracket_reference(scanner):
-		name = scanner.matched_text()[1:-1]
-		try: return 'reference', scanner.env[name]
+	def _bracket_reference(yy):
+		name = yy.matched_text()[1:-1]
+		try: yy.token('reference', yy.env[name])
 		except KeyError: raise BadReferenceError("Undefined sub-pattern reference")
-	def _shorthand_reference(scanner): return 'reference', scanner.env[scanner.matched_text()[1]]
-	def _dot_reference(scanner): return 'reference', scanner.env['DOT']
-	def _hex_escape(scanner): return 'c', int(scanner.matched_text()[2:], 16)
-	def _control(scanner): return 'c', 31 & ord(scanner.matched_text()[2:])
-	def _arbitrary_character(scanner): return 'c', ord(scanner.matched_text())
-	def _class_initial_close_bracket(scanner):
-		scanner.enter('[')
-		return _arbitrary_character(scanner)
-	def _arbitrary_escape(scanner): return 'c', ord(scanner.matched_text()[1:])
-	def _number(scanner): return 'number', int(scanner.matched_text())
+	def _shorthand_reference(yy): yy.token('reference', yy.env[yy.matched_text()[1]])
+	def _dot_reference(yy): yy.token('reference', yy.env['DOT'])
+	def _hex_escape(yy): yy.token('c', int(yy.matched_text()[2:], 16))
+	def _control(yy): yy.token('c', 31 & ord(yy.matched_text()[2:]))
+	def _arbitrary_character(yy): yy.token('c', ord(yy.matched_text()))
+	def _class_initial_close_bracket(yy):
+		yy.enter('[')
+		_arbitrary_character(yy)
+	def _arbitrary_escape(yy): yy.token('c', ord(yy.matched_text()[1:]))
+	def _number(yy): yy.token('number', int(yy.matched_text()))
+	def _dollar(charclass):
+		def fn(yy:Scanner): yy.token('$', charclass)
+		return fn
 	
 	dot = PRELOAD['ASCII']['DOT'] = regular.CharClass([0, 10, 14])
 	for codepoint, char in [(0, '0'), (27, 'e'), *enumerate('abtnvfr', 7)]: PRELOAD['ASCII'][char] = regular.CharClass(
@@ -219,10 +249,10 @@ def _BEGIN_():
 	META.install_rule(expression=txt('^'), action=_metatoken, bol=(False, True))
 	META.install_rule(expression=txt('^^'), action=_metatoken, bol=(False, True))
 	# This next rule says that a dollar-sign at the end of a pattern supplies a regex matching EITHER end-of-line OR end-of-file
-	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=-1, action=lambda scanner:('$', dollar_charclass))
+	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=-1, action=_dollar(dollar_charclass))
 	# So I build another similar one for end-of-file rules: the string '<<EOF>>' appearing at the end of the pattern.
 	# And by the way, the rex grammar (above) correctly directs such things to the trailing-context fork of the parse.
-	META.install_rule(expression=seq(txt('<<EOF>>'), eof_charclass), trail=-1, action=lambda scanner:('$', eof_charclass))
+	META.install_rule(expression=seq(txt('<<EOF>>'), eof_charclass), trail=-1, action=_dollar(eof_charclass))
 	for c in '(|)?*+/': META.install_rule(expression=txt(c), action=_metatoken)
 	META.install_rule(expression=txt('.'), action=_dot_reference)
 	META.install_rule(expression=txt('{'), action=_and_then('{'))

@@ -9,7 +9,7 @@ class TestMiniParse(unittest.TestCase):
 	def test_00_smoke_test(self):
 		b = miniparse.MiniParse('S')
 		b.rule('S', 'a b')(None)
-		each_token = [('a','Apple'), ('b', 'Boy')]
+		each_token = [('a','Apple', 1,1), ('b', 'Boy',2,2)]
 		x = b.parse(each_token)
 		self.assertEqual(x, ('Apple', 'Boy'))
 
@@ -35,7 +35,7 @@ class TestMiniParse(unittest.TestCase):
 			('4 * 5 + 7', 27),
 		]:
 			with self.subTest(expr=expr):
-				each_token = [(x,None) if x in '()+-*/' else ('number', x) for x in expr.split()]
+				each_token = [(x,None,1,1) if x in '()+-*/' else ('number', x,1,1) for x in expr.split()]
 				self.assertEqual(answer, b.parse(each_token))
 	
 	def test_02_forgotten_action(self):

@@ -68,7 +68,7 @@ class TestMacroJson(unittest.TestCase):
 		pass
 	
 	def macroscan_json(self, text):
-		return recognition.Scanner(text=text, automaton=self.dfa, rules=self.scan_rules, start='INITIAL')
+		return recognition.IterableScanner(text=text, automaton=self.dfa, rules=self.scan_rules, start='INITIAL')
 	
 	def test_00_macroparse_compiled_scanner(self):
 		def parse(text):

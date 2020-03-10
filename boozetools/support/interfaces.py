@@ -23,9 +23,6 @@ from . import pretty
 class LanguageError(ValueError):
 	""" Base class of all exceptions arising from the language machinery. """
 
-class ScanError(LanguageError):
-	""" Raised if and when the scanner gets blocked. """
-
 class BadToken(LanguageError):
 	""" Raised if the scanner provides a token type which the parse table does not define. """
 
@@ -129,7 +126,7 @@ class ParseTable:
 	def get_split_offset(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
 	def get_split(self, split_id:int) -> list: raise NotImplementedError(type(self), "A list of parse actions of the usual (deterministic) form.")
 	
-class ScanState:
+class Scanner:
 	"""
 	This is the interface a scanner action can expect to be able to operate on.
 	
@@ -137,6 +134,10 @@ class ScanState:
 	but a powerful and fast alternative is built into the DFA generator in the form of rule priority
 	ranks. The longest-match heuristic breaks ties among the highest ranked rules that match.
 	"""
+	
+	def token(self, kind, semantic=None):
+		""" Inform the system that a token of whatever kind and semantic is recognized from the current focus. """
+		raise NotImplementedError(type(self))
 	
 	def enter(self, condition):
 		""" Enter the scan condition named by parameter `condition`. """
@@ -193,16 +194,18 @@ class ScanRules:
 		"""
 		raise NotImplementedError(type(self), ScanRules.get_trailing_context.__doc__)
 	
-	def unmatched(self, state:ScanState, char):
-		""" By default, this raises an exception. You may wish to override it in your application. """
-		raise ScanError(state.current_position(), char)
-	
-	def invoke(self, scan_state:ScanState, rule_id:int) -> object:
+	def invoke(self, yy:Scanner, rule_id:int) -> object:
 		"""
 		Override this according to your application.
 		The generic scanner algorithm will yield any non-null return values from this function.
 		"""
 		raise NotImplementedError(type(self), ScanRules.invoke.__doc__)
 
+	def blocked(self, yy:Scanner):
+		"""
+		The scanner will call this to report blockage. It will have prepared
+		to skip the offending character. Your job is to report the error to
+		the user. Try to recover. Maybe delegate to a driver. Do whatever.
+		"""
+		raise NotImplementedError(type(self), ScanRules.blocked.__doc__)
 
-	

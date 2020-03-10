@@ -77,7 +77,7 @@ examples will be prepared. For now, your suggestions are welcome.
 
 ## Patterns:
 
-Scanner rules are defined within a `Patterns` section.
+IterableScanner rules are defined within a `Patterns` section.
 
 Rules here each contain two or three fields specifying:
 

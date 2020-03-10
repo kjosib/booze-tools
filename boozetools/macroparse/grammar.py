@@ -184,16 +184,18 @@ METAGRAMMAR.rule('condition', '.name arrow .'+NAMES)(None)
 
 ### The lexeme definitions for production rule lines are as follows:
 LEX = miniscan.Definition()
-LEX.on(r'\s+')(None) # Ignore whitespace
-LEX.on(r'\l\w*')('name') # Identifiers as token type "name".
-LEX.on(r'_/\W')('topic') # Bare underline means "the current production rule head".
-LEX.on(r':\l\w*')(lambda scanner:('message', scanner.matched_text()[1:])) # Strip out the colon for message names
-LEX.on(r'%\l+')(lambda scanner:('pragma_'+scanner.matched_text()[1:], None)) # Build pragma token types from the text.
-LEX.on(r'[.]/\S')('capture') # a dot prefixes a captured element, so it needs to be followed by something.
-LEX.on(r'[][(),|]')(lambda scanner:(scanner.matched_text(), None)) # Punctuation is represented directly, with null semantic value.
-LEX.on(r"'\S+'")(lambda scanner:('literal', scanner.matched_text()[1:-1])) # Literals are allowed two ways, so you can
-LEX.on(r'"\S+"')(lambda scanner:('literal', scanner.matched_text()[1:-1])) # easily contain whichever kind of quote.
-LEX.on(r'[-=>:<]+')('arrow') # Arrows in grammar definitions tend to look all different ways. This is flexible.
+LEX.ignore(r'\s+') # Ignore whitespace
+LEX.token('name', r'\l\w*') # Identifiers as token type "name".
+LEX.token('topic', r'_/\W') # Bare underline means "the current production rule head".
+LEX.token_map('message', r':\l\w*', lambda tx:tx[1:]) # Strip out the colon for message names
+@LEX.on(r'%\l+') # Build pragma token types from the text.
+def pragma(yy): yy.token('pragma_'+yy.matched_text()[1:])
+LEX.token('capture', r'[.]/\S') # a dot prefixes a captured element, so it needs to be followed by something.
+@LEX.on(r'[][(),|]') # Punctuation is represented directly, with null semantic value.
+def punctuate(yy): yy.token(yy.matched_text())
+LEX.token_map('literal', r"'\S+'", lambda text:text[1:-1]) # Literals are allowed two ways, so you can
+LEX.token_map('literal', r'"\S+"', lambda text:text[1:-1]) # easily contain whichever kind of quote.
+LEX.token('arrow', r'[-=>:<]+') # Arrows in grammar definitions tend to look all different ways. This is flexible.
 
 class ErrorHelper:
 	"""
@@ -209,7 +211,7 @@ class ErrorHelper:
 		self.current_line_nr = line_nr
 		metascan = LEX.scan(line)
 		try: return METAGRAMMAR.parse(metascan, language=language)
-		except interfaces.ScanError as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
+		except miniscan.ScanError as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
 		except interfaces.ParseError as e:
 			self.gripe_about(
 				line, metascan.current_position(),

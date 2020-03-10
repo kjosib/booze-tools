@@ -5,7 +5,7 @@ from boozetools.scanning import regular, recognition
 
 
 class MockScanRules(interfaces.ScanRules):
-	def invoke(self, scan_state, action): return action, scan_state.matched_text()
+	def invoke(self, yy, action): yy.token(action, yy.matched_text())
 	def get_trailing_context(self, rule_id: int): return None
 
 class TestNFA(unittest.TestCase):
@@ -35,8 +35,8 @@ class TestNFA(unittest.TestCase):
 		nfa.link(q0, qf, [65, 91, 97, 123])
 		nfa.link_epsilon(q1, q0)
 		def assertion():
-			tokens = list(recognition.Scanner(text='j', automaton=dfa, rules=MockScanRules(), start=None))
-			self.assertEqual([(1,'j')], tokens)
+			tokens = list(recognition.IterableScanner(text='j', automaton=dfa, rules=MockScanRules(), start=None))
+			self.assertEqual([(1,'j', 0,1)], tokens)
 		dfa = nfa.subset_construction()
 		assertion()
 		dfa = dfa.minimize_states().minimize_alphabet()

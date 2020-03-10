@@ -2,7 +2,7 @@
 
 ## Essential Elements of Information
   
-* Scanner Definition:
+* IterableScanner Definition:
   * Character set and localization (currently implied)
   * An optional "initial scan condition" declaration
   * Inclusion and fall-back relations among scan conditions

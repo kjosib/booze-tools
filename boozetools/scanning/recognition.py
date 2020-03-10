@@ -1,24 +1,19 @@
 """
-This module implements the essential algorithm to recognize a sequence of lexemes and
-their syntactic categories (rules/scan-actions) by reference to a finite-state machine.
+This module implements the essential algorithm to recognize a sequence of
+lexemes and their syntactic categories (rules/scan-actions) by reference to a
+finite-state machine. It supports backtracking, beginning-of-line anchors,
+and (non-variable) trailing context.
 """
 
 from ..support import interfaces
 
 
-class Scanner(interfaces.ScanState):
+class IterableScanner(interfaces.Scanner):
 	"""
 	This is the standard generic finite-automaton-based scanner, with support for backtracking,
 	beginning-of-line anchors, and (non-variable) trailing context.
 	
-	Your application is expected to provide a suitable finite-automaton and rule bindings.
-	
-	This object can participate in Python's iterator-protocol: Whatever the rule-bindings return
-	from their .invoke(...) method, the iterator yields (except `None`).
-	
-	The scanner-as-iterator idea is reasonably efficient and usually convenient, but it comes
-	with a weakness: if more than one token comes out of a single scan match (as is the case for
-	indent-grammars) then you will want a different approach.
+	Your application must provide a suitable finite-automaton, rule bindings, and error handler.
 	"""
 	def __init__(self, *, text:str, automaton: interfaces.FiniteAutomaton, rules: interfaces.ScanRules, start):
 		if not isinstance(text, str): raise ValueError('text argument should be a string, not a ', type(text))
@@ -28,6 +23,7 @@ class Scanner(interfaces.ScanState):
 		self.enter(start)
 		self.__stack = []
 		self.__start, self.__mark = None, None
+		self.__buffer = []
 	
 	def enter(self, condition):
 		self.__condition_name = condition
@@ -48,11 +44,14 @@ class Scanner(interfaces.ScanState):
 		return self.__text[self.__start:self.__mark]
 	
 	def less(self, nr_chars:int):
-		""" Put back characters into the stream to be matched: This also provides the mechanism for fixed trailing context. """
-		# NB: Zero only makes any sense for fixed-length trailing context if it means no trailing context.
-		# NB: The present code is somewhat of a hack because "is None" may be faster than "==0" in Python.
-		# NB: It also allows for an empty stem, which cannot presently be specified but may be useful.
-		# NB: Support for variable-stem-variable-trail patterns requires more than an integer anyway.
+		"""
+		Put trailing characters back into the stream to be matched.
+		This is also the mechanism for trailing context.
+		if `nr_chars` is zero or positive, the current match is adjusted to
+		consume precisely that many characters. If it's negative, then a
+		corresponding number of characters are dropped from the end of the
+		match, and these will be considered again in the next matching cycle.
+		"""
 		new_mark = (self.__mark if nr_chars < 0 else self.__start) + nr_chars
 		assert self.__start <= new_mark <= self.__mark
 		self.__mark = new_mark
@@ -82,26 +81,33 @@ class Scanner(interfaces.ScanState):
 		""" Return the current "initial" state of the automaton, based on condition and context. """
 		at_begin_line = self.__start == 0 or self.__text[self.__start - 1] in '\r\n'
 		return self.__condition[at_begin_line]
-		
+	
+	def token(self, kind, semantic=None):
+		""" Be it established, then, that the token stream shall consist of... """
+		assert kind is not None
+		self.__buffer.append((kind, semantic, self.__start, self.__mark))
+	
 	def __iter__(self):
 		text, automaton, rules = self.__text, self.__automaton, self.__rules
 		self.__start, eot = 0, len(text)
 		while self.__start < eot:
 			rule_id = self.scan_one_raw_lexeme(self.__q0())
 			if rule_id is None:
-				self.__mark = self.__start + 1
-				token = rules.unmatched(self, text[self.__start])
+				self.__mark = self.__start + 1 # generally we shall skip the offending character...
+				rules.blocked(self) # and let the rules driver have a crack at doing something better.
 			else:
 				trail = rules.get_trailing_context(rule_id)
 				if trail is not None: self.less(trail)
-				token = rules.invoke(self, rule_id)
-			if token is not None: yield token
+				rules.invoke(self, rule_id)
+			yield from self.__buffer
+			self.__buffer.clear()
 			self.__start = self.__mark
 		# Now determine if an end-of-file rule needs to execute:
 		q = automaton.get_next_state(self.__q0(), -1)
 		if q>=0:
-			token = rules.invoke(self, automaton.get_state_rule_id(q))
-			if token is not None: yield token
+			rules.invoke(self, automaton.get_state_rule_id(q))
+			yield from self.__buffer
+			self.__buffer.clear()
 		
 	def current_position(self) -> int:
 		""" As advertised. This was motivated by a desire to produce helpful error messages. """

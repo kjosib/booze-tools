@@ -82,7 +82,7 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 				stack_symbols = [table.get_breadcrumb(q) for q in state_stack[1:]]
 				if terminal_id: raise interfaces.ParseError(stack_symbols, symbol, semantic)
 				else: raise interfaces.ParseError(stack_symbols, '<<END>>', None)
-	for symbol, semantic in each_token:
+	for symbol, semantic, start, end in each_token:
 		state_stack.append(prepare_to_shift(table.get_translation(symbol)))
 		semantic_stack.append(semantic)
 		# Having shifted the token, the parser ought to perform interactive reductions

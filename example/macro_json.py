@@ -38,21 +38,21 @@ class ExampleJSON:
 	RESERVED = {'true': True, 'false':False, 'null':None}
 	ESCAPES = {'b': 8, 't': 9, 'n': 10, 'f': 12, 'r': 13, }
 	
-	def scan_ignore_whitespace(self, yy: interfaces.ScanState): pass
-	def scan_punctuation(self, yy: interfaces.ScanState): return yy.matched_text(), None
-	def scan_integer(self, yy: interfaces.ScanState): return 'number', int(yy.matched_text())
-	def scan_float(self, yy: interfaces.ScanState): return 'number', float(yy.matched_text())
-	def scan_reserved_word(self, yy: interfaces.ScanState): return yy.matched_text(), self.RESERVED[yy.matched_text()]
-	def scan_enter_string(self, yy: interfaces.ScanState):
+	def scan_ignore_whitespace(self, yy: interfaces.Scanner): pass
+	def scan_punctuation(self, yy: interfaces.Scanner): yy.token(yy.matched_text())
+	def scan_integer(self, yy: interfaces.Scanner): yy.token('number', int(yy.matched_text()))
+	def scan_float(self, yy: interfaces.Scanner): yy.token('number', float(yy.matched_text()))
+	def scan_reserved_word(self, yy: interfaces.Scanner): yy.token(yy.matched_text(), self.RESERVED[yy.matched_text()])
+	def scan_enter_string(self, yy: interfaces.Scanner):
 		yy.enter('in_string')
-		return yy.matched_text(), None
-	def scan_stringy_bit(self, yy: interfaces.ScanState): return 'character', yy.matched_text()
-	def scan_escaped_literal(self, yy: interfaces.ScanState): return 'character', yy.matched_text()[1]
-	def scan_shorthand_escape(self, yy: interfaces.ScanState): return 'character', chr(self.ESCAPES[yy.matched_text()[1]])
-	def scan_unicode_escape(self, yy: interfaces.ScanState): return 'character', chr(int(yy.matched_text()[2:],16))
-	def scan_leave_string(self, yy: interfaces.ScanState):
+		yy.token(yy.matched_text())
+	def scan_stringy_bit(self, yy: interfaces.Scanner): yy.token('character', yy.matched_text())
+	def scan_escaped_literal(self, yy: interfaces.Scanner): yy.token('character', yy.matched_text()[1])
+	def scan_shorthand_escape(self, yy: interfaces.Scanner): yy.token('character', chr(self.ESCAPES[yy.matched_text()[1]]))
+	def scan_unicode_escape(self, yy: interfaces.Scanner): yy.token('character', chr(int(yy.matched_text()[2:],16)))
+	def scan_leave_string(self, yy: interfaces.Scanner):
 		yy.enter('INITIAL')
-		return yy.matched_text(), None
+		yy.token(yy.matched_text())
 	
 	def parse_empty(self): return []
 	def parse_first(self, item): return [item]

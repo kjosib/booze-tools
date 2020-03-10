@@ -66,7 +66,7 @@ RUBY as it might be parsed: During a statement, one or more here-doc terminators
 RUBY ignores most line endings, but they are significant at the end of a statement. Thus: Most of the time (perhaps by pragma-ignore?) the parser state would treat a newline token as a NOP, but on the rare occasion when they appear explicitly as a terminal in a production, then those states have different instructions in the "newline" column. And finally, it's important to reduce <statement> BEFORE asking the lexer for another token, to make sure it can be told to slurp any here-docs. So that means, after shifting, if the parser is in a reduce-only state (all the same reduction) then the parser should perform that reduction immediately before waiting for a look-ahead.
 
 
-Defining a Scanner:
+Defining a IterableScanner:
 ===================
 Different "models of computation" suit word-structure and phrase-structure, so it's normal to define a separate scanner and parser.
 A traditional scanner-generator lets you work with ordinary regular expressions on a leftmost-longest match rule with backtracking as needed.
