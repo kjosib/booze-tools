@@ -20,8 +20,8 @@ class ExampleJSON:
 	As you can see, it contains methods named for the messages in the scanner and parser definitions.
 	No rule says you have to use the same context object for both, but it's often convenient.
 	
-	Values returned from scan_*(...) are yielded from the generic scanner algorithm, just as with MiniScan.
-	(The same code is used for both.) In most applications, the set of necessarily-distinct scanner
+	Just as with MiniScan, call yy.token(...) from your scan_*(...) methods to emit tokens.
+	(The same engine is used for both.) In most applications, the set of necessarily-distinct scanner
 	recognition rules is likely to be relatively small, especially considering that the parse algorithm
 	takes terminal identities symbolically. That is why the scanner messages come with room for a parameter.
 	It just happens not to be particularly relevant for JSON, so the parameter is never actually
