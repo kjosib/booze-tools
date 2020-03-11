@@ -1,4 +1,5 @@
-""" JSON is JavaScript Object Notation. See http://www.json.org/ for more. Python has a standard library for JSON, so this is just a worked example. """
+""" JSON is JavaScript Object Notation. See http://www.json.org/ for more.
+Python has a standard library for JSON, so this is just a worked example. """
 
 from boozetools.parsing import miniparse
 from boozetools.scanning import miniscan
