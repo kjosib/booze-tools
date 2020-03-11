@@ -6,7 +6,7 @@ exercise the bits.
 A nice exercise-for-the-reader would be to add a facility for defining functions, and perhaps
 preload said facility with some built-in functions from the math library.
 
-Type the word "quit"  on a line by itself (or finish stdin -- ^Z on Dos, ^D on Unix) to end this program.
+Type the word "quit" on a line by itself (or finish stdin -- ^Z on Dos, ^D on Unix) to end this program.
 The question mark '?' repeats this message and displays the current values of variables.
 Otherwise, arithmetic expressions (+-*/^) are evaluated and printed. Values may be assigned to
 variables with the '=' sign.
