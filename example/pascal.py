@@ -47,20 +47,20 @@ class PascalDriver:
 		pass
 	def scan_unterminated_comment(self, yy: interfaces.Scanner):
 		raise interfaces.ScanError('unterminated comment')
-	def scan_integer(self, yy: interfaces.Scanner): return 'integer', int(yy.matched_text())
-	def scan_decimal(self, yy: interfaces.Scanner): return 'real', float(yy.matched_text())
-	def scan_scientific_notation(self, yy: interfaces.Scanner): return 'real', float(yy.matched_text())
+	def scan_integer(self, yy: interfaces.Scanner): yy.token('integer', int(yy.matched_text()))
+	def scan_decimal(self, yy: interfaces.Scanner): yy.token('real', float(yy.matched_text()))
+	def scan_scientific_notation(self, yy: interfaces.Scanner): yy.token('real', float(yy.matched_text()))
 	def scan_string_constant(self, yy: interfaces.Scanner):
-		return 'string_constant', yy.matched_text()[1:-1].replace("''", "'")
-	def scan_identifier(self, yy: interfaces.Scanner): return 'identifier', yy.matched_text()
+		yy.token('string_constant', yy.matched_text()[1:-1].replace("''", "'"))
+	def scan_identifier(self, yy: interfaces.Scanner): yy.token('identifier', yy.matched_text())
 	def scan_word(self, yy: interfaces.Scanner):
 		# Checks a table of reserved words.
 		word = yy.matched_text().upper()
-		if word in self.reserved: return word, None
-		else: return 'identifier', word
+		if word in self.reserved: yy.token(word)
+		else: yy.token('identifier', word)
 	def scan_token(self, yy: interfaces.Scanner):
 		text = yy.matched_text()
-		return text, text
+		yy.token(text, text)
 	
 	def parse_first(self, item): return [item]
 	def parse_append(self, the_list, item):
