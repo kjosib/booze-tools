@@ -143,9 +143,11 @@ def decompose_by_default_reduction(matrix:list, essential_errors:set):
 	The first phase of compacting a parser's "ACTION" table
 	:param matrix:
 	:param essential_errors:
-	:return: default-reduction vector and resiude matrix where allowed entries have been turned to `None`.
+	:return: default-reduction vector and residue matrix where allowed entries have been turned to `None`.
 	"""
 	reduce = [most_common([a for a in row if a < 0]) for row in matrix] # Default Reduction Table
+	# FIXME: States reached by shifting $error$ should have `reduce` set to zero.
+	#  -- At least, that's the current theory.
 	residue = [[
 		value if (q,column) in essential_errors or value not in (0, default) else None
 		for column, value in enumerate(row)

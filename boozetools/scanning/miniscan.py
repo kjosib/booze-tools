@@ -19,9 +19,6 @@ class TrailingContextError(PatternError):
 	This is not supported at this time.
 	"""
 
-class ScanError(Exception):
-	""" Raised if a mini-scanner gets blocked. Parameter is the string offset where it happened.. """
-
 class Definition(interfaces.ScanRules):
 	def __init__(self, *, minimize=True, mode='ASCII'):
 		self.__actions = []
@@ -109,8 +106,6 @@ class Definition(interfaces.ScanRules):
 		if callable(action): action(yy)
 		else: assert action is None
 	
-	def blocked(self, yy: Scanner):
-		raise ScanError(yy.current_position())
 
 
 def analyze_pattern(pattern:str, env):

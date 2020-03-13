@@ -36,7 +36,7 @@ class TestNFA(unittest.TestCase):
 		nfa.link_epsilon(q1, q0)
 		def assertion():
 			tokens = list(recognition.IterableScanner(text='j', automaton=dfa, rules=MockScanRules(), start=None))
-			self.assertEqual([(1,'j', 0,1)], tokens)
+			self.assertEqual([(1,'j')], tokens)
 		dfa = nfa.subset_construction()
 		assertion()
 		dfa = dfa.minimize_states().minimize_alphabet()

@@ -52,17 +52,34 @@ def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 
 def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 	"""
-	The canonical table-driven LR parsing algorithm. As much as possible is left abstract.
-	Perhaps unfortunately, there's no explicit support for location tracking here, although
-	in some sense that can be left to the tokenizer and the combiner.
-	:param table: The algorithm cares not where they came from or how they are represented.
-	:param combine: Responsible to provide the result of a reduction on the semantic stack.
+	The canonical table-driven LR parsing algorithm.
+	
+	For now this codes for the happy path and lets exceptions bubble out if
+	anything goes wrong. That's fine for everything from toy problems to
+	medium-sized applications, and it's what mini-parse uses. More robust
+	error processing is coming.
+	
+	:param table: Satisfy the ParseTable interface however you like.
+	
+	:param combine: Gets called with a rule-ID and selected right-hand-side
+		semantic elements; must return the semantic value for the left-hand
+		side of the corresponding rule. Both mini-parse and the runtime
+		support module for MacroParse provide code to help with this part.
+	
 	:param each_token: Iterable source of <terminal, semantic> pairs.
+		Most normally you'll supply a Scanner, but this version of the
+		algorithm makes no such assumption.
+	
 	:param language: Choice of starting language, for multi-language tables.
-	:return: Whatever the last combine(...) call returns as the semantic value of the sentence.
+	
+	:return: Whatever the last combine(...) call returns as the
+		semantic value of the sentence.
 	"""
 	state_stack, semantic_stack = [0 if language is None else table.get_initial(language)], []
 	def tos() -> int: return state_stack[-1]
+	def shift(state, semantic):
+		state_stack.append(state)
+		semantic_stack.append(semantic)
 	def reduce(rule_id):
 		assert rule_id >= 0
 		nonterminal_id, length, constructor_id, view = table.get_rule(rule_id)
@@ -71,20 +88,13 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 		if length: # Python hiccup: don't let epsilon rules delete the whole stack.
 			del state_stack[-length:]
 			del semantic_stack[-length:]
-		state_stack.append(table.get_goto(tos(), nonterminal_id))
-		semantic_stack.append(attribute)
+		shift(table.get_goto(tos(), nonterminal_id), attribute)
 	def prepare_to_shift(terminal_id) -> int:
-		while True:
+		while True: # Note the classic loop-and-a-half problem evinced here...
 			step = table.get_action(tos(), terminal_id)
 			if step < 0: reduce(-step-1) # Bison parsers offset the rule data to save a decrement, but that breaks abstraction.
-			elif step > 0: return step
-			else:
-				stack_symbols = [table.get_breadcrumb(q) for q in state_stack[1:]]
-				if terminal_id: raise interfaces.ParseError(stack_symbols, symbol, semantic)
-				else: raise interfaces.ParseError(stack_symbols, '<<END>>', None)
-	for symbol, semantic, start, end in each_token:
-		state_stack.append(prepare_to_shift(table.get_translation(symbol)))
-		semantic_stack.append(semantic)
+			else: return step
+	def reduce_eagerly():
 		# Having shifted the token, the parser ought to perform interactive reductions
 		# until another token is strictly necessary to make a decision. Such behavior
 		# can be left out of batch-process parsers, but error reporting is affected.
@@ -92,6 +102,37 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 			step = table.interactive_step(tos())
 			if step < 0: reduce(-step-1)
 			else: break
-	prepare_to_shift(0)
-	return semantic_stack[0]
+
+	def notify_error(symbol, semantic):
+		# FIXME: This is a hold-over from earlier...
+		stack_symbols = [table.get_breadcrumb(q) for q in state_stack[1:]]
+		raise interfaces.ParseError(stack_symbols, symbol or '<<END>>', semantic)
+
+	def enter_error_mode():
+		# FIXME: One obvious means of error recovery is:
+		#  1. Roll the stack back until $error$ is shiftable.
+		#  2. Shift $error$.
+		#  3. Skip zero or more tokens until seeing something
+		#     the parse table knows what to do with.
+		#  4. Do that something.
+		#  This is inadequate: good mechanism must scan the entire stack for
+		#  possible recovery points. Setting up that recovery vector will be
+		#  a separate exercise.
+		#  The present system does none of these things.
+		pass
+	
+	error_squelch = 0
+	for symbol, semantic in each_token:
+		terminal_id = table.get_translation(symbol)
+		step = prepare_to_shift(terminal_id)
+		if step > 0:
+			shift(step, semantic)
+			reduce_eagerly()
+			if error_squelch: error_squelch -= 1
+		else: # Error has been detected.
+			if not error_squelch: notify_error(symbol, semantic)
+			enter_error_mode()
+			error_squelch = 3
+	if prepare_to_shift(0) == 0: notify_error(None, None)
+	else: return semantic_stack[0]
 

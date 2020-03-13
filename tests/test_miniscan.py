@@ -33,11 +33,11 @@ class TestMiniScan(unittest.TestCase):
 		
 		self.assertEqual(
 			[
-				('word', 'abc', 1, 4),
-				('number', 123, 7, 10),
-				('word', 'def456', 12, 18),
-				('number', 789, 20, 23),
-				('word', 'XYZ', 23,26),
+				('word', 'abc'),
+				('number', 123),
+				('word', 'def456'),
+				('number', 789),
+				('word', 'XYZ'),
 			],
 			list(s.scan(' abc   123  def456  789XYZ ')),
 		)

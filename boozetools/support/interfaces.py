@@ -23,6 +23,9 @@ from . import pretty
 class LanguageError(ValueError):
 	""" Base class of all exceptions arising from the language machinery. """
 
+class ScanError(LanguageError):
+	""" Raised (by default) if a scanner gets blocked. Parameter is the string offset where it happened. """
+
 class BadToken(LanguageError):
 	""" Raised if the scanner provides a token type which the parse table does not define. """
 
@@ -205,7 +208,12 @@ class ScanRules:
 		"""
 		The scanner will call this to report blockage. It will have prepared
 		to skip the offending character. Your job is to report the error to
-		the user. Try to recover. Maybe delegate to a driver. Do whatever.
+		the user. Try to recover. Emit a designated "nonsense" token and let
+		the parser handle it. Delegate to a driver. Do whatever.
+		
+		Default behavior is to raise an exception, which by the way will kill
+		off a parse(...) in progress -- at least until I get parse error
+		recovery mode finished.
 		"""
-		raise NotImplementedError(type(self), ScanRules.blocked.__doc__)
+		raise ScanError(yy.current_position())
 

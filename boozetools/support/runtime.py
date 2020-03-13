@@ -6,6 +6,9 @@ This module may still be doing too many different things. I'll probably break it
 """
 
 import inspect, functools
+
+from boozetools.support.interfaces import Scanner
+
 from . import interfaces, expansion
 from ..scanning import recognition
 from ..parsing import shift_reduce
@@ -49,6 +52,10 @@ class BoundScanRules(interfaces.ScanRules):
 		try: return self.__methods[rule_id](scan_state)
 		except interfaces.LanguageError: raise
 		except Exception as e: raise interfaces.DriverError("Trying to scan rule "+str(rule_id)) from e
+	
+	def blocked(self, yy: Scanner):
+		pass
+
 
 def parse_action_bindings(driver, message_catalog):
 	"""

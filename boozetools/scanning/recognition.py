@@ -85,7 +85,7 @@ class IterableScanner(interfaces.Scanner):
 	def token(self, kind, semantic=None):
 		""" Be it established, then, that the token stream shall consist of... """
 		assert kind is not None
-		self.__buffer.append((kind, semantic, self.__start, self.__mark))
+		self.__buffer.append((kind, semantic))
 	
 	def __iter__(self):
 		text, automaton, rules = self.__text, self.__automaton, self.__rules
