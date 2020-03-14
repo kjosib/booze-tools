@@ -25,6 +25,8 @@ import os
 from boozetools.support import runtime, interfaces
 from boozetools.macroparse import compiler
 
+class UnterminatedComment(interfaces.ScanError): pass
+
 class PascalDriver:
 	"""
 	This the approach where the parser builds an abstract tree and semantic analysis is done in a separate phase.
@@ -46,7 +48,7 @@ class PascalDriver:
 		"""
 		pass
 	def scan_unterminated_comment(self, yy: interfaces.Scanner):
-		raise interfaces.ScanError('unterminated comment')
+		raise UnterminatedComment(yy.current_position())
 	def scan_integer(self, yy: interfaces.Scanner): yy.token('integer', int(yy.matched_text()))
 	def scan_decimal(self, yy: interfaces.Scanner): yy.token('real', float(yy.matched_text()))
 	def scan_scientific_notation(self, yy: interfaces.Scanner): yy.token('real', float(yy.matched_text()))
@@ -107,12 +109,16 @@ for text in samples:
 	if text:
 		try: print(parse(text)[0])
 		except interfaces.ParseError as e:
-			print("Parse error at token:", repr(e.args[1]))
+			stack, token, value = e.args
+			print("Parse error at token:", repr(token))
 			print('Parser stack looks like:')
-			print('\t'+' '.join(e.args[0]))
+			print('\t'+' '.join(stack))
+			exit(1)
+		except UnterminatedComment as e:
+			print("Unterminated Comment at %d"%(e.args[0]))
 			exit(1)
 		except interfaces.ScanError as e:
-			print("Scan error %r at character %d"%(e.args[1], e.args[0]))
+			print("Scan error at character %d"%(e.args[0]))
 			exit(1)
 print("=====================")
 print("Everything parsed OK.")
