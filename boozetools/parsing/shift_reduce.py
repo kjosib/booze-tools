@@ -56,8 +56,7 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 	
 	For now this codes for the happy path and lets exceptions bubble out if
 	anything goes wrong. That's fine for everything from toy problems to
-	medium-sized applications, and it's what mini-parse uses. More robust
-	error processing is coming.
+	medium-sized applications, and it's what mini-parse uses.
 	
 	:param table: Satisfy the ParseTable interface however you like.
 	
@@ -75,11 +74,13 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 	:return: Whatever the last combine(...) call returns as the
 		semantic value of the sentence.
 	"""
-	state_stack, semantic_stack = [0 if language is None else table.get_initial(language)], []
+	
 	def tos() -> int: return state_stack[-1]
+	
 	def shift(state, semantic):
 		state_stack.append(state)
 		semantic_stack.append(semantic)
+	
 	def reduce(rule_id):
 		assert rule_id >= 0
 		nonterminal_id, length, constructor_id, view = table.get_rule(rule_id)
@@ -89,11 +90,13 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 			del state_stack[-length:]
 			del semantic_stack[-length:]
 		shift(table.get_goto(tos(), nonterminal_id), attribute)
+	
 	def prepare_to_shift(terminal_id) -> int:
 		while True: # Note the classic loop-and-a-half problem evinced here...
 			step = table.get_action(tos(), terminal_id)
 			if step < 0: reduce(-step-1) # Bison parsers offset the rule data to save a decrement, but that breaks abstraction.
 			else: return step
+	
 	def reduce_eagerly():
 		# Having shifted the token, the parser ought to perform interactive reductions
 		# until another token is strictly necessary to make a decision. Such behavior
@@ -103,36 +106,18 @@ def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
 			if step < 0: reduce(-step-1)
 			else: break
 
-	def notify_error(symbol, semantic):
-		# FIXME: This is a hold-over from earlier...
+	def raise_error(symbol, semantic):
 		stack_symbols = [table.get_breadcrumb(q) for q in state_stack[1:]]
-		raise interfaces.ParseError(stack_symbols, symbol or '<<END>>', semantic)
+		raise interfaces.ParseError(stack_symbols, symbol, semantic)
 
-	def enter_error_mode():
-		# FIXME: One obvious means of error recovery is:
-		#  1. Roll the stack back until $error$ is shiftable.
-		#  2. Shift $error$.
-		#  3. Skip zero or more tokens until seeing something
-		#     the parse table knows what to do with.
-		#  4. Do that something.
-		#  This is inadequate: good mechanism must scan the entire stack for
-		#  possible recovery points. Setting up that recovery vector will be
-		#  a separate exercise.
-		#  The present system does none of these things.
-		pass
-	
-	error_squelch = 0
+	state_stack, semantic_stack = [0 if language is None else table.get_initial(language)], []
 	for symbol, semantic in each_token:
 		terminal_id = table.get_translation(symbol)
 		step = prepare_to_shift(terminal_id)
 		if step > 0:
 			shift(step, semantic)
 			reduce_eagerly()
-			if error_squelch: error_squelch -= 1
-		else: # Error has been detected.
-			if not error_squelch: notify_error(symbol, semantic)
-			enter_error_mode()
-			error_squelch = 3
-	if prepare_to_shift(0) == 0: notify_error(None, None)
+		else: raise_error(symbol, semantic)
+	if prepare_to_shift(0) == 0: raise_error(None, None)
 	else: return semantic_stack[0]
 
