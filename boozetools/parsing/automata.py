@@ -629,7 +629,6 @@ class DragonBookTable(interfaces.ParseTable):
 		self.goto_matrix = goto
 		self.essential_errors = essential_errors
 		self.translate = {symbol: i for i, symbol in enumerate(terminals)}
-		self.get_translation = self.translate.__getitem__
 		nontranslate = {symbol: i for i, symbol in enumerate(nonterminals)}
 		self.terminals, self.nonterminals = terminals, nonterminals
 		self.breadcrumbs = breadcrumbs
@@ -658,8 +657,14 @@ class DragonBookTable(interfaces.ParseTable):
 	def get_rule(self, rule_id: int) -> tuple:
 		return self.rule_table[rule_id]
 	
-	def get_translation(self, symbol) -> int: return self.translate[symbol]  # This gets replaced ...
-	
+	def get_translation(self, symbol) -> int:
+		try: return self.translate[symbol]
+		except KeyError: return len(self.terminals) # Guaranteed to trigger error-processing.
+		
+	def get_terminal_name(self, terminal_id: int) -> str:
+		try: return self.terminals[terminal_id]
+		except IndexError: return "<unknown token>"
+
 	def get_action(self, state_id, terminal_id) -> int: return self.action_matrix[state_id][terminal_id]
 	
 	def get_goto(self, state_id, nonterminal_id) -> int: return self.goto_matrix[state_id][nonterminal_id]
@@ -827,7 +832,7 @@ def tabulate(hfa: HFA[LA_State], *, style:ParsingStyle) -> DragonBookTable:
 		for symbol, rule_ids in state.reduce.items():
 			idx = translate[symbol]
 			shift = action_row[idx]
-			if rule_ids is ():
+			if rule_ids == ():
 				# This is how function `reachable(...)` communicates a non-association situation.
 				assert shift == 0
 				essential_errors.add((q,idx))

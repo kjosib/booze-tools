@@ -23,16 +23,22 @@ from . import pretty
 class LanguageError(ValueError):
 	""" Base class of all exceptions arising from the language machinery. """
 
-class ScanError(LanguageError):
-	""" Raised (by default) if a scanner gets blocked. Parameter is the string offset where it happened. """
-
-class BadToken(LanguageError):
-	""" Raised if the scanner provides a token type which the parse table does not define. """
+class ScannerBlocked(LanguageError):
+	"""
+	Raised (by default) if a scanner gets blocked.
+	Parameters are:
+		the string offset where it happened.
+		the current start-condition of the scanner.
+	"""
+	def __init__(self, position, condition):
+		super().__init__(position, condition)
+		self.position, self.condition = position, condition
 
 class ParseError(LanguageError):
 	""" Raised if the parser gets lost trying to reconstruct the structure of a phrase. """
+	# TODO: Deprecation in progress...
 	def __init__(self, stack_symbols, lookahead, yylval):
-		super(ParseError, self).__init__(stack_symbols, lookahead, yylval)
+		super().__init__(stack_symbols, lookahead, yylval)
 		self.stack_symbols, self.lookahead, self.yylval = stack_symbols, lookahead, yylval
 	def condition(self) -> str:
 		return ' '.join(self.stack_symbols) + ' %s %s'%(pretty.DOT, self.lookahead)
@@ -52,7 +58,7 @@ class DriverError(Exception):
 	except interfaces.DriverError as e:
 		text.complain(*parse.scanner.current_span(), message=str(e.args))
 		raise e.__cause__ from None
-	except interfaces.ScanError as e:
+	except interfaces.ScannerBlocked as e:
 		... complain about a scan error ...
 	except interfaces.ParseError as e:
 		... complain about a parse error ...
@@ -60,6 +66,59 @@ class DriverError(Exception):
 	Maybe code like this will eventually become a convenience method...
 	"""
 
+class ErrorChannel:
+	"""
+	Implement this interface to report/respond to parse errors.
+	For the moment I'm assuming you have a handle to the scanner so you
+	can get the input-file location of error events...
+	"""
+	def bad_token(self, kind, semantic, stack_symbols):
+		"""
+		The parser has just been given a bogus token.
+		It will enter recovery mode next.
+		`kind` and `semantic` are whatever the scanner provided.
+		`stack_symbols` is the reduced left-context of the broken parse.
+		"""
+	
+	def bad_eof(self, stack_symbols):
+		"""
+		The parser ran out of tokens unexpectedly.
+		There's no point trying to recover.
+		`stack_symbols` is the reduced left-context of the broken parse.
+		"""
+	
+	def will_recover(self, tokens):
+		"""
+		The parser has seen a token sequence sufficient to resynchronize.
+		`tokens` is that sequence. The parser will next commit to this
+		recovery. (Perhaps there should be a way to prevent it?)
+		"""
+	
+	def did_not_recover(self):
+		"""
+		The parser ran out of tokens while in error-recovery mode, and was
+		unable to recover.
+		"""
+	
+	def cannot_recover(self):
+		"""
+		The parser attempted to enter recovery mode, but there are no
+		recoverable states on the parse stack, so recovery is impossible.
+		"""
+	
+	def scan_exception(self, e:Exception):
+		"""
+		Exception `e` bubbled out of the scanner.
+		The parser is prepared to try again to read a token.
+		"""
+		raise e
+	
+	def rule_exception(self, e:Exception, rule_id, args):
+		"""
+		Exception `e` bubbled out of the combining function.
+		Maybe you'd like to add some context?
+		"""
+		raise e
 
 class Classifier:
 	"""
@@ -122,8 +181,9 @@ class ParseTable:
 	def get_goto(self, state_id:int, nonterminal_id) -> int: raise NotImplementedError(type(self, 'return a successor state id.'))
 	def get_rule(self, rule_id:int) -> tuple: raise NotImplementedError(type(self), 'return a (nonterminal_id, length, constructor_id, view) quad.')
 	def get_constructor(self, constructor_id) -> object: raise NotImplementedError(type(self), 'return whatever will make sense to the corresponding combiner.')
-	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language.')
+	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language, which by the way is usually `None `.')
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of the symbol that shifts into this state.')
+	def get_terminal_name(self, terminal_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of this-numbered terminal.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self), 'Return the reduce instruction for interactive-reducing states; zero otherwise.')
 	# These next two methods are in support of GLR parsing:
 	def get_split_offset(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
@@ -215,5 +275,5 @@ class ScanRules:
 		off a parse(...) in progress -- at least until I get parse error
 		recovery mode finished.
 		"""
-		raise ScanError(yy.current_position())
+		raise ScannerBlocked(yy.current_position(), yy.current_condition())
 

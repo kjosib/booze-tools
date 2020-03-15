@@ -25,7 +25,7 @@ import os
 from boozetools.support import runtime, interfaces
 from boozetools.macroparse import compiler
 
-class UnterminatedComment(interfaces.ScanError): pass
+class UnterminatedComment(interfaces.LanguageError): pass
 
 class PascalDriver:
 	"""
@@ -117,7 +117,7 @@ for text in samples:
 		except UnterminatedComment as e:
 			print("Unterminated Comment at %d"%(e.args[0]))
 			exit(1)
-		except interfaces.ScanError as e:
+		except interfaces.ScannerBlocked as e:
 			print("Scan error at character %d"%(e.args[0]))
 			exit(1)
 print("=====================")
