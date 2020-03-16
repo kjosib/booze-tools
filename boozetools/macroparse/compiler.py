@@ -50,9 +50,10 @@ class TextBookForm:
 		if table is None: return
 		symbol_index = {s: i for i, s in enumerate(table.terminals + table.nonterminals)}
 		symbol_index[None] = None
+		recovering_states = [q for q,s in enumerate(table.breadcrumbs) if s == interfaces.ERROR_SYMBOL]
 		form = {
 			'initial': table.initial,
-			'action': compaction.compress_action_table(table.action_matrix, table.essential_errors),
+			'action': compaction.compress_action_table(table.action_matrix, table.essential_errors, recovering_states),
 			'goto': compaction.compress_goto_table(table.goto_matrix),
 			'terminals': table.terminals,
 			'nonterminals': table.nonterminals,

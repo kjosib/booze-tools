@@ -61,7 +61,7 @@ class TableMethodTester(unittest.TestCase):
 		for sentence in self.bad:
 			with self.subTest(sentence=sentence):
 				try: shift_reduce.trial_parse(table, sentence.split())
-				except interfaces.ParseError: pass
+				except ValueError: pass
 				else: assert False, "This should have raised an exception."
 	def r(self, lhs, rhs:str):
 		rhs = rhs.split()

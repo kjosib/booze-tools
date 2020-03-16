@@ -118,17 +118,13 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 	def get_action(self, state_id: int, terminal_id) -> int: assert False, 'See the constructor.'
 	def get_goto(self, state_id: int, nonterminal_id) -> int: assert False, 'See the constructor.'
 	def get_rule(self, rule_id: int) -> tuple: return self.__rule[rule_id]
-	
+	def get_constructor(self, constructor_id) -> object: return self.message_catalog[constructor_id]
 	def get_initial(self, language) -> int: return 0 if language is None else self.initial[language]
 	def get_breadcrumb(self, state_id: int) -> str:
 		bcid = self.breadcrumbs[state_id]
 		if bcid is None: return ''
 		if bcid < len(self.terminals): return self.terminals[bcid]
 		else: return self.nonterminals[bcid-len(self.terminals)]
-	def get_terminal_name(self, terminal_id: int) -> str:
-		try: return self.terminals[terminal_id]
-		except IndexError: return "<unknown token>"
-	
 	def interactive_step(self, state_id: int) -> int: assert False, 'See the constructor.'
 	def get_split_offset(self) -> int: assert False, 'See the constructor.'
 	def get_split(self, split_id: int) -> list: assert False, 'See the constructor.'

@@ -44,6 +44,12 @@ E -> '(' .E ')'
   | variable    :lookup
   | number
 ```
+But lo, the users will make mistakes. Some error productions are a fabulous help.
+```
+START -> $error$      :complete_garbage
+E -> '(' .$error$ ')' :broken_parenthetical
+```
+
 ## Definitions
 In contrast to the JSON example, this scanner does not attempt to recognize negative numbers.
 This allows expressions like `3-1i` (without whitespace) to function properly.

@@ -21,8 +21,6 @@ from typing import NamedTuple, Iterable, TypeVar, Generic, List, Dict, Set, Tupl
 from ..support import foundation, pretty, interfaces
 from . import context_free
 
-END = '<END>' # An artificial "end-of-text" terminal-symbol.
-
 T = TypeVar('T')
 
 class PurityError(ValueError):
@@ -135,7 +133,8 @@ class HFA(Generic[T]):
 		for stack in alive:
 			q = stack[0]
 			if q == accept: return True
-			for rule_id in self.graph[q].reductions_before(END): alive.append(reduce(stack, rule_id))
+			for rule_id in self.graph[q].reductions_before(interfaces.END_OF_TOKENS):
+				alive.append(reduce(stack, rule_id))
 		raise interfaces.GeneralizedParseError("Parser recognized a viable prefix, but not a complete sentence.")
 
 class LR0_State(NamedTuple):
@@ -301,7 +300,8 @@ def lalr_first_and_follow(lr0:HFA[LR0_State]) -> Tuple[list, dict]:
 	grammar = lr0.grammar
 	terminals = grammar.apparent_terminals()
 	token_sets = [terminals.intersection(node.shift.keys()) for node in lr0.graph]
-	for q in lr0.accept: token_sets[q].add(END) # Denoting that end-of-input can follow a sentence.
+	for q in lr0.accept:
+		token_sets[q].add(interfaces.END_OF_TOKENS) # Denoting that end-of-input can follow a sentence.
 	# Allocate and track/label all follow sets:
 	follow = {}
 	for q, node in enumerate(lr0.graph):
@@ -360,7 +360,7 @@ def canonical_lr1(grammar: context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	return abstract_lr1_construction(
 		grammar, front = front,
 		note_reduce = lambda reduce, follower, rule_id, iso_q: reduce[follower].append(rule_id),
-		initial_item = lambda rule_id: (rule_id, 0, END),
+		initial_item = lambda rule_id: (rule_id, 0, interfaces.END_OF_TOKENS),
 		lr0_catalog=lr0.bft.catalog,
 	)
 
@@ -661,10 +661,6 @@ class DragonBookTable(interfaces.ParseTable):
 		try: return self.translate[symbol]
 		except KeyError: return len(self.terminals) # Guaranteed to trigger error-processing.
 		
-	def get_terminal_name(self, terminal_id: int) -> str:
-		try: return self.terminals[terminal_id]
-		except IndexError: return "<unknown token>"
-
 	def get_action(self, state_id, terminal_id) -> int: return self.action_matrix[state_id][terminal_id]
 	
 	def get_goto(self, state_id, nonterminal_id) -> int: return self.goto_matrix[state_id][nonterminal_id]
@@ -818,8 +814,9 @@ def tabulate(hfa: HFA[LA_State], *, style:ParsingStyle) -> DragonBookTable:
 	resolution.
 	"""
 	grammar = hfa.grammar
-	assert END not in grammar.symbols
-	terminals = [END] + sorted(grammar.apparent_terminals())
+	assert interfaces.END_OF_TOKENS not in grammar.symbols
+	assert interfaces.ERROR_SYMBOL not in grammar.symbol_rule_ids
+	terminals = [interfaces.END_OF_TOKENS] + sorted(grammar.apparent_terminals())
 	translate = {t:i for i,t in enumerate(terminals)}
 	nonterminals = sorted(grammar.symbol_rule_ids.keys())
 	##### Tabulate the states into dense matrices ACTION and GOTO:

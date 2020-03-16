@@ -138,16 +138,27 @@ def encode_displacement_function(exceptions:list):
 			value[index] = entry
 	return {'offset': offset, 'check': check, 'value':value}
 
-def decompose_by_default_reduction(matrix:list, essential_errors:set):
+def decompose_by_default_reduction(matrix:list, essential_errors:set, recovering_states):
 	"""
-	The first phase of compacting a parser's "ACTION" table
-	:param matrix:
-	:param essential_errors:
+	The first phase of compacting a parser's "ACTION" table.
+	The idea is to separate the matrix into a "default" entry per row
+	and a set of exceptions, which can presumably be stored in a lot
+	less space.
+	
+	:param matrix: The initial ACTION matrix is a row for each state;
+		the columns correspond to the terminals, and every cell has
+		a specific instruction.
+	:param essential_errors: (state, terminal_id) pairs which, due to
+		non-assoc declarations, must absolutely reflect a syntax error.
+		As such, if those states have a default-reduction, then corresponding
+		error entries must explicitly appear in the "residue" matrix
+	:param recovering_states: These states are REACHED BY the error token.
+		To avoid an excess of false restarts, these states may not use
+		a default-reduction.
 	:return: default-reduction vector and residue matrix where allowed entries have been turned to `None`.
 	"""
 	reduce = [most_common([a for a in row if a < 0]) for row in matrix] # Default Reduction Table
-	# FIXME: States reached by shifting $error$ should have `reduce` set to zero.
-	#  -- At least, that's the current theory.
+	for q in recovering_states: reduce[q] = 0
 	residue = [[
 		value if (q,column) in essential_errors or value not in (0, default) else None
 		for column, value in enumerate(row)
@@ -201,7 +212,7 @@ def decompose_by_edit_distance(matrix):
 		else: return {c:v for c,(x,v) in enumerate(zip(matrix[basis], row)) if x!=v}
 	return fallback, [edits(row, basis) for row, basis in zip(matrix, fallback)]
 
-def compress_action_table(matrix:list, essential_errors:set) -> dict:
+def compress_action_table(matrix:list, essential_errors:set, recovering_states) -> dict:
 	"""
 	Produce a compact representation of the "ACTION" table for a typical shift-reduce parser.
 	:param matrix: list-of-lists of parse actions: positive numbers are shifts; negative are reductions, zero is error.
@@ -209,7 +220,7 @@ def compress_action_table(matrix:list, essential_errors:set) -> dict:
 	:return: a compact structure.
 	"""
 	height, width = len(matrix), len(matrix[0]) # Stats for comparison to the compression method
-	reduce, residue = decompose_by_default_reduction(matrix, essential_errors)
+	reduce, residue = decompose_by_default_reduction(matrix, essential_errors, recovering_states)
 	fallback, edits = decompose_by_edit_distance(residue)
 	edit_table = encode_displacement_function(edits)
 	for q, (f, e) in enumerate(zip(fallback, edits)):

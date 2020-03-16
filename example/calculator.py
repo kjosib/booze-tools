@@ -13,7 +13,7 @@ variables with the '=' sign.
 
 """
 import operator, math, os
-from boozetools.support import failureprone, runtime, interfaces
+from boozetools.support import runtime, interfaces
 from boozetools.macroparse import compiler
 
 class CalculatorDriver:
@@ -46,10 +46,26 @@ class CalculatorDriver:
 	def parse_help(self, _):
 		print(__doc__)
 		print(self.memory)
+		
+	def parse_complete_garbage(self, _):
+		print("-- Not quite sure what that means. Sorry. --")
+	def parse_broken_parenthetical(self, _):
+		print("-- The error seems confined to the parentheses. I'll just use a zero... --")
+		return 0
+
+class ErrorChannel(runtime.TypicalErrorChannel):
+	def rule_exception(self, e: Exception, message, args):
+		if message == 'lookup' and isinstance(e, KeyError):
+			self.source.complain(*self.scanner.current_span(), message="-- OCH! No such variable %r. --"%e.args)
+			return 0
+		else:
+			return super().rule_exception(e, message, args)
+	
+
 
 tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'), method='LALR')
 driver = CalculatorDriver()
-parse = runtime.the_simple_case(tables, driver, driver)
+parse = runtime.the_simple_case(tables, driver, driver, on_error=ErrorChannel)
 
 def main():
 	import sys
@@ -57,13 +73,6 @@ def main():
 	for line in sys.stdin:
 		text = line.strip()
 		if text.lower() == 'quit': break
-		elif text:
-			try: parse(text)
-			except KeyError:
-				print(failureprone.illustration(text, *parse.scanner.current_span()))
-				print("-- OCH! No such variable. --")
-			except interfaces.LanguageError:
-				print(failureprone.illustration(text, *parse.scanner.current_span()))
-				print('-- Not quite sure what that means. Sorry. --')
+		elif text: parse(text)
 	
 if __name__ == '__main__': main()

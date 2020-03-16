@@ -5,11 +5,11 @@ This module may still be doing too many different things. I'll probably break it
 2. It provides a (maybe) convenient runtime interface to the most common use cases.
 """
 
-import inspect, functools
+import inspect, functools, sys
 
 from boozetools.support.interfaces import Scanner
 
-from . import interfaces, expansion
+from . import interfaces, expansion, failureprone
 from ..scanning import recognition
 from ..parsing import shift_reduce
 
@@ -43,6 +43,7 @@ class BoundScanRules(interfaces.ScanRules):
 		self._line_number = action['line_number']
 		self.__methods = list(map(bind, action['message'], action['parameter']))
 		self.get_trailing_context = self._trail.__getitem__
+		if hasattr(driver, 'blocked_scan'): self.blocked = driver.blocked_scan
 		
 	def get_trailing_context(self, rule_id: int):
 		""" NB: This gets overwritten by a direct bound-method on the trailing-context list. """
@@ -52,9 +53,40 @@ class BoundScanRules(interfaces.ScanRules):
 		try: return self.__methods[rule_id](scan_state)
 		except interfaces.LanguageError: raise
 		except Exception as e: raise interfaces.DriverError("Trying to scan rule "+str(rule_id)) from e
+
+class TypicalErrorChannel(interfaces.ErrorChannel):
+	def __init__(self, table:interfaces.ParseTable, scanner:interfaces.Scanner, source:failureprone.SourceText):
+		self.table = table
+		self.scanner = scanner
+		self.source = source
+		self.exception = None
 	
-	def blocked(self, yy: Scanner):
-		pass
+	def unexpected_token(self, kind, semantic, pds):
+		self.source.complain(*self.scanner.current_span(), message="Unexpected token %r"%kind)
+		# stack_symbols = list(map(self.table.get_breadcrumb, pds.path_from_root()))[1:]
+		# self.exception = interfaces.ParseError(stack_symbols, kind, semantic)
+		# print("Parsing condition was:\n", self.exception.condition(), file=sys.stderr)
+	
+	def unexpected_eof(self, pds):
+		self.unexpected_token(interfaces.END_OF_TOKENS, None, pds)
+	
+	def will_recover(self, tokens):
+		self.source.complain(*self.scanner.current_span(), message="Recovered parsing approximately here:")
+		
+	def did_not_recover(self):
+		print("Could not recover.", file=sys.stderr)
+		# raise self.exception
+	
+	def cannot_recover(self):
+		self.did_not_recover()
+	
+	def scan_exception(self, e: Exception):
+		self.source.complain(*self.scanner.current_span())
+		raise e
+	
+	def rule_exception(self, e: Exception, message, args):
+		self.source.complain(*self.scanner.current_span(), message="During "+repr(message))
+		raise e
 
 
 def parse_action_bindings(driver, message_catalog):
@@ -74,21 +106,13 @@ def parse_action_bindings(driver, message_catalog):
 	def combine(cid:int, args):
 		message = dispatch[cid]
 		if message is None: return tuple(args) # The null check is like one bytecode and very fast.
-		try: return message(*args)
-		except Exception as e:
-			raise interfaces.DriverError("while parsing "+repr(message), list(map(type, args))) from e
+		return message(*args)
 	return combine
 
-def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', language=None):
+def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', language=None, on_error=TypicalErrorChannel):
 	"""
 	Builds and returns a function for parsing texts based on a set of tables and supplied drivers.
-	
-	It is simple in that it uses the simple version of the parse algorithm which means at most one
-	token per scan pattern match. That is fine for many applications.
-	
-	To facilitate error reporting and lexical tie-ins, the returned function supplies a custom
-	attribute (called `.scanner`) which exposes the current state of the scanner. Thus, you can
-	catch any old exception and see where in some input-text things went pear-shaped.
+	For now it's the same driver object if you call the resulting parser multiple times.
 	
 	PS: Yes, Virginia. Lexical closures ARE magical!
 	
@@ -99,37 +123,15 @@ def the_simple_case(tables, scan_driver, parse_driver, *, start='INITIAL', langu
 	:param language: Optionally, the start-symbol for the parser.
 	:return: a callable object.
 	"""
-	scan = simple_scanner(tables, scan_driver, start=start)
-	parse = simple_parser(tables, parse_driver, language=language)
-	def fn(text):
-		nonlocal fn
-		fn.scanner = scan(text)
-		return parse(fn.scanner)
-	return fn
-
-def simple_scanner(tables, scan_driver, *, start=None):
-	"""
-	Builds and returns a function which converts strings into a token-iterators by way of
-	the algorithms.IterableScanner class and your provided scan_driver object. It's the
-	same driver object for every scan, so any sequencing discipline is up to you.
-	
-	:param tables: Generally the output of boozetools.macroparse.compiler.compile_file, but maybe deserialized.
-	:param driver: needs .scan_foo(...) methods.
-	"""
 	scanner_tables = tables['scanner']
 	dfa = expansion.CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet'])
 	rules = BoundScanRules(action=scanner_tables['action'], driver=scan_driver)
-	return lambda text: recognition.IterableScanner(text=text, automaton=dfa, rules=rules, start=start or dfa.default_initial_condition())
-
-def simple_parser(tables, parse_driver, *, language=None):
-	"""
-	Builds and returns a function which converts a stream of tokens into a semantic value
-	by way of the algorithms.parse(...) function and your provided driver. It's the same
-	driver object for each parse, so any sequencing discipline is up to you.
-
-	:param tables: Generally the output of boozetools.macroparse.compiler.compile_file, but maybe deserialized.
-	:param driver: needs .parse_foo(...) methods.
-	"""
 	hfa = expansion.CompactHandleFindingAutomaton(tables['parser'])
 	combine = parse_action_bindings(parse_driver, hfa.message_catalog)
-	return lambda each_token: shift_reduce.parse(hfa, combine, each_token, language=language)
+	def parse(text:str, line_breaks='normal', filename:str=None):
+		source = failureprone.SourceText(text, line_breaks=line_breaks, filename=filename)
+		scanner = recognition.IterableScanner(text=source.content, automaton=dfa, rules=rules, start=start or dfa.default_initial_condition())
+		error_channel = on_error(hfa, scanner, source)
+		return shift_reduce.parse(hfa, combine, scanner, language=language, error_channel=error_channel)
+	return parse
+

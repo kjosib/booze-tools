@@ -29,8 +29,6 @@ def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 	This quick-and-dirty trial parser will tell you if a sentence is a member of the language by throwing
 	an exception otherwise. It leaves out everything to do with semantic values or parse trees.
 	If you want to wrap your head around shift/reduce parsing, this is one way to start.
-	
-	However, you might find class PushDownAutomaton (below) a better bet for understanding.
 	"""
 	
 	def prepare_to_shift(terminal_id) -> int:
@@ -39,7 +37,7 @@ def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 			if step > 0: return step  # Shift Action
 			elif step == 0:  # Error Action
 				stack_symbols = [table.get_breadcrumb(q) for q in stack[1:]]
-				raise interfaces.ParseError(stack_symbols, symbol if terminal_id else '<<END>>', None)
+				raise ValueError(stack_symbols, symbol if terminal_id else interfaces.END_OF_TOKENS, None)
 			else:  # Reduce Action
 				nonterminal_id, length, constructor_id, view = table.get_rule(-1 - step)
 				if length: # Python hiccup: don't let epsilon rules delete the whole stack.
@@ -48,26 +46,41 @@ def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
 	
 	stack = [table.get_initial(language)]
 	for symbol in sentence: stack.append(prepare_to_shift(table.get_translation(symbol)))
-	prepare_to_shift(0)
+	prepare_to_shift(table.get_translation(interfaces.END_OF_TOKENS))
 	assert len(stack) == 2
 
-class PushDownAutomaton:
+class PushDownState:
 	"""
 	A real treatment of LR-family parsing algorithms should be given in terms
 	of that model of computation called a "Push-Down Automaton" (PDA).
 	
 	In concept, a PDA is a sort of state machine with a stack.
 	It has two essential moves:
-	* "shift" adds a symbol to the top of the stack.
+	* "shift" adds a symbol (with semantic value) to the top of the stack.
 	* "reduce" groups sub-phrases into non-terminal symbols at top-of-stack.
 	
-	In the trial- parse mechanism above, we simulate the PDA with a simple
+	In the trial-parse function above, we simulate the PDA with a simple
 	list of states. However, for doing any sort of semantic analysis, we're
 	going to want something a little nicer: the stack contains both states
 	and semantic values under construction.
 	
-	Finally,
+	That's the usual explanation, anyway. In fact "reduce" is better seen as
+	a three-part operation: Combine the semantics near the top of the stack,
+	pop symbols corresponding to the right-hand side of a production rule,
+	and shift the head non-terminal for said rule. Most of that activity is
+	more intimately connected with the specific application rather than the
+	push-down mechanism, so this class just exposes appropriate primitives.
+	The actual "automaton" per-se is the `parse(...)` function, below.
+	
+	Oh-by-the-way, we don't actually shift symbols per-se, because then
+	identifying the correct time to reduce would amount to a search problem.
+	Instead, we shift STATES from a characteristic finite-state automaton:
+	these encode sufficient left-context to identify the correct places to
+	perform a reduction. That FSA forms part of the parse table.
 	"""
+	
+	def __init__(self, initial_state):
+		self.stack, self.state = [], initial_state
 	
 	def shift(self, state, semantic):
 		"""
@@ -78,87 +91,6 @@ class PushDownAutomaton:
 		"""
 		self.stack.append((self.state, semantic))
 		self.state = state
-	
-	def reduce_by_rule(self, rule_id):
-		"""
-		When the parser recognizes the right-hand-side of a production rule,
-		this is the complete process for converting the sub-phrase to its
-		non-terminal symbol on the stack.
-		"""
-		nonterminal_id, length, constructor_id, view = self.table.get_rule(rule_id)
-		# In a nod to practical brevity, this supports a concise mechanism for
-		# (not-eliminated) "unit/renaming" rules and "bracketing" rules:
-		#    a negative constructor ID is where in the stack to look for a
-		#    representative semantic value.
-		if constructor_id < 0: semantic = self.stack[constructor_id][1]
-		#    otherwise, the constructor ID indexes into a table of messages
-		#    which the combiner is responsible to consult.
-		else: semantic = self.combine(constructor_id, self.semantic_view(view))
-		self.pop_phrase(length)
-		self.shift(self.table.get_goto(self.state, nonterminal_id), semantic)
-
-	def parse(self, token_stream, *, language=None):
-		"""
-		This is the part they explain in all the books:
-		By reference to the "look-ahead" (terminal) symbol and the current
-		state of the machine, the parse table tells the machine how to act.
-
-		:param token_stream: Iterable source of <terminal, semantic> pairs.
-			Most normally you'll supply a Scanner, but this version of the
-			algorithm makes no such assumption.
-		
-		:param language: Choice of start-symbol, for multi-language tables.
-		
-		:return:
-			if parsing succeeds: the correct semantic value of the input.
-			if error recovery succeeds: the error-ridden semantic value.
-			if the error channel propagates an exception: exceptionally.
-			otherwise: `None`, and the stack will reflect the failure point.
-		"""
-		self.stack.clear()
-		self.state = self.table.get_initial(language)
-		self.input = iter(token_stream)
-		terminal_id, semantic = self.next_token()
-		while True:
-			action = self.table.get_action(self.state, terminal_id)
-			if action < 0: self.reduce_by_rule(-action-1)
-			elif action == 0:
-				if not self.handle_error(terminal_id, semantic):
-					return
-			elif terminal_id == 0: # End-marker for token stream.
-				assert len(self.stack) == 1
-				return self.stack.pop()[1]
-			else:
-				self.shift(action, semantic)
-				self.perform_immediate_reductions()
-				terminal_id, semantic = self.next_token()
-			
-	
-	def next_token(self):
-		""" Hopefully no surprises here. Adapt a token stream to sentinel mode... """
-		try: symbol, semantic = next(self.input)
-		except StopIteration: return 0, None
-		else: return self.table.get_translation(symbol), semantic
-	
-	def __init__(self, table: interfaces.ParseTable, combine, error_channel:interfaces.ErrorChannel):
-		"""
-		This is sort of an "algorithm-as-object".
-		Build the PDA and call its `.parse(...)` method as many times as you like.
-
-		:param table: Satisfy the ParseTable interface however you like.
-		
-		:param combine: Gets called with a rule-ID and selected right-hand-side
-			semantic elements; must return the semantic value for the left-hand
-			side of the corresponding rule. Both mini-parse and the runtime
-			support module for MacroParse provide code to help with this part.
-		
-		:param error_channel: Once I get error recovery implemented, this
-			will be how you direct the parser to report error events.
-		"""
-		self.table = table
-		self.combine = combine
-		self.error_channel = error_channel
-		self.stack, self.state, self.input = [], None, None
 	
 	def pop_phrase(self, length:int):
 		"""
@@ -181,7 +113,157 @@ class PushDownAutomaton:
 		"""
 		return [self.stack[offset][1] for offset in view]
 	
-	def perform_immediate_reductions(self):
+	def one_semantic(self, offset:int):
+		"""
+		There's a common use-case where we just grab the semantic
+		value at a specific offset from top-of-stack.
+		"""
+		return self.stack[offset][1]
+	
+	def succeed(self):
+		assert len(self.stack) == 1, self.stack
+		return self.stack.pop()[1]
+	
+	def index_state(self, depth:int):
+		""" Turns out sometimes we need the state N steps deep in the stack, for error recovery. """
+		if depth<=0: return self.state
+		else: return self.stack[-depth][0]
+	
+	def __len__(self):
+		""" This is how many steps "deep" you can still find a state. """
+		return 1 + len(self.stack)
+	
+	def path_from_root(self):
+		""" Yield each state ID; sometimes useful in error reporting. """
+		for state, semantic in self.stack: yield state
+		yield self.state
+	
+class Hypothetical:
+	"""
+	In the context of error recovery, it's extremely handy to have a general
+	"hypothetical parse" facility. This object latches on to an existing PDS
+	and acts like a hypothetical branch of that PDS strictly for testing hypothesis.
+	"""
+	def __init__(self, table:interfaces.ParseTable, pds:PushDownState, initial_depth):
+		self.table = table
+		self.host = pds
+		self.initial_depth = self.watermark = initial_depth
+		self.suffix = []
+	def tos(self):
+		try: return self.suffix[-1]
+		except IndexError: return self.host.index_state(self.watermark)
+	def shift(self, state): self.suffix.append(state)
+	def pop_phrase(self, length:int):
+		if length > len(self.suffix):
+			self.watermark = self.watermark + length - len(self.suffix)
+			self.suffix = []
+		elif length: del self.suffix[-length:]
+	def reduce(self, rule_id):
+		nonterminal_id, length, constructor_id, view = self.table.get_rule(rule_id)
+		self.pop_phrase(length)
+		self.shift(self.table.get_goto(self.tos(), nonterminal_id))
+	def consume(self, terminal_id) -> int:
+		""" Returns resulting top-of-stack or raises ValueError. """
+		while True:
+			step = self.table.get_action(self.tos(), terminal_id)
+			if step < 0: self.reduce(-step-1)
+			elif step == 0: raise ValueError
+			else:
+				self.shift(step)
+				return step
+
+
+def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None, error_channel=interfaces.ErrorChannel()):
+	"""
+		:param table: Satisfy the ParseTable interface however you like.
+			By reference to the "look-ahead" (terminal) symbol and the current
+			state of the PDA, the parse table tells the machine how to act.
+		
+		:param combine: Gets called with a rule-ID and selected right-hand-side
+			semantic elements; must return the semantic value for the left-hand
+			side of the corresponding rule. Both mini-parse and the runtime
+			support module for MacroParse provide code to help with this part.
+		
+		:param token_stream: Iterable source of <terminal, semantic> pairs.
+			Most normally you'll supply a Scanner, but this version of the
+			algorithm makes no such assumption.
+		
+		:param language: Choice of start-symbol, for multi-language tables.
+		
+		:return:
+			if parsing succeeds: the correct semantic value of the input.
+			if error recovery succeeds: the error-ridden semantic value.
+			if the error channel propagates an exception: exceptionally.
+			otherwise: by `raise interfaces.ParseError(...)`
+		
+		:param error_channel: Once I get error recovery implemented, this
+			will be how you direct the parser to report error events.
+	"""
+	
+	def basic_machine_cycle():
+		"""
+		This is the easy part they explain in all the books...
+		
+		Classically we might do this with a loop-and-a-half around a stream
+		of tokens, treating end-of-text as a sentinel value. But iterators
+		are much more the way of Python, so I've twisted the logic up to
+		allow the StopIteration exception to do the right thing.
+		"""
+		for symbol, semantic in token_iterator:
+			token_id = table.get_translation(symbol)
+			action = find_shift(token_id)
+			if action:
+				pds.shift(action, semantic)
+				perform_immediate_reductions()
+			else:
+				error_channel.unexpected_token(symbol, semantic, pds)
+				if not handle_error(token_id, semantic): return
+		# After the last real symbol, the parser needs to prepare as if
+		# about to shift a notional "end-of-text" symbol -- but don't
+		# actually perform that shift: instead that's the signal of
+		# an accepted sentence in the language.
+		if not find_shift(sentinel_end):
+			error_channel.unexpected_eof(pds)
+			if not handle_error(sentinel_end, None): return
+		if len(pds.stack)!=1:
+			print([table.get_breadcrumb(q) for q in pds.path_from_root()], pds.state)
+		return pds.succeed()
+	
+	def find_shift(terminal_id):
+		"""
+		Before shifting each look-ahead terminal, the parser will reduce
+		zero-or-more times until the ACTION table says which state to
+		shift into for this terminal.
+		"""
+		while True:
+			action = table.get_action(pds.state, terminal_id)
+			if action < 0: reduce_by_rule(-action-1)
+			else: return action
+	
+	def reduce_by_rule(rule_id):
+		"""
+		When the parser recognizes the right-hand-side of a production rule,
+		this is the complete process for converting the sub-phrase to its
+		non-terminal symbol on the stack.
+		"""
+		nonterminal_id, length, constructor_id, view = table.get_rule(rule_id)
+		# In a nod to practical brevity, this supports a concise mechanism for
+		# (not-eliminated) "unit/renaming" rules and "bracketing" rules:
+		#    a negative constructor ID is where in the stack to look for a
+		#    representative semantic value.
+		if constructor_id < 0: semantic = pds.one_semantic(constructor_id)
+		#    otherwise, the constructor ID indexes into a table of messages
+		#    which the combiner is responsible to consult.
+		else:
+			args = pds.semantic_view(view)
+			try: semantic = combine(constructor_id, args)
+			except Exception as e:
+				message = table.get_constructor(constructor_id)
+				semantic = error_channel.rule_exception(e, message, args)
+		pds.pop_phrase(length)
+		pds.shift(table.get_goto(pds.state, nonterminal_id), semantic)
+
+	def perform_immediate_reductions():
 		"""
 		Textbook exposition of shift-reduce parsing may fail to mention the
 		practical importance of this step for real-world applications.
@@ -197,23 +279,76 @@ class PushDownAutomaton:
 		Even if true, the difference would be negligible in most contexts.
 		"""
 		while True:
-			action = self.table.interactive_step(self.state)
-			if action < 0: self.reduce_by_rule(-action-1)
+			action = table.interactive_step(pds.state)
+			if action < 0: reduce_by_rule(-action-1)
 			else: break
 	
-	def handle_error(self, terminal_id, semantic):
+	def handle_error(terminal_id, semantic) -> bool:
 		"""
 		It's time to attempt a parser that can recover smartly from erroneous inputs.
 		For a full exposition of the intended strategy, please see the document at:
 		https://github.com/kjosib/booze-tools/blob/master/docs/Context%20Free%20Error%20Recovery.md
 		
-		That's not for today.
+		:return True if the parser is able to resynchronize.
 		"""
-		stack_symbols = [self.table.get_breadcrumb(state) for state, sem_val in self.stack[1:]]
-		stack_symbols.append(self.table.get_breadcrumb(self.state))
-		raise interfaces.ParseError(stack_symbols, self.table.get_terminal_name(terminal_id), semantic)
-		pass # TODO: Meanwhile, this is just an adaptation of what went before.
+		# map out the recoverable states
+		recoverable = {}
+		for depth in range(len(pds)): # There's a madness to this un-pythonic method...
+			if not table.get_action(pds.index_state(depth), error_token_id): continue
+			try: step = hypothetical_parse(depth, ())
+			except ValueError: continue
+			if step not in recoverable: recoverable[step] = depth
+		if not recoverable:
+			error_channel.cannot_recover()
+			return False
+		
+		for proposal in generate_proposals(terminal_id, semantic, 3):
+			ts, vs = zip(*proposal)
+			for step, depth in recoverable.items():
+				if table.get_action(step, ts[0]): # i.e. the proposal has some hope of working here...
+					try: hypothetical_parse(depth, ts)
+					except ValueError: continue
+					else:
+						commit_recovery(depth, proposal)
+						return True
+		error_channel.did_not_recover()
+		return False
+		
+	def hypothetical_parse(depth, ts):
+		h = Hypothetical(table, pds, depth)
+		h.consume(error_token_id)
+		for t in ts: h.consume(t)
+		return h.tos()
+	
+	def commit_recovery(depth, proposal):
+		err_val = error_channel.will_recover(proposal)
+		pds.pop_phrase(depth)
+		find_shift(error_token_id)
+		pds.shift(table.get_action(pds.state, error_token_id), err_val)
+		for token_id, semantic in proposal:
+			find_shift(token_id)
+			pds.shift(table.get_action(pds.state, token_id), semantic)
+		if token_id == sentinel_end: pds.pop_phrase(1)
+		
+	
+	def generate_proposals(terminal_id, semantic, length):
+		# This generates overlapping rolling runs of tokens.
+		proposal = [(terminal_id, semantic)]
+		for symbol, value in token_iterator:
+			proposal.append((table.get_translation(symbol), value))
+			if len(proposal) >= length:
+				yield proposal
+				proposal.pop(0)
+		proposal.append((sentinel_end, None))
+		while proposal:
+			yield proposal
+			proposal.pop(0)
+		
+	
+	sentinel_end = table.get_translation(interfaces.END_OF_TOKENS)
+	error_token_id = table.get_translation(interfaces.ERROR_SYMBOL)
+	pds = PushDownState(table.get_initial(language))
+	token_iterator = iter(token_stream)
+	return basic_machine_cycle()
 
-def parse(table: interfaces.ParseTable, combine, each_token, *, language=None):
-	pda = PushDownAutomaton(table, combine, interfaces.ErrorChannel())
-	return pda.parse(each_token, language=language)
+

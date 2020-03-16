@@ -58,15 +58,15 @@ def illustration(single_line:str, start:int, width:int=0, *, prefix='') -> str:
 
 class SourceText:
 	""" A wrapper for e.g. a program source text which can print a half-respectable error message with context. """
-	def __init__(self, content:str, mode='normal', filename:str=None):
+	def __init__(self, content:str, line_breaks='normal', filename:str=None):
 		self.content = content
 		self.filename = filename
-		self.__mode = mode
+		self.line_breaks = line_breaks
 	
 	def __make_bounds(self):
 		""" Lazily only find line breaks if it turns out to be necessary for a particular text. """
 		if not hasattr(self, '__bound'):
-			inside = [m.end() for m in LINEBREAK_MODE[self.__mode].finditer(self.content)]
+			inside = [m.end() for m in LINEBREAK_MODE[self.line_breaks].finditer(self.content)]
 			self.__bounds = [0] + inside + [len(self.content)]
 
 	def find_row_col(self, index:int):

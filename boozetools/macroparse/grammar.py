@@ -159,6 +159,7 @@ def _capture_(positional_element:Element) -> Element:
 
 METAGRAMMAR.renaming('positional_element', 'actual_parameter')
 METAGRAMMAR.rule('positional_element', 'message')(Action)
+METAGRAMMAR.rule('positional_element', 'err_token')(lambda x:Symbol(interfaces.ERROR_SYMBOL))
 
 METAGRAMMAR.renaming('actual_parameter', 'symbol') # alternation brackets should not nest directly...
 METAGRAMMAR.rule('actual_parameter', '[ .' + one_or_more('symbol') + ' ]')(InlineRenaming)
@@ -186,6 +187,7 @@ METAGRAMMAR.rule('condition', '.name arrow .'+NAMES)(None)
 LEX = miniscan.Definition()
 LEX.ignore(r'\s+') # Ignore whitespace
 LEX.token('name', r'\l\w*') # Identifiers as token type "name".
+LEX.token('err_token', r'\$error\$') # the error token is a bit special: it can't be an LHS or have precedence.
 LEX.token('topic', r'_/\W') # Bare underline means "the current production rule head".
 LEX.token_map('message', r':\l\w*', lambda tx:tx[1:]) # Strip out the colon for message names
 @LEX.on(r'%\l+') # Build pragma token types from the text.
@@ -211,7 +213,7 @@ class ErrorHelper:
 		self.current_line_nr = line_nr
 		metascan = LEX.scan(line)
 		try: return METAGRAMMAR.parse(metascan, language=language)
-		except miniscan.ScanError as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
+		except interfaces.ScanError as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
 		except interfaces.ParseError as e:
 			self.gripe_about(
 				line, metascan.current_position(),

@@ -107,13 +107,10 @@ with open(os.path.join(os.path.dirname(__file__), 'pascal.pas')) as fh:
 for text in samples:
 	text = text.strip()
 	if text:
-		try: print(parse(text)[0])
-		except interfaces.ParseError as e:
-			stack, token, value = e.args
-			print("Parse error at token:", repr(token))
-			print('Parser stack looks like:')
-			print('\t'+' '.join(stack))
-			exit(1)
+		try:
+			syntax_tree = parse(text)
+			if syntax_tree: print(syntax_tree[0])
+			else: print("failed; moving on...")
 		except UnterminatedComment as e:
 			print("Unterminated Comment at %d"%(e.args[0]))
 			exit(1)

@@ -19,6 +19,10 @@ On a separate note, you could make a good case for splitting this file in twain.
 
 from . import pretty
 
+END_OF_TOKENS = '<END>' # An agreed artificial "end-of-text" terminal-symbol.
+ERROR_SYMBOL = '$error$' # An agreed "error" symbol.
+# Note that the scanner should NEVER emit either of the above two symbols.
+# However, the error symbol may appear in the right-hand side of a production rule.
 
 class LanguageError(ValueError):
 	""" Base class of all exceptions arising from the language machinery. """
@@ -34,15 +38,15 @@ class ScannerBlocked(LanguageError):
 		super().__init__(position, condition)
 		self.position, self.condition = position, condition
 
-class ParseError(LanguageError):
-	""" Raised if the parser gets lost trying to reconstruct the structure of a phrase. """
-	# TODO: Deprecation in progress...
-	def __init__(self, stack_symbols, lookahead, yylval):
-		super().__init__(stack_symbols, lookahead, yylval)
-		self.stack_symbols, self.lookahead, self.yylval = stack_symbols, lookahead, yylval
-	def condition(self) -> str:
-		return ' '.join(self.stack_symbols) + ' %s %s'%(pretty.DOT, self.lookahead)
-
+# class ParseError(LanguageError):
+# 	""" Raised if the parser gets lost trying to reconstruct the structure of a phrase. """
+# 	# TODO: Deprecation in progress...
+# 	def __init__(self, stack_symbols, lookahead, yylval):
+# 		super().__init__(stack_symbols, lookahead, yylval)
+# 		self.stack_symbols, self.lookahead, self.yylval = stack_symbols, lookahead, yylval
+# 	def condition(self) -> str:
+# 		return ' '.join(self.stack_symbols) + ' %s %s'%(pretty.DOT, self.lookahead)
+#
 class GeneralizedParseError(LanguageError): pass
 
 class DriverError(Exception):
@@ -72,19 +76,18 @@ class ErrorChannel:
 	For the moment I'm assuming you have a handle to the scanner so you
 	can get the input-file location of error events...
 	"""
-	def bad_token(self, kind, semantic, stack_symbols):
+	def unexpected_token(self, kind, semantic, pds):
 		"""
 		The parser has just been given a bogus token.
 		It will enter recovery mode next.
 		`kind` and `semantic` are whatever the scanner provided.
-		`stack_symbols` is the reduced left-context of the broken parse.
+		`pds` is the state of the push-down automaton at the point of error.
 		"""
 	
-	def bad_eof(self, stack_symbols):
+	def unexpected_eof(self, pds):
 		"""
 		The parser ran out of tokens unexpectedly.
-		There's no point trying to recover.
-		`stack_symbols` is the reduced left-context of the broken parse.
+		`pds` is the state of the push-down automaton at the point of error.
 		"""
 	
 	def will_recover(self, tokens):
@@ -92,6 +95,8 @@ class ErrorChannel:
 		The parser has seen a token sequence sufficient to resynchronize.
 		`tokens` is that sequence. The parser will next commit to this
 		recovery. (Perhaps there should be a way to prevent it?)
+		The return value from this method will appear as the semantic content
+		of the "error" position in the error rule that was ultimately chosen.
 		"""
 	
 	def did_not_recover(self):
@@ -113,7 +118,7 @@ class ErrorChannel:
 		"""
 		raise e
 	
-	def rule_exception(self, e:Exception, rule_id, args):
+	def rule_exception(self, e:Exception, message, args):
 		"""
 		Exception `e` bubbled out of the combining function.
 		Maybe you'd like to add some context?
@@ -183,7 +188,6 @@ class ParseTable:
 	def get_constructor(self, constructor_id) -> object: raise NotImplementedError(type(self), 'return whatever will make sense to the corresponding combiner.')
 	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language, which by the way is usually `None `.')
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of the symbol that shifts into this state.')
-	def get_terminal_name(self, terminal_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of this-numbered terminal.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self), 'Return the reduce instruction for interactive-reducing states; zero otherwise.')
 	# These next two methods are in support of GLR parsing:
 	def get_split_offset(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
