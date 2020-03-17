@@ -89,7 +89,7 @@ class TypicalApplication(interfaces.ScanErrorListener, interfaces.ParseErrorList
 		self.unexpected_token(interfaces.END_OF_TOKENS, None, pds)
 	
 	def will_recover(self, tokens):
-		self.source.complain(*self.yy.current_span(), message="Recovered parsing")
+		if len(tokens) >= 3: print("Trying to recover.", file=sys.stderr)
 		
 	def did_not_recover(self):
 		print("Could not recover.", file=sys.stderr)

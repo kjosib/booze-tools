@@ -122,7 +122,8 @@ class PushDownState:
 	
 	def succeed(self):
 		""" Fetch the final summary semantic-value. """
-		return self.stack[0][1]
+		assert len(self.stack) == 1, (self.stack, self.state)
+		return self.stack.pop()[1]
 	
 	def index_state(self, depth:int):
 		""" Turns out sometimes we need the state N steps deep in the stack, for error recovery. """
@@ -324,11 +325,9 @@ def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None,
 	def commit_recovery(depth, proposal):
 		err_val = on_error.will_recover(proposal)
 		pds.pop_phrase(depth)
-		find_shift(error_token_id)
-		pds.shift(table.get_action(pds.state, error_token_id), err_val)
+		pds.shift(find_shift(error_token_id), err_val)
 		for token_id, semantic in proposal:
-			find_shift(token_id)
-			pds.shift(table.get_action(pds.state, token_id), semantic)
+			pds.shift(find_shift(token_id), semantic)
 		if token_id == sentinel_end: pds.pop_phrase(1)
 		
 	
