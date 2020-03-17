@@ -60,7 +60,7 @@ class Calculator(runtime.TypicalApplication):
 	def rule_exception(self, ex: Exception, message, args):
 		""" For this application there is one non-fatal parse exception... """
 		if message == 'lookup' and isinstance(ex, KeyError):
-			self.source.complain(*self.yy.current_span(), message="-- OCH! No such variable %r. --"%e.args)
+			self.source.complain(*self.yy.current_span(), message="-- OCH! No such variable %r. --"%ex.args)
 			return 0
 		else:
 			return super().rule_exception(ex, message, args)
