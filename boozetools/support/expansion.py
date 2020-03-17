@@ -88,9 +88,6 @@ class CompactDFA(interfaces.FiniteAutomaton):
 	def get_next_state(self, current_state: int, codepoint: int) -> int:
 		return self.delta(current_state, self.classifier.classify(codepoint))
 	
-	def default_initial_condition(self) -> str:
-		return 'INITIAL'
-
 class CompactHandleFindingAutomaton(interfaces.ParseTable):
 	"""
 	This implements the ParseTable interface (for use with the generic parse algorithm)

@@ -31,7 +31,7 @@ program expressionTest (input, output);   {Sample tvi code at http://www.cs.vass
  begin
    a := 3;
    b := a * 4;
-   c := (b + a)/ 2; deliberate bogosity...
+   c := (b + a)/ 2;
  end.
 ####
 
@@ -51,7 +51,7 @@ begin
         write(m[3]);
         write(m[4]);
         write(m[5])
-end.
+end. {
 ####
 
 
@@ -62,7 +62,7 @@ begin
   read(a);
   read(b);
   x[a] := 6.783;
-  write(a,b,x[a])
+  write(a,b,x[a])    deliberate bogosity...
 end.
 ####
 

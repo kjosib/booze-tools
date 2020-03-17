@@ -24,6 +24,8 @@ ERROR_SYMBOL = '$error$' # An agreed "error" symbol.
 # Note that the scanner should NEVER emit either of the above two symbols.
 # However, the error symbol may appear in the right-hand side of a production rule.
 
+DEFAULT_INITIAL_CONDITION = 'INITIAL' # This really is another design constant.
+
 class LanguageError(ValueError):
 	""" Base class of all exceptions arising from the language machinery. """
 
@@ -38,39 +40,9 @@ class ScannerBlocked(LanguageError):
 		super().__init__(position, condition)
 		self.position, self.condition = position, condition
 
-# class ParseError(LanguageError):
-# 	""" Raised if the parser gets lost trying to reconstruct the structure of a phrase. """
-# 	# TODO: Deprecation in progress...
-# 	def __init__(self, stack_symbols, lookahead, yylval):
-# 		super().__init__(stack_symbols, lookahead, yylval)
-# 		self.stack_symbols, self.lookahead, self.yylval = stack_symbols, lookahead, yylval
-# 	def condition(self) -> str:
-# 		return ' '.join(self.stack_symbols) + ' %s %s'%(pretty.DOT, self.lookahead)
-#
 class GeneralizedParseError(LanguageError): pass
 
-class DriverError(Exception):
-	"""
-	This is an exception wrapper around any exception NOT deriving from LanguageError
-	which may be raised in the process of trying to invoke a parse action or scan action.
-
-	In order to see the ACTUAL problem at the BOTTOM of the stack trace (and hide all the
-	stack frames involved in the bowels of the parse engine), do something like:
-
-	parse = runtime.the_simple_case(tables(), driver, driver, interactive=True)
-	try: goal = parse(text.content)
-	except interfaces.DriverError as e:
-		text.complain(*parse.scanner.current_span(), message=str(e.args))
-		raise e.__cause__ from None
-	except interfaces.ScannerBlocked as e:
-		... complain about a scan error ...
-	except interfaces.ParseError as e:
-		... complain about a parse error ...
-
-	Maybe code like this will eventually become a convenience method...
-	"""
-
-class ErrorChannel:
+class ParseErrorListener:
 	"""
 	Implement this interface to report/respond to parse errors.
 	For the moment I'm assuming you have a handle to the scanner so you
@@ -109,21 +81,24 @@ class ErrorChannel:
 		"""
 		The parser attempted to enter recovery mode, but there are no
 		recoverable states on the parse stack, so recovery is impossible.
+		
+		Default behavior is
 		"""
+		return self.did_not_recover()
 	
-	def scan_exception(self, e:Exception):
+	def rule_exception(self, ex:Exception, message, args):
 		"""
-		Exception `e` bubbled out of the scanner.
-		The parser is prepared to try again to read a token.
+		Q: If a combining function raises an exception, what should happen?
+		A: It depends.
+		
+		Maybe the exception should not happen: some extra context might help
+		you reproduce and debug the problem. Log the context and re-raise.
+		
+		Maybe certain exceptions represent non-fatal conditions, but you'd
+		rather separate policy from mechanism. Deal with it and return the
+		semantic value that should replace the aborted attribute-synthesis.
 		"""
-		raise e
-	
-	def rule_exception(self, e:Exception, message, args):
-		"""
-		Exception `e` bubbled out of the combining function.
-		Maybe you'd like to add some context?
-		"""
-		raise e
+		raise ex from None # Hide the catch-and-rethrow from the traceback.
 
 class Classifier:
 	"""
@@ -168,13 +143,6 @@ class FiniteAutomaton:
 		""" Return the associated rule ID if this state is terminal, otherwise None. """
 		raise NotImplementedError(type(self))
 
-	def default_initial_condition(self) -> str:
-		"""
-		The default scan condition, which must work for the FiniteAutomaton's .get_condition(...) method.
-		Moved from ScanRules because it's more strongly coupled to what the FiniteAutomaton knows about.
-		"""
-		raise NotImplementedError(type(self), FiniteAutomaton.default_initial_condition.__doc__)
-	
 
 class ParseTable:
 	"""
@@ -264,11 +232,18 @@ class ScanRules:
 	def invoke(self, yy:Scanner, rule_id:int) -> object:
 		"""
 		Override this according to your application.
-		The generic scanner algorithm will yield any non-null return values from this function.
+		For example, if you want to emit tokens, call yy.token(kind, semantic)
 		"""
 		raise NotImplementedError(type(self), ScanRules.invoke.__doc__)
 
-	def blocked(self, yy:Scanner):
+class ScanErrorListener:
+	"""
+	Implement this interface to report/respond to scan errors.
+	For the moment I'm assuming you have a handle to the scanner so you
+	can get the input-file location of error events...
+	"""
+	
+	def scan_blocked(self, yy:Scanner):
 		"""
 		The scanner will call this to report blockage. It will have prepared
 		to skip the offending character. Your job is to report the error to
@@ -280,4 +255,15 @@ class ScanRules:
 		recovery mode finished.
 		"""
 		raise ScannerBlocked(yy.current_position(), yy.current_condition())
+	
+	def scan_exception(self, yy:Scanner, rule_id:int, ex:Exception):
+		"""
+		If the implementation of scan rule raises an exception, the scanner
+		engine will pass that exception to this method (along with its own
+		state and the ID number of the failing rule). You're welcome to add
+		any sort of context cues, logging, even trying to recover.
+		
+		If this returns normally, then scanning will resume normally.
+		"""
+		raise ex from None # Hide the catch-and-rethrow from the traceback.
 

@@ -35,6 +35,8 @@ GLOSSARY_JSON = """
 """
 example_folder = os.path.dirname(example.mini_json.__file__)
 
+mock_scan_listener = interfaces.ScanErrorListener()
+mock_parse_listener = interfaces.ParseErrorListener()
 
 def parse_tester(self:unittest.TestCase, parse):
 	# Smoke Test
@@ -68,7 +70,7 @@ class TestMacroJson(unittest.TestCase):
 		pass
 	
 	def macroscan_json(self, text):
-		return recognition.IterableScanner(text=text, automaton=self.dfa, rules=self.scan_rules, start='INITIAL')
+		return recognition.IterableScanner(text=text, automaton=self.dfa, rules=self.scan_rules, start='INITIAL', on_error=mock_scan_listener)
 	
 	def test_00_macroparse_compiled_scanner(self):
 		def parse(text):
@@ -81,7 +83,7 @@ class TestMacroJson(unittest.TestCase):
 		parser_data = self.automaton['parser']
 		spt = expansion.CompactHandleFindingAutomaton(parser_data)
 		combine = runtime.parse_action_bindings(example.macro_json.ExampleJSON(), spt.message_catalog)
-		parse_tester(self, lambda text: shift_reduce.parse(spt, combine, self.macroscan_json(text)))
+		parse_tester(self, lambda text: shift_reduce.parse(spt, combine, self.macroscan_json(text), on_error=mock_parse_listener))
 		pass
 
 class TestCalculator(unittest.TestCase):
@@ -106,7 +108,7 @@ class TestCalculator(unittest.TestCase):
 			('3i-2', -2+3j),
 		]:
 			with self.subTest(text=text):
-				self.assertAlmostEqual(example.calculator.parse(text), expect)
+				self.assertAlmostEqual(example.calculator.instance.parse(text), expect)
 
 class SimpleParseDriver:
 	""" Act as a stand-in for parsing non-deterministic things as needed for the tests. """

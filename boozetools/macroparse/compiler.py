@@ -169,7 +169,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 			return conditions
 		if head == 'patterns':
 			nonlocal current_pattern_group
-			current_pattern_group = tokens[1] if len(tokens)>1 else 'INITIAL'
+			current_pattern_group = tokens[1] if len(tokens)>1 else interfaces.DEFAULT_INITIAL_CONDITION
 			return patterns
 		if head == 'precedence': return precedence
 		if head == 'productions':

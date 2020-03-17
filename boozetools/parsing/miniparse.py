@@ -4,7 +4,7 @@ from ..support import interfaces, foundation
 from . import automata, context_free, shift_reduce
 
 
-class MiniParse:
+class MiniParse(interfaces.ParseErrorListener):
 	""" Connects BNF production rules directly to Python functions. No frills. Very useful as-is. """
 	def __init__(self, *start, method='LALR'):
 		self.__grammar = context_free.ContextFreeGrammar()
@@ -76,6 +76,6 @@ class MiniParse:
 	def parse(self, each_token, *, language=None):
 		hfa = self.get_hfa()
 		constructors = hfa.constructors
-		return shift_reduce.parse(hfa, lambda cid,args:constructors[cid](*args), each_token, language=language)
+		return shift_reduce.parse(hfa, lambda cid,args:constructors[cid](*args), each_token, language=language, on_error=self)
 	
 def _collect_tuple(*items): return items

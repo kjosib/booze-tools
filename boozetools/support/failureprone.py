@@ -53,7 +53,7 @@ LINEBREAK_MODE = {
 def illustration(single_line:str, start:int, width:int=0, *, prefix='') -> str:
 	""" Builds up a picture of where something appears in a line of text. Useful for polite error messages. """
 	blanks = ''.join(c if c == '\t' else ' ' for c in prefix + single_line[:start])
-	underline = '^'*(width or 1)+'-- right there'
+	underline = '^'*(width or 1)+'-- near here'
 	return prefix + single_line.rstrip() + '\n' + blanks + underline
 
 class SourceText:
@@ -76,11 +76,10 @@ class SourceText:
 		col = index - self.__bounds[row]
 		return row, col
 	
-	def complain(self, index:int, width=1, *, message:str=None):
-		"""  """
+	def complain(self, index:int, width=1, *, message:str=""):
+		""" Present an informative error message with an illustration of context. """
 		row, col = self.find_row_col(index)
 		line = self.content[self.__bounds[row]:self.__bounds[row + 1]]
-		if self.filename is None: print("At line %d, column %d,"%(row+1, col+1), file=sys.stderr)
-		else: print("At line %d, column %d, in file %s"%(row+1, col+1, self.filename), file=sys.stderr)
+		if self.filename is None: print("At line %d, column %d:"%(row+1, col+1), message, file=sys.stderr)
+		else: print("At line %d, column %d, in %s:"%(row+1, col+1, self.filename), message, file=sys.stderr)
 		print(illustration(line, col, width, prefix=' >>> '), file=sys.stderr)
-		if message is not None: print(message, file=sys.stderr)

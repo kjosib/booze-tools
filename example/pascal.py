@@ -25,9 +25,11 @@ import os
 from boozetools.support import runtime, interfaces
 from boozetools.macroparse import compiler
 
-class UnterminatedComment(interfaces.LanguageError): pass
+# Similar to what's done in the calculator example, this reads and compiles the grammar every time.
+definition_path = os.path.join(os.path.dirname(__file__), 'pascal.md')
+tables = compiler.compile_file(definition_path, method='LR1')  # or maybe: json.load('pascal.automaton')
 
-class PascalDriver:
+class Pascal(runtime.TypicalApplication):
 	"""
 	This the approach where the parser builds an abstract tree and semantic analysis is done in a separate phase.
 	Because this is JUST an example and test-rig for the juicier bits of the parser generator, I'm not going to
@@ -40,7 +42,13 @@ class PascalDriver:
 	The object-oriented way to proceed would almost certainly be to build a class hierarchy to represent
 	different kinds of nodes: semantic analysis and IR-code generation become methods on those classes.
 	"""
-	def __init__(self, reserved_words): self.reserved = frozenset(reserved_words)
+	
+	# As mentioned in the definition file, the all-upper-case terminals are reserved words.
+	reserved = frozenset(T for T in tables['parser']['terminals'] if T.isalpha() and T == T.upper())
+	
+	def __init__(self):
+		super().__init__(tables)
+		
 	def scan_ignore(self, yy: interfaces.Scanner, what_to_ignore):
 		"""
 		The language definition file (pascal.md) provides an argument (comment or whitespace) to the
@@ -48,7 +56,7 @@ class PascalDriver:
 		"""
 		pass
 	def scan_unterminated_comment(self, yy: interfaces.Scanner):
-		raise UnterminatedComment(yy.current_position())
+		self.source.complain(yy.current_position(), message="Unterminated comment begins")
 	def scan_integer(self, yy: interfaces.Scanner): yy.token('integer', int(yy.matched_text()))
 	def scan_decimal(self, yy: interfaces.Scanner): yy.token('real', float(yy.matched_text()))
 	def scan_scientific_notation(self, yy: interfaces.Scanner): yy.token('real', float(yy.matched_text()))
@@ -94,12 +102,6 @@ class PascalDriver:
 		else: return ('.neg.', item)
 
 
-# Similar to what's done in the calculator example, this reads and compiles the grammar every time.
-definition_path = os.path.join(os.path.dirname(__file__), 'pascal.md')
-tables = compiler.compile_file(definition_path, method='LR1')  # or maybe: json.load('pascal.automaton')
-# As mentioned in the definition file, the all-upper-case terminals are reserved words.
-driver = PascalDriver([T for T in tables['parser']['terminals'] if T.isalpha() and T==T.upper()])
-parse = runtime.the_simple_case(tables, driver, driver)
 
 print("=====================")
 with open(os.path.join(os.path.dirname(__file__), 'pascal.pas')) as fh:
@@ -107,15 +109,8 @@ with open(os.path.join(os.path.dirname(__file__), 'pascal.pas')) as fh:
 for text in samples:
 	text = text.strip()
 	if text:
-		try:
-			syntax_tree = parse(text)
-			if syntax_tree: print(syntax_tree[0])
-			else: print("failed; moving on...")
-		except UnterminatedComment as e:
-			print("Unterminated Comment at %d"%(e.args[0]))
-			exit(1)
-		except interfaces.ScannerBlocked as e:
-			print("Scan error at character %d"%(e.args[0]))
-			exit(1)
+		syntax_tree = Pascal().parse(text, filename=text.splitlines()[0])
+		if syntax_tree: print(syntax_tree[0])
+		else: print("failed; moving on...")
 print("=====================")
 print("Everything parsed OK.")

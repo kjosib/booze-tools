@@ -29,7 +29,6 @@ class Definition(interfaces.ScanRules):
 		self.__minimize = minimize
 		self.__awaiting_action = False
 	
-	def default_initial_condition(self) -> str: pass
 	def get_trailing_context(self, rule_id: int): return self.__trails[rule_id]
 	
 	def get_dfa(self) -> interfaces.FiniteAutomaton:
@@ -39,8 +38,9 @@ class Definition(interfaces.ScanRules):
 			if self.__minimize: self.__dfa = self.__dfa.minimize_states().minimize_alphabet()
 		return self.__dfa
 	
-	def scan(self, text, *, start=None, env=None):
-		scanner = recognition.IterableScanner(text=text, automaton=self.get_dfa(), rules=self, start=start)
+	def scan(self, text, *, start=None, env=None, on_error:interfaces.ScanErrorListener = None):
+		if on_error is None: on_error = interfaces.ScanErrorListener()
+		scanner = recognition.IterableScanner(text=text, automaton=self.get_dfa(), rules=self, start=start, on_error=on_error)
 		scanner.env = env
 		return scanner
 		

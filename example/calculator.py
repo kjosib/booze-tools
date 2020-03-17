@@ -16,7 +16,9 @@ import operator, math, os
 from boozetools.support import runtime, interfaces
 from boozetools.macroparse import compiler
 
-class CalculatorDriver:
+tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'), method='LALR')
+
+class Calculator(runtime.TypicalApplication):
 	"""
 	This is relatively simple, but it does demonstrate a persistent memory.
 	"""
@@ -29,6 +31,8 @@ class CalculatorDriver:
 		self.parse_power = operator.pow
 		self.parse_negate = operator.neg
 		self.parse_lookup = self.memory.__getitem__
+		# Subtlety: call the superclass initializer last because of dynamically added parse methods...
+		super().__init__(tables)
 	
 	def scan_ignore_whitespace(self, yy: interfaces.Scanner): pass
 	def scan_punctuation(self, yy: interfaces.Scanner): yy.token(yy.matched_text())
@@ -53,26 +57,22 @@ class CalculatorDriver:
 		print("-- The error seems confined to the parentheses. I'll just use a zero... --")
 		return 0
 
-class ErrorChannel(runtime.TypicalErrorChannel):
-	def rule_exception(self, e: Exception, message, args):
-		if message == 'lookup' and isinstance(e, KeyError):
-			self.source.complain(*self.scanner.current_span(), message="-- OCH! No such variable %r. --"%e.args)
+	def rule_exception(self, ex: Exception, message, args):
+		""" For this application there is one non-fatal parse exception... """
+		if message == 'lookup' and isinstance(ex, KeyError):
+			self.source.complain(*self.yy.current_span(), message="-- OCH! No such variable %r. --"%e.args)
 			return 0
 		else:
-			return super().rule_exception(e, message, args)
+			return super().rule_exception(ex, message, args)
 	
-
-
-tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'), method='LALR')
-driver = CalculatorDriver()
-parse = runtime.the_simple_case(tables, driver, driver, on_error=ErrorChannel)
+instance = Calculator()
 
 def main():
 	import sys
-	driver.parse_help(None)
+	instance.parse_help(None)
 	for line in sys.stdin:
 		text = line.strip()
 		if text.lower() == 'quit': break
-		elif text: parse(text)
+		elif text: instance.parse(text)
 	
 if __name__ == '__main__': main()

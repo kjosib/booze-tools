@@ -121,8 +121,8 @@ class PushDownState:
 		return self.stack[offset][1]
 	
 	def succeed(self):
-		assert len(self.stack) == 1, self.stack
-		return self.stack.pop()[1]
+		""" Fetch the final summary semantic-value. """
+		return self.stack[0][1]
 	
 	def index_state(self, depth:int):
 		""" Turns out sometimes we need the state N steps deep in the stack, for error recovery. """
@@ -173,7 +173,7 @@ class Hypothetical:
 				return step
 
 
-def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None, error_channel=interfaces.ErrorChannel()):
+def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None, on_error:interfaces.ParseErrorListener):
 	"""
 		:param table: Satisfy the ParseTable interface however you like.
 			By reference to the "look-ahead" (terminal) symbol and the current
@@ -196,7 +196,7 @@ def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None,
 			if the error channel propagates an exception: exceptionally.
 			otherwise: by `raise interfaces.ParseError(...)`
 		
-		:param error_channel: Once I get error recovery implemented, this
+		:param on_error: Once I get error recovery implemented, this
 			will be how you direct the parser to report error events.
 	"""
 	
@@ -216,17 +216,15 @@ def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None,
 				pds.shift(action, semantic)
 				perform_immediate_reductions()
 			else:
-				error_channel.unexpected_token(symbol, semantic, pds)
+				on_error.unexpected_token(symbol, semantic, pds)
 				if not handle_error(token_id, semantic): return
 		# After the last real symbol, the parser needs to prepare as if
 		# about to shift a notional "end-of-text" symbol -- but don't
 		# actually perform that shift: instead that's the signal of
 		# an accepted sentence in the language.
 		if not find_shift(sentinel_end):
-			error_channel.unexpected_eof(pds)
+			on_error.unexpected_eof(pds)
 			if not handle_error(sentinel_end, None): return
-		if len(pds.stack)!=1:
-			print([table.get_breadcrumb(q) for q in pds.path_from_root()], pds.state)
 		return pds.succeed()
 	
 	def find_shift(terminal_id):
@@ -259,7 +257,7 @@ def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None,
 			try: semantic = combine(constructor_id, args)
 			except Exception as e:
 				message = table.get_constructor(constructor_id)
-				semantic = error_channel.rule_exception(e, message, args)
+				semantic = on_error.rule_exception(e, message, args)
 		pds.pop_phrase(length)
 		pds.shift(table.get_goto(pds.state, nonterminal_id), semantic)
 
@@ -291,37 +289,40 @@ def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None,
 		
 		:return True if the parser is able to resynchronize.
 		"""
-		# map out the recoverable states
-		recoverable = {}
+		# Begin by making a map of the recoverable states.
+		#  nb: This relies on dictionary insertion order.
+		avenues = {}
 		for depth in range(len(pds)): # There's a madness to this un-pythonic method...
 			if not table.get_action(pds.index_state(depth), error_token_id): continue
-			try: step = hypothetical_parse(depth, ())
+			try: recovery_state = contemplate_recovery(depth, ())
 			except ValueError: continue
-			if step not in recoverable: recoverable[step] = depth
-		if not recoverable:
-			error_channel.cannot_recover()
+			if recovery_state not in avenues: avenues[recovery_state] = depth
+		if not avenues:
+			on_error.cannot_recover()
 			return False
 		
+		# Try each possible re-start against all avenues for recovery.
+		# It's a bit brutish, but it works.
 		for proposal in generate_proposals(terminal_id, semantic, 3):
 			ts, vs = zip(*proposal)
-			for step, depth in recoverable.items():
-				if table.get_action(step, ts[0]): # i.e. the proposal has some hope of working here...
-					try: hypothetical_parse(depth, ts)
+			for recovery_state, depth in avenues.items():
+				if table.get_action(recovery_state, ts[0]): # i.e. the proposal has some hope of working here...
+					try: contemplate_recovery(depth, ts)
 					except ValueError: continue
 					else:
 						commit_recovery(depth, proposal)
 						return True
-		error_channel.did_not_recover()
+		on_error.did_not_recover()
 		return False
 		
-	def hypothetical_parse(depth, ts):
+	def contemplate_recovery(depth, terminal_ids) -> int:
 		h = Hypothetical(table, pds, depth)
 		h.consume(error_token_id)
-		for t in ts: h.consume(t)
+		for t in terminal_ids: h.consume(t)
 		return h.tos()
 	
 	def commit_recovery(depth, proposal):
-		err_val = error_channel.will_recover(proposal)
+		err_val = on_error.will_recover(proposal)
 		pds.pop_phrase(depth)
 		find_shift(error_token_id)
 		pds.shift(table.get_action(pds.state, error_token_id), err_val)

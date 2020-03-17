@@ -7,6 +7,7 @@ and (non-variable) trailing context.
 
 from ..support import interfaces
 
+END_OF_INPUT = -1 # Used in place of a character ordinal. Agrees with the DFA builder.
 
 class IterableScanner(interfaces.Scanner):
 	"""
@@ -15,11 +16,12 @@ class IterableScanner(interfaces.Scanner):
 	
 	Your application must provide a suitable finite-automaton, rule bindings, and error handler.
 	"""
-	def __init__(self, *, text:str, automaton: interfaces.FiniteAutomaton, rules: interfaces.ScanRules, start):
+	def __init__(self, *, text:str, automaton: interfaces.FiniteAutomaton, rules: interfaces.ScanRules, start, on_error:interfaces.ScanErrorListener):
 		if not isinstance(text, str): raise ValueError('text argument should be a string, not a ', type(text))
 		self.__text = text
 		self.__automaton = automaton
 		self.__rules = rules
+		self.on_error = on_error
 		self.enter(start)
 		self.__stack = []
 		self.__start, self.__mark = None, None
@@ -68,7 +70,7 @@ class IterableScanner(interfaces.Scanner):
 		cursor, mark, rule_id, jam = self.__start, self.__start, None, automaton.jam_state()
 		while True:
 			try: codepoint = ord(text[cursor])
-			except IndexError: codepoint = -1 # EAFP: Python will check string length anyway...
+			except IndexError: codepoint = END_OF_INPUT # EAFP: Python will check string length anyway...
 			q = automaton.get_next_state(q, codepoint)
 			if q == jam: break
 			cursor += 1
@@ -88,26 +90,34 @@ class IterableScanner(interfaces.Scanner):
 		self.__buffer.append((kind, semantic))
 	
 	def __iter__(self):
-		text, automaton, rules = self.__text, self.__automaton, self.__rules
-		self.__start, eot = 0, len(text)
-		while self.__start < eot:
-			rule_id = self.scan_one_raw_lexeme(self.__q0())
+		"""
+		It seems convenient that iterating over the scanner should cause it to scan...
+		"""
+		
+		def fire_rule(rule_id):
+			"""
+			The process to fire a rule is somewhat distinct from the decision.
+			There are a couple bits
+			"""
 			if rule_id is None:
-				self.__mark = self.__start + 1 # generally we shall skip the offending character...
-				rules.blocked(self) # and let the rules driver have a crack at doing something better.
+				self.__mark = self.__start + 1 # Prepare to "match" the offending character...
+				self.on_error.scan_blocked(self) # and delegate to the error handler, which may do anything.
 			else:
 				trail = rules.get_trailing_context(rule_id)
 				if trail is not None: self.less(trail)
-				rules.invoke(self, rule_id)
-			yield from self.__buffer
-			self.__buffer.clear()
+				try: rules.invoke(self, rule_id)
+				except Exception as ex: self.on_error.scan_exception(self, rule_id, ex)
+				yield from self.__buffer
+				self.__buffer.clear()
+
+		automaton, rules = self.__automaton, self.__rules
+		self.__start, eot = 0, len(self.__text)
+		while self.__start < eot:
+			yield from fire_rule(self.scan_one_raw_lexeme(self.__q0()))
 			self.__start = self.__mark
 		# Now determine if an end-of-file rule needs to execute:
-		q = automaton.get_next_state(self.__q0(), -1)
-		if q>=0:
-			rules.invoke(self, automaton.get_state_rule_id(q))
-			yield from self.__buffer
-			self.__buffer.clear()
+		q = automaton.get_next_state(self.__q0(), END_OF_INPUT)
+		if q>=0: yield from fire_rule(automaton.get_state_rule_id(q))
 		
 	def current_position(self) -> int:
 		""" As advertised. This was motivated by a desire to produce helpful error messages. """
