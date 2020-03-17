@@ -135,7 +135,7 @@ expression, by which point it will be confused beyond all hope of redemption.
 
 &lt;end hand-wavy part&gt;
 
-## The Smarter Mechanism
+## The Slightly Smarter Mechanism
 
 Let us take special note of those parse states
 for which `$error$` may be -- or has been -- shifted. Let us call these
@@ -161,6 +161,26 @@ token to determine if that (or some deeper) state is the correct recovery state.
 
 In the alternative, it's possible to recover the lookahead set from a point on
 the stack, but this is a bit of a pain. (A method is described later on.)
+
+## The Caveat in the Smarter Mechanism
+
+One issue remains: Default Reductions.
+
+Consider the (erroneous) calculator expression `5 + 6 ) 7`. And for the sake
+of argument, suppose the catch-all rule `START -> $error$` is part of the grammar.
+
+All is well for the first three tokens but there's no rule for that closing parenthesis.
+On the other hand, there is a reduce-instruction for look-ahead _&lt;END&gt;_, and this
+becomes the default action for the state. As such, the parser recognizes
+the start symbol before even noticing the problem. This is undesirable.
+
+There is an obvious solution: don't use default-reductions. Or at least
+don't use them in the classical way. Find a way to keep the
+"immediate error detection" property of the original LR(1) tables.
+Ideally, do this without sacrificing much table compression or speed.
+
+One possible avenue is that the error matrix can be compressed separately,
+perhaps using row-column equivalence classes.
 
 ## Making the Smarter Mechanism Fast
 
