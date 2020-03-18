@@ -397,7 +397,7 @@ def abstract_lr1_construction(
 	initial = [bft.lookup(frozenset([initial_item(rule_id)])) for rule_id in grammar.initial()]
 	bft.execute(build_state)
 	accept = [graph[qi].shift[language] for qi, language in zip(initial, grammar.start)]
-	print("LR(0) states: %d\t\tLR(1) states:%d" % (len(lr0_catalog), len(graph)))
+	# print("LR(0) states: %d\t\tLR(1) states:%d" % (len(lr0_catalog), len(graph)))
 	return HFA(graph=graph, initial=initial, accept=accept, grammar=grammar, bft=bft)
 
 

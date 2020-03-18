@@ -41,7 +41,7 @@ class TextBookForm:
 		dfa = self.dfa
 		if dfa is None: return
 		return {
-			'dfa': compaction.compress_dfa_matrix(initial=dfa.initial, matrix=dfa.states, final=dfa.final),
+			'dfa': compaction.compress_scanner(initial=dfa.initial, matrix=dfa.states, final=dfa.final),
 			'action': dict(zip(['message', 'parameter', 'trail', 'line_number'], zip(*self.scan_actions))),
 			'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
 		}
@@ -252,8 +252,10 @@ def main():
 	parser.add_argument('--dev', action='store_true', help='Operate in "development mode" -- which changes from time to time.')
 	parser.add_argument('--dot', action='store_true', help="Create a .dot file for visualizing the parser via the Graphviz package.")
 	parser.add_argument('-m', '--method', choices=automata.PARSE_TABLE_METHODS, default='LR1', type=str.upper, help="Which parser table construction method to use.")
+	parser.add_argument('-v', '--verbose', action='store_true', help="Squawk, mainly about the table compression stats.")
 	if len(sys.argv) < 2: exit(parser.print_help())
 	args = parser.parse_args()
+	if args.verbose: compaction.VERBOSE = True
 	stem, extension = os.path.splitext(args.source_path)
 	target_path = args.output or stem+'.automaton'
 	if os.path.exists(target_path) and not args.force:

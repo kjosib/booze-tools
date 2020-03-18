@@ -53,7 +53,7 @@ class InlineRenaming(Element):
 		symbol = "[%s]"%("|".join(alts))
 		if ebnf.implementing(symbol):
 			for a in alts:
-				ebnf.plain_cfg.rule(symbol, [a], None, None)
+				ebnf.plain_cfg.rule(symbol, [a], None, None, 0, None)
 		return symbol
 		
 
@@ -306,9 +306,9 @@ class EBNF_Definition:
 			return self.plain_cfg
 	
 	def internal_action(self, placeholder:str, capture:tuple):
+		""" These are implemented internally much like an epsilon rule, but able to capture certain left-context. """
 		if self.implementing(placeholder):
-			attribute = (placeholder, capture, self.error_help.current_line_nr)
-			self.plain_cfg.rule(placeholder, [], attribute, None)
+			self.plain_cfg.rule(placeholder, [], None, placeholder, capture, self.error_help.current_line_nr)
 		else:
 			self.error_help.gripe(
 				'Internal action %s was first elaborated on line %d; reuse is not (presently) supported.' %

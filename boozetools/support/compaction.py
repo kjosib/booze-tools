@@ -19,6 +19,7 @@ and provided for later.
 import collections
 from . import foundation
 
+VERBOSE = False
 
 def most_common(row, *, default=0):
 	""" Return the most-common element in the array; break ties arbitrarily. """
@@ -28,7 +29,7 @@ def most_common(row, *, default=0):
 def is_homogeneous(row):
 	return len(row) < 2 or all(r == row[0] for r in row)
 	
-def compress_dfa_matrix(*, initial:dict, matrix:list, final:dict) -> dict:
+def compress_dfa_delta_function(matrix:list) -> dict:
 	"""
 	Per issue #8: A possibly-novel approach to condensing large scanner tables.
 	The method is described at https://github.com/kjosib/booze-tools/issues/8
@@ -57,7 +58,7 @@ def compress_dfa_matrix(*, initial:dict, matrix:list, final:dict) -> dict:
 		for col in row:
 			check[base+col] = i
 	# Tie a pretty bow around it:
-	delta = {
+	return {
 		'exceptions': encode_displacement_function(exceptions),
 		'background': {
 			# For most states, the most common entry is the error transition. Thus: exceptions to that rule:
@@ -67,9 +68,13 @@ def compress_dfa_matrix(*, initial:dict, matrix:list, final:dict) -> dict:
 			'offset': offset, 'check': check,
 		},
 	}
+	
+
+def compress_scanner(*, initial:dict, matrix:list, final:dict) -> dict:
 	height, width = len(matrix), len(matrix[0])
+	delta = compress_dfa_delta_function(matrix)
 	metric = measure_approximate_cost(delta)
-	print("DFA matrix was %d rows, %d cols = %d cells; compact form is about %d cells (%0.2f%%)"%(
+	if VERBOSE: print("DFA matrix was %d rows, %d cols = %d cells; compact form is about %d cells (%0.2f%%)"%(
 		height, width, height * width, metric, (100.0*metric/(height*width))
 	))
 	return {'delta': delta, 'initial': initial, 'final': list(final.keys()), 'rule': list(final.values()),}
@@ -114,7 +119,7 @@ def first_fit_decreasing(indices: list, *, allow_negative:bool):
 	for i in foundation.grade(list(map(len, indices)), descending=True):
 		displacements[i] = first_fit(indices[i])
 	size = max(used)+1 if used else 0
-	print("First-Fit Decreasing placed %d entries among %d positions."%(len(used), size))
+	if VERBOSE: print("First-Fit Decreasing placed %d entries among %d positions."%(len(used), size))
 	return displacements, size
 
 def encode_displacement_function(exceptions:list):
@@ -228,7 +233,7 @@ def compress_action_table(matrix:list, essential_errors:set, recovering_states) 
 			edit_table['offset'][q] = len(edit_table['check']) # This marks it as an interactive state.
 	result = {'reduce': reduce, 'fallback': fallback, 'edits': edit_table,}
 	metric = measure_approximate_cost(result)
-	print("Action matrix was %d * %d = %d; compressed to %d (%0.2f%%)"%(
+	if VERBOSE: print("Action matrix was %d * %d = %d; compressed to %d (%0.2f%%)"%(
 		height, width, height*width, metric, (100.0*metric)/(height*width)
 	))
 	return result
@@ -293,10 +298,10 @@ def compress_goto_table(goto_table:list) -> dict:
 		col_index[nonterm_id] = col_class_offset[cls_id] + hi_water_mark
 	
 	# Wrap up and return.
-	print("GOTO table original size: %d rows, %d columns -> %d cells"%(height, width, height * width))
+	if VERBOSE: print("GOTO table original size: %d rows, %d columns -> %d cells"%(height, width, height * width))
 	result = {'row_index': row_index, 'col_index': col_index, 'quotient': quotient+residue, 'mark': hi_water_mark}
 	metric = measure_approximate_cost(result)
-	print("GOTO compact size: %d (%.2f%%)"%(metric, 100.0*metric/(height * width)))
+	if VERBOSE: print("GOTO compact size: %d (%.2f%%)"%(metric, 100.0*metric/(height * width)))
 	return result
 
 def find_row_equivalence(matrix, do_not_care):

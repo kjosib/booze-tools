@@ -174,6 +174,9 @@ On the other hand, there is a reduce-instruction for look-ahead _&lt;END&gt;_, a
 becomes the default action for the state. As such, the parser recognizes
 the start symbol before even noticing the problem. This is undesirable.
 
+In short, the "default-reduction" table-compaction strategy undermines the
+immediate-error-detection property of the original uncompressed ACTION table.
+
 There is an obvious solution: don't use default-reductions. Or at least
 don't use them in the classical way. Find a way to keep the
 "immediate error detection" property of the original LR(1) tables.
@@ -225,14 +228,11 @@ one error-state deeper on the stack or one more token to the right. Once the
 trial-parse is convinced things are smooth again, then re-process the chosen
 recovery string on the real stack before reporting a successful recovery.
 
-There are two caveats and a bonus:
+There are two caveats:
 * End-of-text: don't try to read past it. If you're in trial-parse mode, commit.
 * Interactive parsing: An error production rule could be declared as
  "interactive", making the error response engine commit to the current
  recovery guess.
-* It's no longer necessary in this scheme to prevent recovery-states from
- having default-reductions -- but still quite helpful to minimize false
- starts, and cheap enough in terms of storage, even for embedded systems.
 
 ### Better "expected-token" reporting:
 
@@ -251,9 +251,28 @@ requires special care around epsilon-productions, but requires
 no extra data. Much of the mechanism could be shared with the
 trial-parse machinery from the previous section.
 
+The proper solution is to keep all the error actions -- somehow.
+
 ## Experiments
 
-None. Yet. But perhaps eventually.
+I'm keen to try some different approaches to compressing
+full-strength LR tables. Fortunately `macroparse` can emit tables as CSV
+files, so it's easy to build an experimental pipeline.
+
+Modern machines have big memories: why care about table size? Because cache.
+Smaller is faster.
+
+At the moment, I have two sizable grammars: one for _Pascal_ and one for
+_decaf_, a language based on _Java_ but designed for undergraduate courses
+on the subject of compilers. I might also like for the compaction methods
+to work reasonably well on smaller tables too. The _calculator_ and _json_
+examples are thus part of my experimental population. I'd like more. Feel
+free to contribute.
+
+The observation that motivates "default-reduction" is that many cells in a
+row tend to have the same "reduce" entry. But many cells in a _column_
+tend to have the same "shift" entry. Perhaps by splitting the shifts
+from the reduces, we can find a better way to compact both?
 
 ## Conclusion
 

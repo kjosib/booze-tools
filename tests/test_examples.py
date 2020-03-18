@@ -49,7 +49,9 @@ def parse_tester(self:unittest.TestCase, parse):
 		entry = data['glossary']['GlossDiv']['GlossList']['GlossEntry']
 		self.assertEqual('Standard Generalized Markup Language', entry['GlossTerm'])
 		self.assertEqual(["GML", "XML"], entry['GlossDef']['GlossSeeAlso'])
-
+def compile_example(which, method):
+	""" Returns a set of tables; good smoke test overall for sample grammars. """
+	return compiler.compile_file(os.path.join(example_folder, which+'.md'), method=method)
 
 class TestMiniJson(unittest.TestCase):
 	
@@ -60,7 +62,7 @@ class TestMiniJson(unittest.TestCase):
 class TestMacroJson(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
-		automaton = compiler.compile_file(os.path.join(example_folder, 'json.md'), method='LALR')
+		automaton = compile_example('json', 'LALR')
 		# The transition into and back out of JSON should be non-destructive, but it's worth being sure.
 		serialized = standard_json.dumps(automaton)
 		cls.automaton = standard_json.loads(serialized)
@@ -123,7 +125,7 @@ class TestNonDeterministic(unittest.TestCase):
 	
 	@classmethod
 	def setUpClass(cls) -> None:
-		automaton = compiler.compile_file(os.path.join(example_folder, 'nondeterministic_grammar.md'), method='LR1')
+		automaton = compile_example('nondeterministic_grammar', 'LR1')
 		cls.parse_table = expansion.CompactHandleFindingAutomaton(automaton['parser'])
 	
 	# @unittest.skip('time trials')
@@ -158,4 +160,9 @@ class TestNonDeterministic(unittest.TestCase):
 		except interfaces.GeneralizedParseError: pass
 		else: assert False
 	
-	
+class TestSampleLanguages(unittest.TestCase):
+	def test_they_should_build(self):
+		for identity in 'decaf', 'pascal':
+			with self.subTest(identity):
+				compile_example(identity, 'LR1')
+		
