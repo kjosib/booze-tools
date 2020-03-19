@@ -2,10 +2,13 @@
 
 For now there are three major components. Eventually there will be more. These are:
 
-* MiniParse -- Provides Minimal-LR(1)* or LALR(1) or Canonical-LR(1) with operator-precedence grammar facilities (like Lemon, YACC, or Bison).
+* MiniParse -- Provides Minimal-LR(1)* or LALR(1) or Canonical-LR(1) with
+  operator-precedence grammar facilities (like Lemon, YACC, or Bison), error
+  productions, and good-and-proper error recovery.
 * MiniScan -- Provides a DFA-based backtracking scanner (like Flex or Lex) with a few extra goodies.
 * MacroParse -- This is the crown jewel of the package right now. It:
-    * provides for a separate document containing the definitions of a scanner and parser.
+    * provides for a separate document containing the definitions of both a scanner and parser.
+    * supports error productions and error-recovery in the same manner as MiniParse.
     * uses markdown format to make [just such a document](https://github.com/kjosib/booze-tools/tree/master/example/json.md) into a [literate program](http://www.literateprogramming.com/). 
     * enables a single such definition to be used for different applications on different host languages.
     * supports a macro language for simplifying otherwise-redundant parser specifications.

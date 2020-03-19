@@ -67,6 +67,7 @@ class TypicalApplication(interfaces.ScanErrorListener, interfaces.ParseErrorList
 	exception: Exception
 	
 	def __init__(self, tables):
+		assert list(tables.get('version', [])) == [0,0,1], 'Data table version mismatch: '+repr(tables.get('version'))
 		scanner_tables = tables['scanner']
 		self.__dfa = expansion.CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet'])
 		self.__rules = BoundScanRules(action=scanner_tables['action'], driver=self)

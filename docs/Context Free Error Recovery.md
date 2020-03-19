@@ -74,12 +74,12 @@ in books. And frankly, I've forgotten where or how I learned some of this stuff.
 _Error-productions_ seem like a reasonable choice for designing the strategy
 for how a parser will respond to error conditions.
 
-We posit a special terminal symbol (spelled `$error$` in this document) which
-is not part of the lexicon but represents a string of incorrect or missing
+We posit a special terminal symbol (spelled `$error$` in this document and
+throughout the accompanying software) which
+is not part of any lexicon but represents a string of incorrect or missing
 terminal symbols. In the grammar definition, we allow this terminal to appear
 in a production rule's right-hand-side (RHS) just like any other -- possibly
-with the added restriction that it may not precede a non-terminal, or itself
-(directly or indirectly).
+with some added restrictions.
 
 During a parse, in the event of an unacceptable token, the naive mechanism
 performs the following steps:
@@ -96,7 +96,7 @@ current state of the LR tables have an instruction.
 again too soon before some number (usually 3) of tokens have been processed without error.
 
 On balance, this roughly paraphrases the relevant section of the BISON manual.
-However, this algorithm has a flaw.
+However, this algorithm has flaws.
 
 ## The Flaw in the Naive Mechanism
 
@@ -183,7 +183,8 @@ don't use them in the classical way. Find a way to keep the
 Ideally, do this without sacrificing much table compression or speed.
 
 One possible avenue is that the error matrix can be compressed separately,
-perhaps using row-column equivalence classes.
+perhaps using row-column equivalence classes. In fact the latest version
+of the accompanying software does something along these lines.
 
 ## Making the Smarter Mechanism Fast
 
@@ -229,10 +230,19 @@ trial-parse is convinced things are smooth again, then re-process the chosen
 recovery string on the real stack before reporting a successful recovery.
 
 There are two caveats:
-* End-of-text: don't try to read past it. If you're in trial-parse mode, commit.
-* Interactive parsing: An error production rule could be declared as
- "interactive", making the error response engine commit to the current
- recovery guess.
+##### End-of-text:
+* Don't try to read past it. If you're in trial-parse mode, commit.
+
+##### Interactive parsing:
+* Insisting on three successive good tokens means the parser could have
+some weird interactive behavior.
+
+One common design strategy puts interactivity in production-rule actions.
+For example, having recognized a line of input (including end-of-line)
+you might generate a response message and prompt for more input.
+
+Ideally there should be some way to signal situations like this and have
+the parser behave responsibly.
 
 ### Better "expected-token" reporting:
 
@@ -241,23 +251,26 @@ observed and what (other) tokens might have made sense in that position.
 
 Naively we might just look at the ACTION table for the current state
 (the one the parser was in at the instant an error was detected) and
-all possible tokens. Generally this works fine for the SHIFT set.
-The complete reduce-set is often lost to the table compaction method,
-particularly for states that have been coded with a default-reduction.
-You can recover a (context-perfect) reduce-set from a parse stack by
+all possible tokens.
+
+Even without an error-matrix at hand, you can recover a context-perfect
+reduce-set from a parse stack by
 recursively simulating the effects of every possible token to see if
 it would eventually lead to a shift. This is a bit of work, and it
 requires special care around epsilon-productions, but requires
 no extra data. Much of the mechanism could be shared with the
 trial-parse machinery from the previous section.
 
+Confusion ensues when default-reductions fired before the parser
+notices that the look-ahead token is in error. 
+
 The proper solution is to keep all the error actions -- somehow.
 
 ## Experiments
 
-I'm keen to try some different approaches to compressing
+I tried some different approaches to compressing
 full-strength LR tables. Fortunately `macroparse` can emit tables as CSV
-files, so it's easy to build an experimental pipeline.
+files, so it was easy to build an experimental pipeline.
 
 Modern machines have big memories: why care about table size? Because cache.
 Smaller is faster.
@@ -269,10 +282,11 @@ to work reasonably well on smaller tables too. The _calculator_ and _json_
 examples are thus part of my experimental population. I'd like more. Feel
 free to contribute.
 
-The observation that motivates "default-reduction" is that many cells in a
-row tend to have the same "reduce" entry. But many cells in a _column_
-tend to have the same "shift" entry. Perhaps by splitting the shifts
-from the reduces, we can find a better way to compact both?
+I observed that there was a lot of regularity in terms of which tokens could
+reduce from row to row, even as the reduction within a row tended to be
+homogeneous. Therefore, the ACTION table is now split into three parts.
+The first two parts are as before, but now a compact boolean field
+mediates between reduction and error.
 
 ## Conclusion
 

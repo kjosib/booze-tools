@@ -134,11 +134,10 @@ def sparse_table_function(*, index, data) -> callable:
 	return lambda R, C: hashmap.get((R, C))
 
 
-def compress_action_table(matrix: list, essential_errors: set) -> dict:
+def compress_action_table(matrix: list) -> dict:
 	"""
 	Produce a compact representation of the "ACTION" table for a typical shift-reduce parser.
 	:param matrix: list-of-lists of parse actions: positive numbers are shifts; negative are reductions, zero is error.
-	:param essential_errors: set of pairs of (state_id, terminal_id) which MUST NOT go to a default reduction.
 	:return: a compact structure.
 
 	For each state in the ACTION table, the reduction with the largest lookahead set becomes a

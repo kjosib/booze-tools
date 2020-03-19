@@ -72,6 +72,10 @@ def everted(permutation:Sequence) -> list:
 	for i, x in enumerate(permutation): result[x] = i
 	return result
 
+def collation(seq:Sequence, *, descending=False):
+	""" The inverse of `grade`: Tells you how a sorted sequence was permuted to get here. """
+	return everted(grade(seq, descending=descending))
+
 def strongly_connected_components_by_tarjan(graph):
 	"""
 	See https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm

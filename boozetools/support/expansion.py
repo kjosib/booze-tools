@@ -4,6 +4,7 @@ prepared using the algorithms in .compaction.py. If you were to build
 a runtime system for another host language, you'd have to port these.
 """
 
+from typing import Callable
 from . import interfaces
 from ..scanning import charclass
 
@@ -14,15 +15,28 @@ def displacement_function(otherwise:callable, *, offset, check, value) -> callab
 	I'll admit that form is a bit unusual in Python, but it DOES encapsulate the interpretation.
 	"""
 	size = len(check)
-	def fn(state_id:int, symbol_id:int) -> int:
-		index = offset[state_id] + symbol_id
-		if 0 <= index < size and check[index] == state_id:
-			probe = value[index]
-			if probe is not None: return probe
-		return otherwise(state_id, symbol_id)
+	def fn(row_id:int, column:int) -> int:
+		index = offset[row_id] + column
+		if 0 <= index < size and check[index] == row_id:
+			return value[index]
+		else:
+			return otherwise(row_id, column)
 	return fn
 
-def scanner_delta_function(*, exceptions:dict, background:dict) -> callable:
+def boolean_field(row_class, col_class, offset, check) -> Callable[[int, int], bool]:
+	"""
+	Make a reader for a boolean field. It's used in a couple places.
+	They're compressed by equivalence-classification along both dimensions.
+	"""
+	size = len(check)
+	def fn(row:int, col:int) -> bool:
+		try: rc, cc = row_class[row], col_class[col]
+		except IndexError: return False # The bogus-token is out of range.
+		index = offset[rc] + cc
+		return 0 <= index < size and check[index] == rc
+	return fn
+
+def scanner_delta_function(*, exceptions:dict, bg:dict) -> callable:
 	"""
 	This function came out of some observations about the statistics of scanner delta functions.
 	The best way to understand this function is by reference to the following URL:
@@ -36,28 +50,27 @@ def scanner_delta_function(*, exceptions:dict, background:dict) -> callable:
 	The very most common entry in a row is usually the error transition (-1), so instead of a
 	complete list per state, only the exceptions to this rule are listed.
 	"""
-	zeros = dict(zip(*background['zero']))
+	zeros = dict(zip(*bg['zero']))
+	broad_pattern = boolean_field(bg['row_class'], bg['col_class'], bg['offset'], bg['check'])
 	def general_population(state_id:int, symbol_id:int) -> int:
-		rc, cc = background['row_class'][state_id], background['column_class'][symbol_id]
-		offset = background['offset'][rc] + cc
-		if 0 <= offset < len(background['check']) and background['check'][offset] == rc:
-			return background['one'][state_id]
+		if broad_pattern(state_id, symbol_id): return bg['one'][state_id]
 		else: return zeros.get(state_id, -1)
 	return displacement_function(general_population, **exceptions)
 
 def parser_action_function(*, reduce, fallback, edits) -> callable:
-	def otherwise(state_id:int, symbol_id:int) -> int:
-		""" This deals with chasing the fallback links connected to the "similar rows" concept. """
-		fb = fallback[state_id]
-		return look_at(fb, symbol_id) if fb >= 0 else None # Note the recursion here...
-	look_at = displacement_function(otherwise, **edits)
-	def fn(state_id:int, symbol_id:int) -> int:
-		""" This part adds the "default reductions" layer. """
-		step = look_at(state_id, symbol_id)
-		return step if step is not None else reduce[state_id]
-	# The somewhat-clever way eager-to-reduce states are denoted is recovered this way:
-	interactive = [r if displacement==len(edits['check']) else 0 for r,displacement in zip(reduce, edits['offset'])]
-	return fn, interactive.__getitem__
+	background = parser_reduce_function(**reduce)
+	offset, check, value = edits['offset'], edits['check'], edits['value']
+	size = len(check)
+	def chase(row, col):
+		probe = row
+		while probe >= 0:
+			index = offset[probe] + col
+			if 0 <= index < size and check[index] == probe: return value[index]
+			probe = fallback[probe]
+		return background(row, col)
+	absent = len(edits['check'])
+	interactive = [r if o == absent and f==-1 else 0 for r,o,f in zip(reduce['d_reduce'], edits['offset'], fallback)]
+	return chase, interactive.__getitem__
 
 def parser_goto_function(*, row_index, col_index, quotient, mark ) -> callable:
 	def probe(state_id:int, nonterminal_id:int):
@@ -65,6 +78,13 @@ def parser_goto_function(*, row_index, col_index, quotient, mark ) -> callable:
 		dominant = min(r, c)
 		return quotient[dominant] if dominant < mark else quotient[r+c-mark]
 	return probe
+
+def parser_reduce_function(*, d_reduce, row_class, col_class, offset, check):
+	predicate = boolean_field(row_class, col_class, offset, check)
+	def fn(row, col):
+		dr = d_reduce[row] # Consulting the predicate costs a few cycles.
+		return dr if dr and predicate(row, col) else 0 # Do it only at need.
+	return fn
 
 class CompactDFA(interfaces.FiniteAutomaton):
 	"""
@@ -105,7 +125,7 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 		self.__rule = parser['rule']['rules']
 		self.message_catalog = parser['rule']['constructor']
 		if 'splits' in parser:
-			self.get_split_offset = parser['action']['reduce'].__len__ # Gets the number of states.
+			self.get_split_offset = parser['action']['reduce']['d_reduce'].__len__ # Gets the number of states.
 			self.get_split = parser['splits'].__getitem__
 		
 	def get_translation(self, symbol) -> int:

@@ -32,7 +32,7 @@ class TextBookForm:
 	def as_compact_form(self, *, filename):
 		return {
 			'description': 'MacroParse Automaton',
-			'version': (0, 0, 0),
+			'version': (0, 0, 1),
 			'source': filename,
 			'scanner': self.compact_scanner(),
 			'parser': self.compact_parser(),
@@ -50,10 +50,9 @@ class TextBookForm:
 		if table is None: return
 		symbol_index = {s: i for i, s in enumerate(table.terminals + table.nonterminals)}
 		symbol_index[None] = None
-		recovering_states = [q for q,s in enumerate(table.breadcrumbs) if s == interfaces.ERROR_SYMBOL]
 		form = {
 			'initial': table.initial,
-			'action': compaction.compress_action_table(table.action_matrix, table.essential_errors, recovering_states),
+			'action': compaction.compress_action_table(table.action_matrix, table.nonassoc_errors),
 			'goto': compaction.compress_goto_table(table.goto_matrix),
 			'terminals': table.terminals,
 			'nonterminals': table.nonterminals,

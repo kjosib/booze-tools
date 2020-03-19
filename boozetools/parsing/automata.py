@@ -622,12 +622,12 @@ class DragonBookTable(interfaces.ParseTable):
 	that limits the ways you can instantiate this class. See the function `tabulate(...)`.
 	"""
 	
-	def __init__(self, *, initial: dict, action: list, goto: list, essential_errors: set, rules: list, terminals: list,
+	def __init__(self, *, initial: dict, action: list, goto: list, nonassoc_errors: set, rules: list, terminals: list,
 	             nonterminals: list, breadcrumbs: list, splits=()):
 		self.initial = initial
 		self.action_matrix = action
 		self.goto_matrix = goto
-		self.essential_errors = essential_errors
+		self.nonassoc_errors = nonassoc_errors
 		self.translate = {symbol: i for i, symbol in enumerate(terminals)}
 		nontranslate = {symbol: i for i, symbol in enumerate(nonterminals)}
 		self.terminals, self.nonterminals = terminals, nonterminals
@@ -651,7 +651,7 @@ class DragonBookTable(interfaces.ParseTable):
 			k.discard(0)
 			if len(k) == 1: interactive.append(min(k.pop(), 0))
 			else: interactive.append(0)
-		for q, t in essential_errors: interactive[q] = False
+		for q, t in nonassoc_errors: interactive[q] = False
 		self.interactive_step = self.interactive_rule_for = interactive.__getitem__
 	
 	def get_rule(self, rule_id: int) -> tuple:
@@ -692,7 +692,7 @@ class DragonBookTable(interfaces.ParseTable):
 			return [head] + [[q, self.breadcrumbs[q]] + mask(q, row, essential) for q, row in enumerate(matrix)]
 		
 		pretty.write_csv_grid(pathstem + '.action.csv',
-			typical_grid(self.terminals, self.action_matrix, self.essential_errors))
+			typical_grid(self.terminals, self.action_matrix, self.nonassoc_errors))
 		pretty.write_csv_grid(pathstem + '.goto.csv', typical_grid(self.nonterminals, self.goto_matrix, frozenset()))
 	
 	def get_split_offset(self) -> int:
@@ -820,7 +820,7 @@ def tabulate(hfa: HFA[LA_State], *, style:ParsingStyle) -> DragonBookTable:
 	translate = {t:i for i,t in enumerate(terminals)}
 	nonterminals = sorted(grammar.symbol_rule_ids.keys())
 	##### Tabulate the states into dense matrices ACTION and GOTO:
-	action, goto, essential_errors = [], [], set()
+	action, goto, nonassoc_errors = [], [], set()
 	conflict = collections.defaultdict(set)
 	for q, state in enumerate(hfa.graph):
 		goto.append([state.shift.get(s, 0) for s in nonterminals])
@@ -832,19 +832,19 @@ def tabulate(hfa: HFA[LA_State], *, style:ParsingStyle) -> DragonBookTable:
 			if rule_ids == ():
 				# This is how function `reachable(...)` communicates a non-association situation.
 				assert shift == 0
-				essential_errors.add((q,idx))
+				nonassoc_errors.add((q,idx))
 			elif shift == 0 and len(rule_ids) == 1:
 				action_row[idx] = encode_reduce(rule_ids[0])
 			else: action_row[idx] = style.decide_inadequacy(q, symbol, shift, rule_ids, grammar.rules)
 		action.append(action_row)
-	for q, t in essential_errors: action[q][t] = 0
+	for q, t in nonassoc_errors: action[q][t] = 0
 	for q in hfa.accept: action[q][0] = q
 	style.report(hfa)
 	return DragonBookTable(
 		initial=dict(zip(grammar.start, hfa.initial)),
 		action=action,
 		goto=goto,
-		essential_errors=essential_errors,
+		nonassoc_errors=nonassoc_errors,
 		rules=grammar.rules,
 		terminals=terminals,
 		nonterminals=nonterminals,
