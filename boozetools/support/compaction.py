@@ -252,9 +252,11 @@ def decompose_by_edit_distance(action:List[List[int]], focus:List[Set[int]]):
 	"""
 	
 	def find_edits(subject, basis, must_cover, basis_covers):
-		# All those cells in must_cover except those CORRECTLY COVERED by the basis.
+		# If the basis covers it WRONGLY, it must be an edit.
+		# If it must be covered and the basis does not, it's an edit.
+		# But if the basis covers it correctly, then it's not an edit.
 		return [
-			c for c in must_cover
+			c for c in must_cover|basis_covers
 			if not (c in basis_covers and basis[c] == subject[c])
 		]
 	
