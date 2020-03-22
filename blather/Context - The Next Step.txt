@@ -1,0 +1,42 @@
+Context: The Next Step
+============
+
+Very technically, a CFG parser recovers a concrete parse tree and performs a
+bottom-up tree transduction by handing semantic values to your parse-action
+functions. As such, it can do a lot of things but it's rather inconvenient
+to do anything context-sensitive. Oh, there are tricks. You can use embedded-
+actions and state to transmit some left-context information. Some languages
+are defined to be easy enough to translate in just that manner. Typically
+they require things like forward-declarations.
+
+A single bottom-up pass is insufficient to solve the interesting problems.
+
+Generally, the result of your initial parse-action-driven bottom-up
+transduction is another tree. Generally, you're going to want to walk that
+tree under the control of a top-down recursive algorithm to take your data
+to the next level.
+
+How shall we write that top-down recursive algorithm?
+
+Brute force suggests to use different classes (perhaps in a hierarchy) and
+implement a "walk-tree" method on them. Except it's not long before you're
+walking different parts of the tree for different reasons at different times.
+You wind up with a number of different methods with similar structure, and
+it's hard to keep track of everything, especially as your ambition grows.
+
+That's about the time your Zen-master whacks you on the shoulder with a copy
+of GoF and says "Visitor Pattern". In Python you can get the name of an
+object's class and do stuff with it. So, for example:
+
+```
+class Visitor:
+	def visit(self, host, *args, **kwargs):
+		method_name = 'visit_'+host.__class__.__name__
+		method = getattr(self, method_name)
+		return method(host, *args, **kwargs)
+```
+
+The frabjous thing is the host doesn't even need an `accept(visitor)` method!
+You can tweak this idea in various ways depending on your specific needs.
+
+This makes a dent in the problem.
