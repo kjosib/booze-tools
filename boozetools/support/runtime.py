@@ -120,7 +120,8 @@ def parse_action_bindings(driver, message_catalog):
 		attr = 'action_' + message[1:] if message.startswith(':') else 'parse_' + message
 		try: return getattr(driver, attr)
 		except AttributeError as ex:
-			def fail(*items): raise ex
+			y = ex # Apparently Py3.8 doesn't close over exception objects unless you assign them.
+			def fail(*items): raise y
 			return fail
 	dispatch = [bind(message) for message in message_catalog]
 	def combine(cid:int, args):
