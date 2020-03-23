@@ -661,7 +661,9 @@ class DragonBookTable(interfaces.ParseTable):
 		try: return self.translate[symbol]
 		except KeyError: return len(self.terminals) # Guaranteed to trigger error-processing.
 		
-	def get_action(self, state_id, terminal_id) -> int: return self.action_matrix[state_id][terminal_id]
+	def get_action(self, state_id, terminal_id) -> int:
+		try: return self.action_matrix[state_id][terminal_id]
+		except IndexError: return 0 # And this needs to not panic if a bad token is observed; just cry foul.
 	
 	def get_goto(self, state_id, nonterminal_id) -> int: return self.goto_matrix[state_id][nonterminal_id]
 	
