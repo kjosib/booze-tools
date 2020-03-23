@@ -259,7 +259,11 @@ class EBNF_Definition:
 
 	def read_production_line(self, line:str, line_nr:int):
 		""" This is the main interface to defining grammars. Call this repeatedly for each line of the grammar. """
-		head, rewrites = self.error_help.parse(line, line_nr, 'production')
+		production = self.error_help.parse(line, line_nr, 'production')
+		if production is None:
+			self.error_help.gripe("Yeah, I'm not sure what happened there but it gave me indigestion.")
+			return
+		head, rewrites = production
 		for R in rewrites: R.line_nr = line_nr
 		# Set the current head field, or use it unchanged if not specified on this line:
 		if head is None:
