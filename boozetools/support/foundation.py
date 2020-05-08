@@ -1,6 +1,6 @@
 """ Small is beautiful. These algorithms need no introduction. """
 
-from collections.abc import Sequence, Mapping, Iterable
+from collections.abc import Sequence
 import operator
 
 def allocate(a_list:list, item):
@@ -120,3 +120,32 @@ def strongly_connected_components_hashable(graph:dict):
 		for node in graph.values()
 	]
 	return [[table[q] for q in component] for component in strongly_connected_components_by_tarjan(prime)]
+
+
+class Visitor:
+	"""
+	Visitor-pattern in Python, with fall-back to superclasses along the MRO.
+
+	Actual visitation-algorithms will inherit from Visitor and then each
+	`visit_Foo` method must call `self.visit(host.bar)` as appropriate. This
+	is so that your visitation-algorithm is in control of which bits of an
+	object-graph that it actually visits, and in what order.
+	
+	Does this really belong here? Perhaps it lacks the gravitas of classical
+	algorithms, but it's certainly generic enough and useful in structure-
+	directed applications.
+	"""
+	
+	def visit(self, host, *args, **kwargs):
+		method_name = 'visit_' + host.__class__.__name__
+		try: method = getattr(self, method_name)
+		except AttributeError:
+			# Searching the MRO incurs whatever cost there is to set up an iterator.
+			for cls in host.__class__.__mro__:
+				fallback = 'visit_' + cls.__name__
+				if hasattr(self, fallback):
+					method = getattr(self, fallback)
+					break
+			else: raise
+		return method(host, *args, **kwargs)
+
