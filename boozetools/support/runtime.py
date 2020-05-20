@@ -102,7 +102,7 @@ class TypicalApplication(interfaces.ScanErrorListener, interfaces.ParseErrorList
 	# TODO: By the way, it's no longer clear the scanner should pass `self` as a parameter.
 	
 	def scan_blocked(self, yy: interfaces.Scanner):
-		self.source.complain(yy.current_position(), "Lexical scan got stuck.")
+		self.source.complain(yy.current_position(), message="Lexical scan got stuck.")
 	
 	def scan_exception(self, yy:interfaces.Scanner, rule_id:int, ex:Exception):
 		self.source.complain(*yy.current_span())
