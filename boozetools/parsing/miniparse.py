@@ -6,12 +6,14 @@ from . import automata, context_free, shift_reduce
 
 class MiniParse(interfaces.ParseErrorListener):
 	""" Connects BNF production rules directly to Python functions. No frills. Very useful as-is. """
-	def __init__(self, *start, method='LALR'):
+	def __init__(self, *start, method='LALR', strict=False):
 		self.__grammar = context_free.ContextFreeGrammar()
 		self.__grammar.start.extend(start)
 		self.__hfa: automata.DragonBookTable = None
+		self.__combine = None
 		self.__awaiting_action = False
 		self.__method = method
+		self.__strict = strict
 	
 	def left(self, symbols:list): self.__grammar.assoc(context_free.LEFT, symbols)
 	def right(self, symbols:list): self.__grammar.assoc(context_free.RIGHT, symbols)
@@ -66,16 +68,19 @@ class MiniParse(interfaces.ParseErrorListener):
 			self.__grammar.rule(lhs, rhs, None, con, plc, None)
 	
 	def display(self): self.__grammar.display()
-	def get_hfa(self, *, strict=False):
+	def get_hfa_and_combine(self):
 		if self.__hfa is None:
 			if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the final production rule.')
 			self.__grammar.validate()
-			parse_style = automata.DeterministicStyle(strict)
-			self.__hfa = automata.tabulate(automata.PARSE_TABLE_METHODS[self.__method](self.__grammar), style=parse_style)
-		return self.__hfa
+			self.__hfa = automata.tabulate(
+				automata.PARSE_TABLE_METHODS[self.__method](self.__grammar),
+				style=automata.DeterministicStyle(self.__strict),
+			)
+			constructors = self.__hfa.constructors
+			self.__combine = lambda cid,args:constructors[cid](*args)
+		return self.__hfa, self.__combine
 	def parse(self, each_token, *, language=None):
-		hfa = self.get_hfa()
-		constructors = hfa.constructors
-		return shift_reduce.parse(hfa, lambda cid,args:constructors[cid](*args), each_token, language=language, on_error=self)
+		hfa, combine = self.get_hfa_and_combine()
+		return shift_reduce.parse(hfa, combine, each_token, language=language, on_error=self)
 	
 def _collect_tuple(*items): return items

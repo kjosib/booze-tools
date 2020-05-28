@@ -52,13 +52,16 @@ class BoundScanRules(interfaces.ScanRules):
 	def invoke(self, scan_state: interfaces.Scanner, rule_id:int):
 		return self.__methods[rule_id](scan_state)
 
-class TypicalApplication(interfaces.ScanErrorListener, interfaces.ParseErrorListener):
+class AbstractTypical(interfaces.ScanErrorListener, interfaces.ParseErrorListener):
 	"""
-	This class aims to provide a simple basis for extension and reasonable
-	defaults for a variety of common parsing applications. Those with unusual
-	requirements should consider taking this to bits.
+	Many applications have similar requirements for error reporting and recovery.
+	I'd like to be able to provide a common basis of reasonable default behavior
+	for applications that involve both scanning and parsing, regardless of whether
+	those applications are founded on the 'mini' or the 'macro' framework.
 	
-	THIS MAY SEEM like a method-as-object (anti)pattern. HOWEVER, the real
+	Specialized versions of this class support either of the two frameworks.
+	
+	THIS MAY SEEM like a method-as-object (anti)pattern. However, the real
 	point is a whole mess of configuration and cooperation in one place.
 	"""
 	
@@ -66,13 +69,11 @@ class TypicalApplication(interfaces.ScanErrorListener, interfaces.ParseErrorList
 	yy: interfaces.Scanner
 	exception: Exception
 	
-	def __init__(self, tables):
-		assert list(tables.get('version', [])) == [0,0,1], 'Data table version mismatch: '+repr(tables.get('version'))
-		scanner_tables = tables['scanner']
-		self.__dfa = expansion.CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet'])
-		self.__rules = BoundScanRules(action=scanner_tables['action'], driver=self)
-		self.__hfa = expansion.CompactHandleFindingAutomaton(tables['parser'])
-		self.__combine = parse_action_bindings(self, self.__hfa.message_catalog)
+	def __init__(self, *, dfa: interfaces.FiniteAutomaton, scan_rules: interfaces.ScanRules, hfa:interfaces.ParseTable, combine):
+		self.__dfa = dfa
+		self.__rules = scan_rules
+		self.__hfa = hfa
+		self.__combine = combine
 	
 	def parse(self, text: str, *, line_breaks='normal', filename: str = None, start=None, language=None):
 		if start is None: start = interfaces.DEFAULT_INITIAL_CONDITION
@@ -99,14 +100,30 @@ class TypicalApplication(interfaces.ScanErrorListener, interfaces.ParseErrorList
 		self.source.complain(*self.yy.current_span(), message="During " + repr(message))
 		raise ex from None
 	
-	# TODO: By the way, it's no longer clear the scanner should pass `self` as a parameter.
-	
 	def unexpected_character(self, yy: interfaces.Scanner):
 		self.source.complain(yy.current_position(), message="Lexical scan got stuck.")
 	
 	def exception_scanning(self, yy:interfaces.Scanner, rule_id:int, ex:Exception):
 		self.source.complain(*yy.current_span())
 		raise ex from None
+
+
+class TypicalApplication(AbstractTypical):
+	"""
+	This class specializes for the case of compiled tables such as from MacroParse,
+	to provide reasonable default error handling behavior.
+	"""
+	
+	def __init__(self, tables):
+		assert list(tables.get('version', [])) == [0,0,1], 'Data table version mismatch: '+repr(tables.get('version'))
+		scanner_tables = tables['scanner']
+		hfa = expansion.CompactHandleFindingAutomaton(tables['parser'])
+		super().__init__(
+			dfa = expansion.CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet']),
+			scan_rules = BoundScanRules(action=scanner_tables['action'], driver=self),
+			hfa = hfa,
+			combine = parse_action_bindings(self, hfa.message_catalog)
+		)
 
 
 def parse_action_bindings(driver, message_catalog):

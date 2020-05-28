@@ -213,7 +213,7 @@ class ErrorHelper:
 		self.current_line_nr = line_nr
 		metascan = LEX.scan(line)
 		try: return METAGRAMMAR.parse(metascan, language=language)
-		except interfaces.ScanError as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
+		except interfaces.ScannerBlocked as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
 		except interfaces.ParseError as e:
 			self.gripe_about(
 				line, metascan.current_position(),
