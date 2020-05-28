@@ -258,7 +258,7 @@ def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None,
 			try: semantic = combine(constructor_id, args)
 			except Exception as e:
 				message = table.get_constructor(constructor_id)
-				semantic = on_error.rule_exception(e, message, args)
+				semantic = on_error.exception_parsing(e, message, args)
 		pds.pop_phrase(length)
 		pds.shift(table.get_goto(pds.state, nonterminal_id), semantic)
 

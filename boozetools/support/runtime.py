@@ -95,16 +95,16 @@ class TypicalApplication(interfaces.ScanErrorListener, interfaces.ParseErrorList
 	def did_not_recover(self):
 		print("Could not recover.", file=sys.stderr)
 	
-	def rule_exception(self, ex: Exception, message, args):
+	def exception_parsing(self, ex: Exception, message, args):
 		self.source.complain(*self.yy.current_span(), message="During " + repr(message))
 		raise ex from None
 	
 	# TODO: By the way, it's no longer clear the scanner should pass `self` as a parameter.
 	
-	def scan_blocked(self, yy: interfaces.Scanner):
+	def unexpected_character(self, yy: interfaces.Scanner):
 		self.source.complain(yy.current_position(), message="Lexical scan got stuck.")
 	
-	def scan_exception(self, yy:interfaces.Scanner, rule_id:int, ex:Exception):
+	def exception_scanning(self, yy:interfaces.Scanner, rule_id:int, ex:Exception):
 		self.source.complain(*yy.current_span())
 		raise ex from None
 

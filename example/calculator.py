@@ -57,13 +57,13 @@ class Calculator(runtime.TypicalApplication):
 		print("-- The error seems confined to the parentheses. I'll just use a zero... --")
 		return 0
 
-	def rule_exception(self, ex: Exception, message, args):
+	def exception_parsing(self, ex: Exception, message, args):
 		""" For this application there is one non-fatal parse exception... """
 		if message == 'lookup' and isinstance(ex, KeyError):
 			self.source.complain(*self.yy.current_span(), message="-- OCH! No such variable %r. --"%ex.args)
 			return 0
 		else:
-			return super().rule_exception(ex, message, args)
+			return super().exception_parsing(ex, message, args)
 	
 instance = Calculator()
 

@@ -101,12 +101,12 @@ class IterableScanner(interfaces.Scanner):
 			"""
 			if rule_id is None:
 				self.__mark = self.__start + 1 # Prepare to "match" the offending character...
-				self.on_error.scan_blocked(self) # and delegate to the error handler, which may do anything.
+				self.on_error.unexpected_character(self) # and delegate to the error handler, which may do anything.
 			else:
 				trail = rules.get_trailing_context(rule_id)
 				if trail is not None: self.less(trail)
 				try: rules.invoke(self, rule_id)
-				except Exception as ex: self.on_error.scan_exception(self, rule_id, ex)
+				except Exception as ex: self.on_error.exception_scanning(self, rule_id, ex)
 				yield from self.__buffer
 				self.__buffer.clear()
 

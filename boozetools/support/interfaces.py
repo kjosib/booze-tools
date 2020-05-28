@@ -86,7 +86,7 @@ class ParseErrorListener:
 		"""
 		return self.did_not_recover()
 	
-	def rule_exception(self, ex:Exception, message, args):
+	def exception_parsing(self, ex:Exception, message, args):
 		"""
 		Q: If a combining function raises an exception, what should happen?
 		A: It depends.
@@ -243,7 +243,7 @@ class ScanErrorListener:
 	can get the input-file location of error events...
 	"""
 	
-	def scan_blocked(self, yy:Scanner):
+	def unexpected_character(self, yy:Scanner):
 		"""
 		The scanner will call this to report blockage. It will have prepared
 		to skip the offending character. Your job is to report the error to
@@ -256,7 +256,7 @@ class ScanErrorListener:
 		"""
 		raise ScannerBlocked(yy.current_position(), yy.current_condition())
 	
-	def scan_exception(self, yy:Scanner, rule_id:int, ex:Exception):
+	def exception_scanning(self, yy:Scanner, rule_id:int, ex:Exception):
 		"""
 		If the implementation of scan rule raises an exception, the scanner
 		engine will pass that exception to this method (along with its own
