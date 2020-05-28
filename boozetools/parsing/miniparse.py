@@ -14,20 +14,21 @@ class MiniParse(interfaces.ParseErrorListener):
 		self.__awaiting_action = False
 		self.__method = method
 		self.__strict = strict
+		self.void_symbols = set() # These won't get picked up as arguments.
 	
 	def left(self, symbols:list): self.__grammar.assoc(context_free.LEFT, symbols)
 	def right(self, symbols:list): self.__grammar.assoc(context_free.RIGHT, symbols)
 	def nonassoc(self, symbols:list): self.__grammar.assoc(context_free.NONASSOC, symbols)
 	
-	@staticmethod
-	def __analyze(rhs):
+	def __analyze(self, rhs):
 		rhs = rhs.split()
 		args = []
 		for i,symbol in enumerate(rhs):
 			if symbol.startswith('.'):
 				rhs[i] = symbol[1:]
 				args.append(i)
-		if not args: args = tuple(range(len(rhs))) # Pick up everything if nothing is special.
+		if not args: # Pick up non-void symbols if no dotted symbols appear in the right-hand side.
+			args = tuple(i for i, symbol in enumerate(rhs) if symbol not in self.void_symbols)
 		return tuple(rhs), args
 	
 	def rule(self, lhs:str, rhs:str, prec_sym=None):
@@ -43,7 +44,7 @@ class MiniParse(interfaces.ParseErrorListener):
 		assert self.__hfa is None
 		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the prior production rule.')
 		self.__awaiting_action = True
-		rhs, offsets = MiniParse.__analyze(rhs)
+		rhs, offsets = self.__analyze(rhs)
 		def decorate(fn=None):
 			assert self.__awaiting_action
 			self.__awaiting_action = False
@@ -61,7 +62,7 @@ class MiniParse(interfaces.ParseErrorListener):
 		"""
 		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the prior production rule.')
 		for branch in alternatives:
-			rhs, offsets = MiniParse.__analyze(branch)
+			rhs, offsets = self.__analyze(branch)
 			if len(rhs) == 1: con, plc = None, 0  # Unit/renaming rule
 			elif len(offsets) == 1: con, plc = None, offsets[0]  # Bracketing rule
 			else: raise AssertionError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.' % branch)

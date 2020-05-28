@@ -138,21 +138,22 @@ def APPEND(the_list, element):
 
 ### The MacroParse metagrammar for individual production lines is as follows.
 METAGRAMMAR = miniparse.MiniParse('production', 'precedence', 'condition')
+METAGRAMMAR.void_symbols.update('arrow capture ( ) [ ] , pragma_prec pragma_nondeterministic'.split())
 
-METAGRAMMAR.rule('production', '.head .' + list_of('rewrite', '|'))(None)
+METAGRAMMAR.rule('production', 'head ' + list_of('rewrite', '|'))(None)
 
 METAGRAMMAR.rule('head', '|')(None) # "use prior" is represented by a null "head".
-METAGRAMMAR.rule('head', '.name arrow', )(None) # This will come across as a string.
-METAGRAMMAR.rule('head', '.name ( .%s ) arrow' % list_of('name', ','))(None) # Represent macro heads with (name, args) tuples.
+METAGRAMMAR.rule('head', 'name arrow', )(None) # This will come across as a string.
+METAGRAMMAR.rule('head', 'name ( %s ) arrow' % list_of('name', ','))(None) # Represent macro heads with (name, args) tuples.
 
 ELEMENTS = one_or_more('element')
 METAGRAMMAR.rule('rewrite', ELEMENTS)(Rewrite)
-METAGRAMMAR.rule('rewrite', '.' + ELEMENTS + ' pragma_prec .terminal')(Rewrite)
+METAGRAMMAR.rule('rewrite', ELEMENTS + ' pragma_prec terminal')(Rewrite)
 
 METAGRAMMAR.renaming('terminal', 'name', 'literal')
 
 METAGRAMMAR.renaming('element', 'positional_element')
-@METAGRAMMAR.rule('element', 'capture .positional_element')
+@METAGRAMMAR.rule('element', 'capture positional_element')
 def _capture_(positional_element:Element) -> Element:
 	positional_element.capture = True
 	return positional_element
@@ -162,17 +163,17 @@ METAGRAMMAR.rule('positional_element', 'message')(Action)
 METAGRAMMAR.rule('positional_element', 'err_token')(lambda x:Symbol(interfaces.ERROR_SYMBOL))
 
 METAGRAMMAR.renaming('actual_parameter', 'symbol') # alternation brackets should not nest directly...
-METAGRAMMAR.rule('actual_parameter', '[ .' + one_or_more('symbol') + ' ]')(InlineRenaming)
+METAGRAMMAR.rule('actual_parameter', '[ ' + one_or_more('symbol') + ' ]')(InlineRenaming)
 
 METAGRAMMAR.rule('symbol', 'name')(Symbol)    # Normal symbol
 METAGRAMMAR.rule('symbol', 'literal')(Symbol) # Also a normal symbol with a funny name
 METAGRAMMAR.rule('symbol', 'topic')(Symbol)   # Topic symbol; gets its name fixed later.
-METAGRAMMAR.rule('symbol', '.name ( .' + list_of('actual_parameter', ',') + ' )')(MacroCall)
+METAGRAMMAR.rule('symbol', 'name ( ' + list_of('actual_parameter', ',') + ' )')(MacroCall)
 
 # Sub-language: For specifying precedence and associativity rules:
 NAMES = one_or_more('name')
-METAGRAMMAR.rule('precedence', '.associativity .'+one_or_more('terminal'))(None)
-METAGRAMMAR.rule('precedence', 'pragma_nondeterministic .'+NAMES)(lambda x:(NONDET, x))
+METAGRAMMAR.rule('precedence', 'associativity '+one_or_more('terminal'))(None)
+METAGRAMMAR.rule('precedence', 'pragma_nondeterministic '+NAMES)(lambda x:(NONDET, x))
 
 METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x: context_free.LEFT)
 METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x: context_free.RIGHT)
@@ -181,7 +182,7 @@ METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda x: context_free.BOGUS)
 
 # Sub-language: For specifying the connections between scan conditions:
 METAGRAMMAR.rule('condition', 'name')(lambda x:(x,[]))
-METAGRAMMAR.rule('condition', '.name arrow .'+NAMES)(None)
+METAGRAMMAR.rule('condition', 'name arrow '+NAMES)(None)
 
 ### The lexeme definitions for production rule lines are as follows:
 LEX = miniscan.Definition()
