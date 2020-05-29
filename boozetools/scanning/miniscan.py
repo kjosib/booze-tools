@@ -5,7 +5,7 @@ from ..support import interfaces
 from ..parsing import miniparse
 from . import regular, charset, recognition
 
-PRELOAD = {'ASCII': {k: regular.CharClass(cls) for k, cls in charset.POSIX.items()}}
+PRELOAD = {'ASCII': {k: regular.CharClass(cls) for k, cls in charset.mode_ascii.items()}}
 
 class PatternError(Exception): pass
 class BadReferenceError(PatternError):
@@ -165,7 +165,7 @@ rex.rule('Term', 'Atom { number , }')(lambda a, n: regular.Counted(a, n, None))
 rex.rule('Term', 'Atom { , number }')(lambda a, n: regular.Counted(a, 0, n))
 rex.rule('Term', 'Atom { number , number }')(lambda a, m, n: regular.Counted(a, m, n))
 rex.rule('Atom', '( Regular )')()
-rex.rule('Atom', 'c')(lambda c: regular.CharClass([c, c + 1]))
+rex.rule('Atom', 'c')(lambda c: regular.CharClass(charset.singleton(c)))
 rex.rule('Atom', 'reference')(None)
 rex.rule('Atom', '[ Class ]')(regular.CharClass)
 rex.rule('Class', 'Conjunct')()
@@ -219,26 +219,9 @@ def _BEGIN_():
 		def fn(yy:Scanner): yy.token('$', charclass)
 		return fn
 	
-	dot = PRELOAD['ASCII']['DOT'] = regular.CharClass([0, 10, 14])
-	for codepoint, char in [(0, '0'), (27, 'e'), *enumerate('abtnvfr', 7)]: PRELOAD['ASCII'][char] = regular.CharClass(
-		charset.singleton(codepoint))
-	for codepoint, mnemonic in enumerate('NUL SOH STX ETX EOT ENQ ACK BEL BS TAB LF VT FF CR SO SI DLE DC1 DC2 DC3 DC4 NAK SYN ETB CAN EM SUB ESC FS GS RS US SP'.split()):
-		PRELOAD['ASCII'][mnemonic] = regular.CharClass(charset.singleton(codepoint))
-	PRELOAD['ASCII']['DEL'] = regular.CharClass(charset.singleton(127))
-	PRELOAD['ASCII']['ANY'] = regular.CharClass(charset.UNIVERSAL)
-	PRELOAD['ASCII']['vertical'] = regular.CharClass([10, 14])
-	PRELOAD['ASCII']['horizontal'] = regular.CharClass([8, 10, 32, 33])
-	for shorthand, longhand in [
-		('d', 'digit'),
-		('l', 'alpha'),
-		('w', 'word'),
-		('s', 'space'),
-		('h', 'horizontal'),
-	]:
-		PRELOAD['ASCII'][shorthand] = PRELOAD['ASCII'][longhand]
-		PRELOAD['ASCII'][shorthand.upper()] = regular.CharClass(
-			charset.subtract(dot.cls, PRELOAD['ASCII'][longhand].cls))
 	def ref(x): return PRELOAD['ASCII'][x]
+	
+	dot = ref('DOT')
 	
 	eof_charclass = regular.CharClass(charset.EOF)
 	dollar_charclass = regular.CharClass(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].cls))
@@ -268,7 +251,8 @@ def _BEGIN_():
 	with META.condition(None, '[') as anywhere:
 		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.Plus(ref('word')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\')
-		for c, n in [('x', 2), ('u', 4), ('U', 8)]: META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
+		for c, n in [('x', 2), ('u', 4), ('U', 8)]:
+			META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
 		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharClass([64, 128])), action=_control)
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)

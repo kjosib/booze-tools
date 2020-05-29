@@ -92,3 +92,30 @@ POSIX['graph'] = subtract(POSIX['print'], POSIX['space'])
 POSIX['punct'] = subtract(POSIX['graph'], POSIX['alnum'])
 
 assert all(cls == sorted(cls) for cls in POSIX.values())
+
+
+# To the POSIX classes I add a number of additional definitions:
+mode_ascii = dict(POSIX)
+def _init_():
+	low_ASCII_names = 'NUL SOH STX ETX EOT ENQ ACK BEL BS TAB LF VT FF CR SO SI DLE DC1 DC2 DC3 DC4 NAK SYN ETB CAN EM SUB ESC FS GS RS US SP'.split()
+	mode_ascii.update((char, singleton(codepoint)) for codepoint, char in [
+		(0, '0'), (27, 'e'), (127, 'DEL'),
+		*enumerate('abtnvfr', 7),
+		*enumerate(low_ASCII_names),
+	])
+	mode_ascii['ANY'] = UNIVERSAL
+	mode_ascii['vertical'] = range_class(10, 13)
+	mode_ascii['DOT'] = complement(mode_ascii['vertical'])
+	mode_ascii['horizontal'] = union(range_class(8, 9), singleton(32))
+	for shorthand, longhand in [
+		('d', 'digit'),
+		('l', 'alpha'),
+		('w', 'word'),
+		('s', 'space'),
+		('h', 'horizontal'),
+	]:
+		mode_ascii[shorthand] = mode_ascii[longhand]
+		mode_ascii[shorthand.upper()] = subtract(mode_ascii['DOT'], mode_ascii[longhand])
+
+
+_init_()
