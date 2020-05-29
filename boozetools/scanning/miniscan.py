@@ -227,47 +227,48 @@ def _BEGIN_():
 		yy.token('^')
 		yy.enter('start_class')
 	
+	def common_rules(ctx, *rules):
+		for lit, act in rules: ctx.install_rule(expression=txt(lit), action=act)
+	
 	def ref(x): return PRELOAD['ASCII'][x]
 	
 	dot = ref('DOT')
 	
 	eof_charclass = regular.CharClass(charset.EOF)
 	dollar_charclass = regular.CharClass(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].cls))
-	META.install_rule(expression=txt('^'), action=_metatoken, bol=(False, True))
-	META.install_rule(expression=txt('^^'), action=_metatoken, bol=(False, True))
-	# This next rule says that a dollar-sign at the end of a pattern supplies a regex matching EITHER end-of-line OR end-of-file
-	META.install_rule(expression=seq(txt('$'), eof_charclass), trail=-1, action=_dollar(dollar_charclass))
-	# So I build another similar one for end-of-file rules: the string '<<EOF>>' appearing at the end of the pattern.
-	# And by the way, the rex grammar (above) correctly directs such things to the trailing-context fork of the parse.
-	META.install_rule(expression=seq(txt('<<EOF>>'), eof_charclass), trail=-1, action=_dollar(eof_charclass))
-	for c in '(|)?*+/': META.install_rule(expression=txt(c), action=_metatoken)
-	META.install_rule(expression=txt('.'), action=_dot_reference)
-	META.install_rule(expression=txt('{'), action=_and_then('brace'))
-	META.install_rule(expression=txt('['), action=_and_then('start_class'))
-	META.install_rule(expression=txt('[^'), action=_meta_caret)
+	
+	for t in '^', '^^': META.install_rule(expression=txt(t), action=_metatoken, bol=(False, True))
+	for t,cc in ('$', dollar_charclass), ('<<EOF>>', eof_charclass):
+		META.install_rule(expression=seq(txt(t), eof_charclass), trail=-1, action=_dollar(cc))
+	common_rules(META,
+		('.', _dot_reference),
+		('{', _and_then('brace')),
+		('[', _and_then('start_class')),
+		('[^', _meta_caret),
+		*((c, _metatoken) for c in '(|)?*+/'),
+	)
+	common_rules(META.condition('in_class'),
+		(']', _and_then(None)),
+		('&&', _metatoken),
+		('&&^', _meta_caret),
+		('-', _metatoken),
+		('-]', _class_final_dash),
+	)
 	with META.condition('start_class') as start_class:
-		start_class.install_rule(expression=txt(']'), action = _class_initial_close_bracket)
-		start_class.install_rule(expression=txt('-'), action = _arbitrary_character)
+		common_rules(start_class, (']', _class_initial_close_bracket), ('-', _arbitrary_character),)
 		start_class.install_rule(expression=ref('ANY'), action = _instead('in_class'))
-	with META.condition('in_class') as in_class:
-		in_class.install_rule(expression=txt(']'), action=_and_then(None))
-		in_class.install_rule(expression=txt('&&'), action=_metatoken)
-		in_class.install_rule(expression=txt('&&^'), action=_meta_caret)
-		in_class.install_rule(expression=txt('-'), action=_metatoken)
-		in_class.install_rule(expression=txt('-]'), action=_class_final_dash)
 	with META.condition(None, 'in_class') as anywhere:
 		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.Plus(ref('word')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\')
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]:
 			META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
-		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharClass([64, 128])), action=_control)
+		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharClass(charset.range_class(64, 127))), action=_control)
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)
 		anywhere.install_rule(expression=dot, action=_arbitrary_character)
 	with META.condition('brace') as brace:
 		brace.install_rule(expression=regular.Plus(ref('digit')), action=_number)
-		brace.install_rule(expression=txt(','), action=_metatoken)
-		brace.install_rule(expression=txt('}'), action=_and_then(None))
+		common_rules(brace, (',', _metatoken), ('}', _and_then(None)),)
 	
 	PRELOAD['ASCII']['R'] = rex.parse(META.scan(r'\r?\n|\r', env=PRELOAD['ASCII']), language='Regular')
 _BEGIN_()
