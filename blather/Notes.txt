@@ -1,8 +1,5 @@
 Roadmap:
 
-A MacroParse module should support embedded actions, quantifiers, etc. using a message-based approach
-to the combiner.
-
 Location tracking is going to have to come on-scene because any kind of serious semantic error
 reporting requires it.
 
@@ -62,23 +59,3 @@ into the specification language, which (in at least some respects) couples the
 two in undesirable ways.
 
 ==============================================================================
-
-How to serialize:
-
-One fairly general approach is a JSON document. It's merely necessary to specify the
-structure of the object thereby encoded.
-
-Probably, the JSON object should have a "scanner" key and a "parser" key. They can be
-present or absent. Up front, a "comment" key can provide a few hints for humans.
-I should also include a "version" key consisting of a list of three integers reflecting
-the API version for which the table is produced. Initially, these will be 0, 0, 0.
-
-Actual I/O for the JSON document should make use of standard libraries rather than
-example code.
-
-The scanner DFA should be run through Aho-Corasick-style preprocessing to compress it
-down to an examples/exceptions table pair.
-
-The parse DFA is basically the dragon-book format with default-reductions.
-
-Both sorts of 
