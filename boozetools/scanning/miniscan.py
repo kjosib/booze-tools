@@ -192,14 +192,14 @@ def _BEGIN_():
 	
 	def _metatoken(yy): yy.token(yy.matched_text(), None)
 	def _and_then(condition):
-		def fn(scanner):
-			_metatoken(scanner)
-			scanner.enter(condition)
+		def fn(yy):
+			_metatoken(yy)
+			yy.enter(condition)
 		return fn
 	def _instead(condition):
-		def fn(scanner):
-			scanner.less(0)
-			scanner.enter(condition)
+		def fn(yy):
+			yy.less(0)
+			yy.enter(condition)
 		return fn
 	def _bracket_reference(yy):
 		name = yy.matched_text()[1:-1]
@@ -211,13 +211,21 @@ def _BEGIN_():
 	def _control(yy): yy.token('c', 31 & ord(yy.matched_text()[2:]))
 	def _arbitrary_character(yy): yy.token('c', ord(yy.matched_text()))
 	def _class_initial_close_bracket(yy):
-		yy.enter('[')
+		yy.enter('in_class')
 		_arbitrary_character(yy)
+	def _class_final_dash(yy):
+		yy.token('c', ord('-'))
+		yy.token(']', None)
+		yy.enter(None)
 	def _arbitrary_escape(yy): yy.token('c', ord(yy.matched_text()[1:]))
 	def _number(yy): yy.token('number', int(yy.matched_text()))
 	def _dollar(charclass):
 		def fn(yy:Scanner): yy.token('$', charclass)
 		return fn
+	def _meta_caret(yy):
+		yy.token(yy.matched_text()[:-1], None)
+		yy.token('^')
+		yy.enter('start_class')
 	
 	def ref(x): return PRELOAD['ASCII'][x]
 	
@@ -234,21 +242,20 @@ def _BEGIN_():
 	META.install_rule(expression=seq(txt('<<EOF>>'), eof_charclass), trail=-1, action=_dollar(eof_charclass))
 	for c in '(|)?*+/': META.install_rule(expression=txt(c), action=_metatoken)
 	META.install_rule(expression=txt('.'), action=_dot_reference)
-	META.install_rule(expression=txt('{'), action=_and_then('{'))
-	META.install_rule(expression=txt('['), action=_and_then('[.'))
-	META.install_rule(expression=txt('[^'), trail=-1, action=_and_then('^'))
-	META.install_rule(expression=txt('^'), condition='^', action=_and_then('[.'))
-	with META.condition('[.') as start_class:
+	META.install_rule(expression=txt('{'), action=_and_then('brace'))
+	META.install_rule(expression=txt('['), action=_and_then('start_class'))
+	META.install_rule(expression=txt('[^'), action=_meta_caret)
+	with META.condition('start_class') as start_class:
 		start_class.install_rule(expression=txt(']'), action = _class_initial_close_bracket)
 		start_class.install_rule(expression=txt('-'), action = _arbitrary_character)
-		start_class.install_rule(expression=ref('ANY'), action = _instead('['))
-	with META.condition('[') as in_class:
+		start_class.install_rule(expression=ref('ANY'), action = _instead('in_class'))
+	with META.condition('in_class') as in_class:
 		in_class.install_rule(expression=txt(']'), action=_and_then(None))
 		in_class.install_rule(expression=txt('&&'), action=_metatoken)
-		in_class.install_rule(expression=txt('&&^'), trail=-1, action=_and_then('^'))
+		in_class.install_rule(expression=txt('&&^'), action=_meta_caret)
 		in_class.install_rule(expression=txt('-'), action=_metatoken)
-		in_class.install_rule(expression=txt('-]'), trail=-1, action=_arbitrary_character)
-	with META.condition(None, '[') as anywhere:
+		in_class.install_rule(expression=txt('-]'), action=_class_final_dash)
+	with META.condition(None, 'in_class') as anywhere:
 		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.Plus(ref('word')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\')
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]:
@@ -257,7 +264,7 @@ def _BEGIN_():
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)
 		anywhere.install_rule(expression=dot, action=_arbitrary_character)
-	with META.condition('{') as brace:
+	with META.condition('brace') as brace:
 		brace.install_rule(expression=regular.Plus(ref('digit')), action=_number)
 		brace.install_rule(expression=txt(','), action=_metatoken)
 		brace.install_rule(expression=txt('}'), action=_and_then(None))
