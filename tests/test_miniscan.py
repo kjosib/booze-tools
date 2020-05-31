@@ -12,6 +12,7 @@ class TestBootstrap(unittest.TestCase):
 		M.get_dfa().stats()
 	
 	def test_01_confusing_charclass(self):
+		ce = regular.ClassEncoder(P)
 		for spec, inside, outside in [
 			(r'[-x]', '-x', 'Aa'), # contains minus
 			(r'[^]^abc]', 'xX\n', '^]abc'), # negates; contains close-bracket
@@ -19,10 +20,9 @@ class TestBootstrap(unittest.TestCase):
 		]:
 			with self.subTest(spec=spec):
 				tokens = list(M.scan(spec))
-				k = miniscan.rex.parse(tokens, language='Regular')
-				assert isinstance(k, regular.CharClass)
-				for c in inside: assert charset.in_class(k.cls, ord(c))
-				for c in outside: assert not charset.in_class(k.cls, ord(c))
+				k = ce.visit(miniscan.rex.parse(tokens, language='Regular'))
+				for c in inside: assert charset.in_class(k, ord(c))
+				for c in outside: assert not charset.in_class(k, ord(c))
 
 class TestMiniScan(unittest.TestCase):
 	def test_01_simple_tokens_with_rank_feature(self):

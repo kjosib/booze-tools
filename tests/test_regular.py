@@ -50,9 +50,9 @@ class TestAST(unittest.TestCase):
 		Explains the nature of computing the a-priori length of a regular expression.
 		This gets used in working out the details for trailing-context expressions.
 		"""
-		c = regular.CharClass([32, 128]) # The ascii printing characters :)
+		c = regular.CharRange(32, 127) # The ascii printing characters :)
 		two = regular.Sequence(c,c) # Two of them in a row
-		sizer = regular.Sizer()
+		sizer = regular.Sizer({})
 		assert sizer.visit(c) == 1
 		assert sizer.visit(two) == 2
 		assert sizer.visit(regular.Alternation(c, c)) == 1

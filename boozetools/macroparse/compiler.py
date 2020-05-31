@@ -84,6 +84,13 @@ class IntermediateForm(typing.NamedTuple):
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
+STRERROR = {
+	regular.BadReferenceError: "The name {0} is not defined.",
+	regular.CircularDefinitionError: "The name {0} is involved in a circular definition.",
+	regular.NonClassError: "The name {0} is used in a character class, but is not defined as a character (class).",
+	regular.TrailingContextError: "Variable size for both stem and trailing context is not currently supported.",
+}
+
 def compile_string(document:str, *, method) -> IntermediateForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
@@ -91,8 +98,8 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	# Each major sub-language is line-oriented and interpreted with one of the following five subroutines:
 	
 	def handle_meta_exception(e: Exception):
-		if isinstance(e, miniscan.PatternError):
-			raise grammar.DefinitionError('At line %d: %s'%(line_number, e.args[0])) from None
+		if isinstance(e, regular.PatternError):
+			raise grammar.DefinitionError('At line %d: %s'%(line_number, STRERROR[type(e)].format(e.args))) from None
 		elif isinstance(e, interfaces.LanguageError):
 			raise grammar.DefinitionError('At line %d: Malformed pattern.' % line_number) from None
 		else: raise e
@@ -101,7 +108,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 		name, regex = current_line_text.split(None, 1)
 		if name in env: raise grammar.DefinitionError('You cannot redefine named subexpression %r at line %d.'%(name, line_number))
 		if not re.fullmatch(r'[A-Za-z][A-Za-z_]+', name): raise grammar.DefinitionError('Subexpression %r ought to obey the rule at line %d.'%(name, line_number))
-		try: env[name] = miniscan.rex.parse(miniscan.META.scan(regex, env=env), language='Regular')
+		try: env[name] = miniscan.rex.parse(miniscan.META.scan(regex), language='Regular')
 		except Exception as e: handle_meta_exception(e)
 		assert isinstance(env[name], regular.Regular), "This would be a bug."
 	
