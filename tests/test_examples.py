@@ -4,7 +4,8 @@ import json as standard_json
 import example.mini_json, example.macro_json, example.calculator
 
 from boozetools.macroparse import compiler
-from boozetools.parsing import shift_reduce, generalized
+from boozetools.parsing import shift_reduce
+from boozetools.parsing.general import brute_force, gss
 from boozetools.support import runtime, interfaces, expansion
 from boozetools.scanning import recognition
 
@@ -134,7 +135,7 @@ class TestNonDeterministic(unittest.TestCase):
 		for string in PALINDROMES:
 			with self.subTest('Palindrome: '+string):
 				print(string)
-				parser = generalized.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
+				parser = brute_force.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
 				for c in string: parser.consume(c, c)
 				result = parser.finish()
 				assert len(result) == 1
@@ -143,7 +144,7 @@ class TestNonDeterministic(unittest.TestCase):
 					assert tree[0] == tree[2]
 					tree = tree[1]
 				if tree: assert isinstance(tree, str) and len(tree)==1
-		parser = generalized.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
+		parser = brute_force.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
 		for c in LONG_STRING: parser.consume(c, c)
 		try: result = parser.finish()
 		except interfaces.GeneralizedParseError: pass
@@ -155,8 +156,8 @@ class TestNonDeterministic(unittest.TestCase):
 		for string in PALINDROMES:
 			print(string)
 			with self.subTest('Palindrome: '+string):
-				generalized.gss_trial_parse(self.parse_table, string, language="Palindrome")
-		try: generalized.gss_trial_parse(self.parse_table, LONG_STRING, language="Palindrome")
+				gss.gss_trial_parse(self.parse_table, string, language="Palindrome")
+		try: gss.gss_trial_parse(self.parse_table, LONG_STRING, language="Palindrome")
 		except interfaces.GeneralizedParseError: pass
 		else: assert False
 	

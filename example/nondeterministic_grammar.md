@@ -29,7 +29,7 @@ caused by accidentally having a non-deterministic situation where it's not inten
 anticipated. To this end, you could, for instance:
 * allow the author to specify a sub-set of look-ahead tokens expected at non-deterministic
 situations.
-* ask for a list of non-terminal symbols that have anonymous parse trees not resolved by
+* ask for a list of non-terminal symbols that have ambiguous parse trees not resolved by
 other P&A declarations.
 
 This system attempts to use the second of these methods.

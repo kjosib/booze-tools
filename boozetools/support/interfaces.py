@@ -267,3 +267,29 @@ class ScanErrorListener:
 		"""
 		raise ex from None # Hide the catch-and-rethrow from the traceback.
 
+class AbstractGeneralizedParser:
+	"""
+	Before I get too deep into it, let's lay out the general structure of a generalized parse:
+	"""
+	def __init__(self, table: ParseTable, combine, language=None):
+		""" Please note this takes a driver not a combiner: it does its own selection of arguments from the stack. """
+		self._table = table
+		self._combine = combine
+		self._nr_states = table.get_split_offset()
+		self.reset(table.get_initial(language))
+	
+	def reset(self, initial_state):
+		""" Configure the initial stack situation for the given initial automaton state. """
+		raise NotImplementedError(type(self))
+	
+	def consume(self, terminal, semantic):
+		""" Call this from your scanning loop. """
+		raise NotImplementedError(type(self))
+
+	def finish(self) -> list:
+		"""
+		Call this after the last token to wrap up and
+		:return: a valid semantic value for the parse.
+		"""
+		raise NotImplementedError(type(self))
+

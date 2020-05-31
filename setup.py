@@ -7,6 +7,7 @@ setuptools.setup(
 		'boozetools',
 		'boozetools.macroparse',
 		'boozetools.parsing',
+		'boozetools.parsing.general',
 		'boozetools.scanning',
 		'boozetools.support',
 	],

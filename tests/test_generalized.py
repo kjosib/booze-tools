@@ -1,7 +1,7 @@
 import unittest
 
 from boozetools.support import interfaces
-from boozetools.parsing import automata, context_free, generalized
+from boozetools.parsing import automata, context_free
 
 
 class GrammarTester(unittest.TestCase):
