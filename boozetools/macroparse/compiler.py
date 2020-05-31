@@ -145,7 +145,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 				for q,b in zip(nfa.condition(current_pattern_group), bol):
 					if b: nfa.link_epsilon(q, src)
 				nfa.final[dst] = rule_id
-				expression.encode(src, dst, nfa, rank)
+				regular.Encoder(nfa, rank, env).visit(expression, src, dst)
 		pending_patterns.clear()
 		pass
 	

@@ -61,7 +61,7 @@ class Definition(interfaces.ScanRules):
 			for q, b in zip(self.__nfa.condition(C), bol):
 				if b: self.__nfa.link_epsilon(q,src)
 		self.__nfa.final[dst] = rule_id
-		expression.encode(src, dst, self.__nfa, rank)
+		regular.Encoder(self.__nfa, rank, self.__subexpressions).visit(expression, src, dst)
 		return rule_id
 	
 	def let(self, name:str, pattern:str):
@@ -118,7 +118,8 @@ def analyze_pattern(pattern:str, env):
 	if not trailing_context: trail = None
 	else:
 		assert isinstance(trailing_context, regular.Regular), trailing_context
-		stem, trail = expression.length(), trailing_context.length()
+		sizer = regular.Sizer()
+		stem, trail = sizer.visit(expression), sizer.visit(trailing_context)
 		expression = regular.Sequence(expression, trailing_context)
 		if trail: trail = -trail
 		elif stem: trail = stem

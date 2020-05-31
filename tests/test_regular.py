@@ -52,16 +52,17 @@ class TestAST(unittest.TestCase):
 		"""
 		c = regular.CharClass([32, 128]) # The ascii printing characters :)
 		two = regular.Sequence(c,c) # Two of them in a row
-		assert c.length() == 1
-		assert two.length() == 2
-		assert regular.Alternation(c, c).length() == 1
-		assert regular.Alternation(two, two).length() == 2
-		assert regular.Alternation(c, two).length() is None
-		assert regular.Hook(c).length() is None
-		assert regular.Star(c).length() is None
-		assert regular.Plus(c).length() is None
-		assert regular.Counted(c, 4,4).length() == 4
-		assert regular.Counted(two, 4,4).length() == 8
-		assert regular.Counted(two, 3,4).length() is None
+		sizer = regular.Sizer()
+		assert sizer.visit(c) == 1
+		assert sizer.visit(two) == 2
+		assert sizer.visit(regular.Alternation(c, c)) == 1
+		assert sizer.visit(regular.Alternation(two, two)) == 2
+		assert sizer.visit(regular.Alternation(c, two)) is None
+		assert sizer.visit(regular.Hook(c)) is None
+		assert sizer.visit(regular.Star(c)) is None
+		assert sizer.visit(regular.Plus(c)) is None
+		assert sizer.visit(regular.Counted(c, 4,4)) == 4
+		assert sizer.visit(regular.Counted(two, 4,4)) == 8
+		assert sizer.visit(regular.Counted(two, 3,4)) is None
 		
 		
