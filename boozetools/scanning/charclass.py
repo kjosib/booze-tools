@@ -1,5 +1,15 @@
 """
-This
+These bits are about classifying characters for purposes of running a finite
+state machine, not for representing character classes in regular expressions.
+
+At the moment, the only supported mechanisms are simple: Store the boundaries
+between codepoint ranges with identical properties. To minimize the alphabet
+is to assign equivalence classes to these ranges. A runtime, binary search
+identifies the correct range, and then a list index operation identifies the
+final character class.
+
+As an aside: The present scanner table compaction method is probably not too
+sensitive to the order of equivalence classes.
 """
 
 import bisect
