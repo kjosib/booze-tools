@@ -3,7 +3,7 @@ from boozetools.support.interfaces import Scanner
 
 from ..support import interfaces
 from ..parsing import miniparse
-from . import regular, charset, recognition
+from . import finite, regular, charset, recognition
 
 PRELOAD = {'ASCII': {k: regular.CharClass(cls) for k, cls in charset.mode_ascii.items()}}
 
@@ -24,8 +24,8 @@ class Definition(interfaces.ScanRules):
 		self.__actions = []
 		self.__trails = []
 		self.__subexpressions = PRELOAD[mode].copy()
-		self.__dfa: regular.DFA = None
-		self.__nfa = regular.NFA()
+		self.__dfa: finite.DFA = None
+		self.__nfa = finite.NFA()
 		self.__minimize = minimize
 		self.__awaiting_action = False
 	

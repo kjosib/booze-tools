@@ -15,7 +15,7 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 import re, os, collections, typing
 from ..support import foundation, compaction, interfaces
 from ..parsing import automata
-from ..scanning import regular, miniscan
+from ..scanning import finite, regular, miniscan
 from . import grammar
 
 
@@ -25,7 +25,7 @@ def compile_file(pathname, *, method, strict=False) -> dict:
 
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
-	def __init__(self, *, dfa: regular.DFA, scan_actions:list, parse_table: automata.DragonBookTable):
+	def __init__(self, *, dfa: finite.DFA, scan_actions:list, parse_table: automata.DragonBookTable):
 		self.dfa = dfa
 		self.scan_actions = scan_actions
 		self.parse_table = parse_table
@@ -74,7 +74,7 @@ class TextBookForm:
 			self.parse_table.make_csv(pathstem)
 
 class IntermediateForm(typing.NamedTuple):
-	nfa: regular.NFA
+	nfa: finite.NFA
 	scan_actions: list
 	hfa: automata.HFA
 	parse_style:automata.ParsingStyle
@@ -185,7 +185,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	
 	# The regular (finite-state) portion of the definition:
 	env = miniscan.PRELOAD['ASCII'].copy()
-	nfa = regular.NFA()
+	nfa = finite.NFA()
 	pending_patterns = collections.defaultdict(list) # Those awaiting an application of the `|` action...
 	scan_actions = [] # That of a regular-language rule entry is <message, parameter, trail, line_number>
 	current_pattern_group = None

@@ -1,7 +1,7 @@
 import unittest
 
 from boozetools.support import interfaces
-from boozetools.scanning import regular, recognition
+from boozetools.scanning import finite, regular, recognition
 
 
 class MockScanRules(interfaces.ScanRules):
@@ -13,13 +13,13 @@ mock_scan_error_listener = interfaces.ScanErrorListener()
 class TestNFA(unittest.TestCase):
 	def test_00_new_node(self):
 		""" The IDE gets confused about nested classes. This proves it works the way I think it does. """
-		nfa = regular.NFA()
+		nfa = finite.NFA()
 		q = nfa.new_node('yellow')
 		self.assertEqual(1, len(nfa.states))
 		self.assertEqual(nfa.states[q].rank, 'yellow')
 	def test_01_conditions(self):
 		""" Calling for a condition code should create it if necessary. """
-		nfa = regular.NFA()
+		nfa = finite.NFA()
 		self.assertEqual(0, len(nfa.states))
 		assert 'Blue' not in nfa.initial
 		a,b = nfa.condition('Blue')
@@ -27,10 +27,10 @@ class TestNFA(unittest.TestCase):
 		assert a != b
 		self.assertEqual(2, len(nfa.states))
 	def test_02_determinize_empty_nfa(self):
-		nfa = regular.NFA()
-		assert isinstance(nfa.subset_construction(), regular.DFA)
+		nfa = finite.NFA()
+		assert isinstance(nfa.subset_construction(), finite.DFA)
 	def test_03_recognize_one_letter(self):
-		nfa = regular.NFA()
+		nfa = finite.NFA()
 		q0, q1 = nfa.condition(None)
 		qf = nfa.new_node(0)
 		nfa.final[qf] = 1
