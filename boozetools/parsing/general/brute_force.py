@@ -18,7 +18,7 @@ class BruteForceAndIgnorance(interfaces.AbstractGeneralizedParser):
 	So you can read what's going on:
 		self.__tos contains nodes representing currently active parses.
 		self.__next gets filled with the results of SHIFT actions.
-		Each node is a tuple of (state_id, prior_node, semantic_value), accessed
+		Each node is a tuple of (from_state_id, prior_node, semantic_value), accessed
 			by field numbers given as the constants below.
 	"""
 	

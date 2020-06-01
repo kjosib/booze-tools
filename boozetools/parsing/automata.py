@@ -296,6 +296,12 @@ def lalr_first_and_follow(lr0:HFA[LR0_State]) -> Tuple[list, dict]:
 	You may recognize this as a fix-point over the set-union operation. It turns out we
 	can do better: using Tarjan's Strongly-Connected-Components algorithm and orienting
 	the edges in the correct direction, we need only ever consider each edge once.
+	
+	:returns (token_sets, follow) such that:
+		1. token_sets[state_id] is equal to the "first" set of state_id
+		2. token_sets[follow[state_id, rule_id]] is the set of tokens which APPEAR to
+		   follow a reduction in state_id using rule_id, at least as far as the LALR
+		   algorithm can determine.
 	"""
 	grammar = lr0.grammar
 	terminals = grammar.apparent_terminals()
@@ -438,6 +444,18 @@ def minimal_lr1(grammar: context_free.ContextFreeGrammar) -> HFA[LA_State]:
 	def front(symbol, follower, goto_transparent, iso_q):
 		"""
 		Return the list of parse-items which DIRECTLY follow from the given criteria.
+		In other words, these will be parse-items in position zero for the rules that
+		apply to nonterminal :param symbol:.
+		
+		:param follower: may be `None` to mean "the non-conflicted portion of the follow set,
+		or may be a specific follow-set token.
+		
+		:param goto_transparent: means there is an epsilon-only path through any
+		remaining portion of the rule :param symbol: appeared in, so that follow-set
+		conflicts should be propagated to these resulting parse-items.
+		
+		:param iso_q: is the ID number in the LR(0)/LALR graph corresponding to the
+		LR(1) state under construction.
 		
 		The complexity here comes from how this algorithm threads the needle between
 		LALR-when-adequate and LR(1)-when-necessary.
@@ -445,7 +463,6 @@ def minimal_lr1(grammar: context_free.ContextFreeGrammar) -> HFA[LA_State]:
 		isostate = lr0.graph[iso_q]
 		items = []
 		goto_q = isostate.shift[symbol]
-		goto_shifts = lr0.graph[goto_q].shift.keys()
 		goto_conflict = conflict_data[goto_q].tokens.keys()
 		for sub_rule_id in grammar.symbol_rule_ids[symbol]:
 			# Most of the smarts in this algorithm comes down to understanding what
@@ -455,13 +472,14 @@ def minimal_lr1(grammar: context_free.ContextFreeGrammar) -> HFA[LA_State]:
 			if follower is None:  # We're coming from LALR-land:
 				items.append((sub_rule_id, 0, None))
 				reach_conflict = conflict_data[reach].rules.get(sub_rule_id, EMPTY)
-				for token in reach_conflict & goto_shifts - goto_conflict:
-					# NB: It's tempting to exclude candidate follower-tokens for which
-					# a shift is assured according to the precedence declarations, but
-					# it doesn't buy you anything (S/R conflicts get resolved later)
-					# and in practice it results in larger parse tables.
-					# We leave out the "GOTO-conflicted" tokens here because...
-					items.append((sub_rule_id, 0, token)) # Canonical parse-item
+				possible_follow = reach_conflict & token_sets[goto_q]
+				# Things get a bit weird for tokens that are ALSO conflicted in the
+				# goto state. Normally, we ignore them in this section; they'll come
+				# along expressly in another round through the algorithm as a split
+				# from the goto-state. However, in case of epsilon productions we
+				# must include those tokens lest the parse table may come out wrong.
+				if reach != iso_q: possible_follow -= goto_conflict
+				for token in possible_follow: items.append((sub_rule_id, 0, token))
 			else:  # The canonical branch:
 				# GOTO-conflicted tokens will have resulted in canonical-style parse items.
 				# As with Canonical, they can follow a derivation only when the remainder

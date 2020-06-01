@@ -40,6 +40,7 @@ class TestTableConstructions(GrammarTester):
 		super().setUp()
 		self.good = []
 		self.bad = []
+		self.expect_lr1_size = 0
 	
 	def check_postcondition(self):
 		constructions = [
@@ -48,6 +49,8 @@ class TestTableConstructions(GrammarTester):
 			automata.canonical_lr1(self.cfg),
 			automata.minimal_lr1(self.cfg),
 		]
+		if self.expect_lr1_size:
+			self.assertEqual(self.expect_lr1_size, len(constructions[-1].graph))
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
 				for hfa in constructions:
@@ -67,6 +70,7 @@ class TestTableConstructions(GrammarTester):
 		Y:c
 		""")
 		self.good = ['acd', 'ace', 'bcd', 'bce']
+		self.expect_lr1_size = 14
 	
 	def test_01_even_length_palindromes(self):
 		""" This is a strictly non-deterministic, but unambiguous grammar. """
@@ -144,4 +148,9 @@ class TestTableConstructions(GrammarTester):
 		self.R('S: E | S x')
 		self.R('E: | y | E S')
 		self.pathological = True
-
+	
+	def test_10_break_epsilon(self):
+		self.R('S: a S E | b')
+		self.R('E: ')
+		self.good = ['b', 'ab', 'aab', 'aaab']
+		self.bad = ['', 'a', 'ba']

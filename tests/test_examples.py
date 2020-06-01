@@ -161,6 +161,17 @@ class TestNonDeterministic(unittest.TestCase):
 		except interfaces.GeneralizedParseError: pass
 		else: assert False
 	
+	def test_gss_break_epsilon(self):
+		gss.gss_trial_parse(self.parse_table, 'aaab', language="BreakEpsilon")
+		
+	def test_gss_hidden_left(self):
+		for s in ['a', 'ab', 'abb', 'abbb']:
+			with self.subTest(s=s):
+				gss.gss_trial_parse(self.parse_table, s, language="HiddenLeft")
+		try: gss.gss_trial_parse(self.parse_table, 'ba', language="HiddenLeft")
+		except interfaces.GeneralizedParseError: pass
+		else: assert False
+	
 class TestSampleLanguages(unittest.TestCase):
 	def test_they_should_build(self):
 		for identity in 'decaf', 'pascal':

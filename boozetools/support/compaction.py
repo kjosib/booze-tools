@@ -284,7 +284,7 @@ def compress_action_table(action:List[List[int]], nonassoc_errors:set) -> dict:
 	Produce a compact representation of the "ACTION" table for a typical shift-reduce parser.
 	:param action: matrix of parse actions: positive numbers are shifts; negative are reductions, zero is error.
 	:param nonassoc_errors:
-	    set of pairs of (state_id, terminal_id) which must error on account of
+	    set of pairs of (from_state_id, terminal_id) which must error on account of
 	    non-associativity declarations. They are important for two reasons:
 	    1. Mentioned states must not become "interactive".
 	    2. These error-cells are likely to be isolated, and so good candidates

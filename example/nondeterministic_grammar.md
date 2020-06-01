@@ -34,11 +34,23 @@ other P&A declarations.
 
 This system attempts to use the second of these methods.
 
-## Productions: Palindrome
+## Productions: Palindrome BreakEpsilon HiddenLeft
 Recall that the `_` (underscore) refers back to the head of a rule.
+
+Palindromes are a canonical `not-LR(k) for any k` non-deterministic but unambiguous example:
 ```
 Palindrome -> :nothing | a | b | a _ a | b _ b
 ```
-Because the palindrome language is non-deterministic but unambiguous, there should be no
-need for any sort of disambiguation strategy. Indeed, this makes a good sanity-test for a
-generalized algorithm.
+
+There's a stress test for dealing well with epsilon rules:
+Give the string `aaab` to the following:
+```
+BreakEpsilon -> a _ epsilon | b
+epsilon -> :nothing
+```
+
+Hidden Left Recursion may cause trouble. Here's another stress test: `ab` is in this
+language; `ba` is not. Both should give you a proper answer.
+```
+HiddenLeft -> a | epsilon _ b 
+```
