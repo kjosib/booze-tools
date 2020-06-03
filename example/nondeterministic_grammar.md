@@ -34,23 +34,37 @@ other P&A declarations.
 
 This system attempts to use the second of these methods.
 
-## Productions: Palindrome BreakEpsilon HiddenLeft
+## Productions: Palindrome HiddenRight HiddenLeft HiddenMid
 Recall that the `_` (underscore) refers back to the head of a rule.
 
 Palindromes are a canonical `not-LR(k) for any k` non-deterministic but unambiguous example:
 ```
-Palindrome -> :nothing | a | b | a _ a | b _ b
+Palindrome -> Core | a _ a | b _ b
+Core -> E | a | b
 ```
 
 There's a stress test for dealing well with epsilon rules:
-Give the string `aaab` to the following:
+Hidden Recursion causes weak algorithms to either miss
+correct sentences or diverge. 
+
 ```
-BreakEpsilon -> a _ epsilon | b
-epsilon -> :nothing
+E -> :nothing
+HiddenRight -> a _ E | b
+HiddenLeft -> a | E _ b
+HiddenMid -> a | E _ E 
 ```
 
-Hidden Left Recursion may cause trouble. Here's another stress test: `ab` is in this
-language; `ba` is not. Both should give you a proper answer.
-```
-HiddenLeft -> a | epsilon _ b 
-```
+Hidden left recursion causes the brute-force approach to
+diverge because it cannot guess how many times it must
+reduce an epsilon rule before shifting a token.
+
+Hidden right recursion is fine under brute force because eventually
+the parser runs out of branches to cancel, but it causes weaker GSS
+implementations to reject some of the language. Unfortunately, for
+the moment it appears strength costs time and complexity.
+
+You could argue that hidden-middle recursion is pathological:
+A corresponding parse tree has every depth at once. Nevertheless,
+somehow the system magically copes with it. Actually, no magic at all:
+It just happens to be a recursive pun. With care, these things
+have a place in language processing.

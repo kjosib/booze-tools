@@ -149,8 +149,20 @@ class TestTableConstructions(GrammarTester):
 		self.R('E: | y | E S')
 		self.pathological = True
 	
-	def test_10_break_epsilon(self):
+	def test_10_hidden_right_recursion(self):
 		self.R('S: a S E | b')
 		self.R('E: ')
 		self.good = ['b', 'ab', 'aab', 'aaab']
 		self.bad = ['', 'a', 'ba']
+	
+	@unittest.skip("This test breaks the simplistic trial-parser.")
+	def test_11_hidden_left_recursion(self):
+		self.R('S: E S b | a')
+		self.R('E: ')
+		self.good = ['a', 'ab', 'abb', 'abbb']
+	
+	@unittest.skip("This test breaks the simplistic trial-parser.")
+	def test_12_hidden_mid_recursion(self):
+		self.R('S: E S E | a')
+		self.R('E: ')
+		self.good = ['a']

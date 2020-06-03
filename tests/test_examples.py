@@ -134,7 +134,6 @@ class TestNonDeterministic(unittest.TestCase):
 		combine = runtime.parse_action_bindings(SimpleParseDriver(), self.parse_table.message_catalog)
 		for string in PALINDROMES:
 			with self.subTest('Palindrome: '+string):
-				print(string)
 				parser = brute_force.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
 				for c in string: parser.consume(c, c)
 				result = parser.finish()
@@ -154,16 +153,17 @@ class TestNonDeterministic(unittest.TestCase):
 	# @unittest.skip('time trials')
 	def test_gss_trial_palindromes(self):
 		for string in PALINDROMES:
-			print(string)
 			with self.subTest('Palindrome: '+string):
 				gss.gss_trial_parse(self.parse_table, string, language="Palindrome")
 		try: gss.gss_trial_parse(self.parse_table, LONG_STRING, language="Palindrome")
 		except interfaces.GeneralizedParseError: pass
 		else: assert False
 	
-	def test_gss_break_epsilon(self):
-		gss.gss_trial_parse(self.parse_table, 'aaab', language="BreakEpsilon")
-		
+	def test_gss_hidden_right(self):
+		for s in ['b', 'ab', 'aab', 'aaaaaaab']:
+			with self.subTest(s=s):
+				gss.gss_trial_parse(self.parse_table, s, language="HiddenRight")
+	
 	def test_gss_hidden_left(self):
 		for s in ['a', 'ab', 'abb', 'abbb']:
 			with self.subTest(s=s):
@@ -171,6 +171,14 @@ class TestNonDeterministic(unittest.TestCase):
 		try: gss.gss_trial_parse(self.parse_table, 'ba', language="HiddenLeft")
 		except interfaces.GeneralizedParseError: pass
 		else: assert False
+	
+	def test_hidden_mid(self):
+		gss.gss_trial_parse(self.parse_table, 'a', language='HiddenMid')
+		for bad in ['aa', '']:
+			with self.subTest(s=bad):
+				try: gss.gss_trial_parse(self.parse_table, bad, language='HiddenMid')
+				except interfaces.GeneralizedParseError: pass
+				else: assert False
 	
 class TestSampleLanguages(unittest.TestCase):
 	def test_they_should_build(self):

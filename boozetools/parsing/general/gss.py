@@ -1,105 +1,163 @@
+"""
+By now we've seen two ways each to do both recognition and semantic recovery:
+
+In module parsing.shift_reduce, the trial_parse(...) and parse(...) functions
+show the linear-time approach appropriate to unambiguous parse tables -- i.e.
+those which either have no CF-grammar inadequacies, or for which all such are
+suitably resolved with operator-precedence/associativity declarations.
+
+In module parsing.automata, the trial_parse(...) method of class HFA shows
+a simple recognizer, whereas parsing.general.brute_force shows a simple
+semantic recovery method, both suitable principally for getting our feet wet
+with the issues involved in dealing with ambiguous parse tables.
+
+It's time to do better.
+
+In 1988, Tomita showed the world how to use a "graph-structured stack" to
+avoid the exponential behaviour associated with the brute-force approach.
+Tomita's original algorithm did not work properly with epsilon rules. Getting
+them absolutely right is more than a bit tricky. Nozohoor-Farshi contributed
+a method. I'm not 100% sure the method here is identical, but it does work.
+
+This module contains that recognizer.
+
+There are two things to bear in mind:
+
+First,
+
+Secondly, timings showed the brute-force approach to be slightly faster than
+this for inputs with only mild levels of ambiguity, providing the grammars
+don't have hidden left recursion (which sends the brute-force method into
+an infinite loop).
+"""
+
+from typing import Dict
 from ...support import interfaces
 
 
+class GNode:
+	# Nodes in the main portion of a graph-structured stack are simple enough.
+	# You need to know what state number they are, and what their predecessor linkages are.
+	# Any semantic values are associated with the linkages, not with the states themselves.
+	# For this application I'm not second-guessing Python and just using dictionaries.
+	state_id: int
+	arcs: Dict["GNode", object]
+	
+	def __init__(self, state_id:int, arcs:Dict["GNode", object]):
+		self.state_id, self.arcs = state_id, arcs
+	
+	def all_paths(self, depth: int):
+		"""
+		A previous version of this subroutine had potentially exponential
+		behavior. It was just a naive depth-first traversal. A GSS can
+		branch and merge, so a level-by-level approach seems better.
+		"""
+		frontier = {self}
+		for _ in range(depth):
+			frontier = set().union(*(n.arcs for n in frontier))
+		return frontier
+	
+	def __repr__(self): return "<%d / %s>" % (self.state_id, ",".join(str(e.state_id) for e in self.arcs))
+
 def gss_trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
-	"""
-	By now we've seen two ways each to do both recognition and semantic recovery:
+	def act_on(node: GNode, step: int):
+		if step == 0: return
+		elif step < 0: primary_reduction(node, -1-step)
+		elif step < nr_states: shifts.append((node, step))
+		else: split_stacks(node, table.get_split(step - nr_states))
+	def split_stacks(node:GNode, steps):
+		for s in steps: act_on(node, s)
 	
-	In module parsing.shift_reduce, the trial_parse(...) and parse(...) functions
-	show the linear-time approach appropriate to unambiguous parse tables -- i.e.
-	those which either have no CF-grammar inadequacies, or for which all such are
-	suitably resolved with operator-precedence/associativity declarations.
-	
-	In module parsing.automata, the trial_parse(...) method of class HFA shows
-	a simple recognizer, and the above-styled "brute force and ignorance" class
-	shows a simple semantic recovery method, both suitable principally for getting
-	our feet wet with the issues involved in dealing with ambiguous parse tables.
-	
-	It's time to do better. In 1988, Tomita showed the world how to use a so-called
-	"graph-structured stack" to avoid the exponential behaviour associated with
-	the brute-force approach. I'd like to implement that approach -- first with
-	a recognizer and only then, once the essential algorithm is absolutely clear,
-	as a full-on parser.
-	
-	This function is that recognizer.
-	
-	Interestingly, timings show the BF&I class to be slightly faster than this
-	for inputs with only mild levels of ambiguity.
-	"""
-	nr_states = table.get_split_offset()
-	
-	class Node: # Nodes do have SOME structure. This should be adequate.
-		__slots__ = ["state_id", "edges"]
-		def __init__(self, state_id: int, edges:set):
-			self.state_id = state_id  # encodes also the reaching symbol
-			self.edges = edges
-		def all_paths(self, depth:int):
-			"""
-			A previous version of this subroutine had potentially exponential
-			behavior. It was just a naive depth-first traversal. A GSS can
-			branch and merge, so a level-by-level approach seems better.
-			"""
-			frontier = {self}
-			for _ in range(depth):
-				frontier = set().union(*(N.edges for N in frontier))
-			return frontier
-		def __repr__(self): return "<%d / %s>"%(self.state_id, ",".join(str(e.state_id) for e in self.edges))
-	
-	def act_on(node:Node, instruction:int):
-		if instruction == 0: return
-		elif instruction < 0: perform_reduction(node, -1-instruction)
-		elif instruction < nr_states: # Shift the token:
-			# Here, combining happens naturally because `shifts` is keyed to the destination state.
-			if instruction in shifts: shifts[instruction].edges.add(node)
-			else: shifts[instruction] = Node(instruction, {node})
-		
-		else: # There are multiple possibilities: split into multiple states as needed.
-			for alternative in table.get_split(instruction - nr_states):
-				act_on(node, alternative)
-	
-	def perform_reduction(node:Node, rule_id:int):
-		"""
-		This is a bit of a mind-bender, because it needs to do the right thing about
-		both combining AND local-ambiguity packing. So here's the key insight:
-		Local-ambiguity packing closely related to combining, but with respect to
-		predecessors rather than the top-of-stack.
-		
-		Observation:
-		The problem gets considerably harder if we have to select a "winning" parse
-		and keep track of semantic values. Combining goto_target_node is the reason why
-		semantic values go on edges, but this is only necessary for states reached by GOTO.
-		Those reached by SHIFT might do as well to have a single semantic shared among
-		all predecessors.
-		
-		Oh yes, one last thing: I seem to recall there's an ordering constraint.
-		I think if you perform the shortest reductions first, the right things happen.
-		Can this be encoded in the sequence of alternatives given?
-		"""
+	def primary_reduction(reach:GNode, rule_id:int):
+		ners, fwd = books[reach]
 		nonterminal_id, length, cid, view = table.get_rule(rule_id)
-		for origin_node in node.all_paths(length):
-			goto_state_id = table.get_goto(origin_node.state_id, nonterminal_id)
-			if goto_state_id in top_of_stack:
-				# At this point, if origin_node is already present, then local
-				# ambiguity is indicated. For a recognizer, that is "packed" simply enough.
-				top_of_stack[goto_state_id].edges.add(origin_node)
-			else:
-				goto_target_node = Node(goto_state_id, {origin_node})
-				top_of_stack[goto_state_id] = goto_target_node
-				queue.append(goto_target_node)
+		if length: ners.append(rule_id)
+		for prior_node in cook_paths(reach, length):
+			perform_goto(prior_node, nonterminal_id)
 	
-	initial_node = Node(table.get_initial(language), set())
-	top_of_stack = {initial_node.state_id: initial_node}
+	def secondary_reduction(chop:int, via:GNode, rule_id:int):
+		nonterminal_id, length, cid, view = table.get_rule(rule_id)
+		if length >= chop:
+			for prior_node in cook_paths(via, length-chop):
+				# Presumably capturing the parse tree would involve the REACH node somehow.
+				perform_goto(prior_node, nonterminal_id)
+	
+	def perform_goto(prior_node:GNode, nonterminal_id:int):
+		goto_id = table.get_goto(prior_node.state_id, nonterminal_id)
+		if goto_id in arena:
+			goto_node = arena[goto_id]
+			if prior_node in goto_node.arcs: print('pun')  # Manage puns here.
+			else:
+				goto_node.arcs[prior_node] = None
+				if goto_node in books: secondary.append((goto_node, prior_node))
+		else:
+			arena[goto_id] = GNode(goto_id, {prior_node: None})
+			frontier.append(goto_id)
+	
+	def cook_paths(origin:GNode, depth:int):
+		"""
+		Why not just blindly take all paths N steps back from the origin?
+		Because I want to capture certain data along the way: this data is
+		only rarely useful, and only if the grammar has certain features.
+		"""
+		if depth == 0: yield origin
+		else:
+			for prior in list(origin.arcs):
+				if prior in books:
+					fwd = books[prior][1]
+					if origin not in fwd: fwd.append(origin)
+					yield from cook_paths(prior, depth-1)
+				else: yield from prior.all_paths(depth-1)
+	
+	def drain_queues():
+		shifts.clear()
+		books.clear()
+		frontier.extend(arena.keys())
+		while frontier:
+			drain_frontier()
+			drain_secondary()
+	
+	def drain_frontier():
+		while frontier:
+			state_id = frontier.pop()
+			node = arena[state_id]
+			books[node] = ([], [])
+			act_on(node, table.get_action(state_id, terminal_id))
+	
+	def drain_secondary():
+		while secondary:
+			goto_node, via = secondary.pop()
+			rq, chop, ahead = [goto_node], 1, set()
+			while rq:
+				for node in rq:
+					ners, fwd = books[node]
+					for rule_id in ners: secondary_reduction(chop, via, rule_id)
+					ahead.update(fwd)
+				rq, chop, ahead = ahead, chop+1, set()
+				
+		
+	
+	def apply_shifts(semantic):
+		arena.clear()
+		for node, step in shifts:
+			assert isinstance(node, GNode), type(node)
+			assert isinstance(step, int), type(step)
+			if step not in arena: arena[step] = GNode(step, {})
+			arena[step].arcs[node] = semantic
+	
+	nr_states = table.get_split_offset()
+	q0 = table.get_initial(language)
+	arena = {q0: GNode(q0, {})}
+	shifts, frontier, books, secondary = [], [], {}, []
 	for symbol in sentence:
-		shifts, queue = {}, list(top_of_stack.values())
 		terminal_id = table.get_translation(symbol)
-		for node in queue: act_on(node, table.get_action(node.state_id, terminal_id))
+		drain_queues()
+		apply_shifts(None)
 		if not shifts: raise interfaces.GeneralizedParseError("Parser died midway at something ungrammatical.")
-		top_of_stack = shifts
 	# Now deal with the end-of-input:
-	shifts, queue = {}, list(top_of_stack.values())
 	terminal_id = 0
-	for node in queue: act_on(node, table.get_action(node.state_id, terminal_id))
+	drain_queues()
 	if not shifts: raise interfaces.GeneralizedParseError("Parser recognized a viable prefix, but not a complete sentence.")
-	assert len(shifts) == 1
-	return
+	return True
+
 
