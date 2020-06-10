@@ -13,9 +13,96 @@ which (for the uninitiated) is a GLR engine that tries to minimize
 graph-node activity by using deterministic array-oriented behavior
 wherever it makes sense to do so.
 
+## The "Brute Force" Cactus-Stack Algorithm
+
+Suppose we allow non-deterministic LR parse tables. What does this mean
+exactly? It means that, for any given parsing situation, the table can
+specify a shift (if appropriate) and zero or more reduction rules that apply.
+
+What again does LR parsing normally entail? Simple: Shifts `push` states
+onto a stack, and reductions `pop` them off again (immediately followed by
+`push`ing a GOTO state). The reason for the stack is so the parser can remember
+which constructions it might have been in the middle of, and how deeply
+nested those constructions might be.
+
+Suppose an LR-parser encounters a non-deterministic table entry:
+Conceptually the simplest idea is to make however many copies of the
+stack, and then carry out the different possible actions on each copy.
+If any spawned stack cannot accept a next token, it dies. If all stacks
+die, the whole parser dies.
+
+It's inefficient to make copies of large structures. Instead, each `push`
+operation simply creates an entry with a new top-of-stack and a pointer
+to a previous `push` entry. (Base-case, empty stack, is `nil`.)
+
+This is simple enough to code and works well enough in some applications, but:
+
+* it's still prone to exponential behavior,
+* linked-lists generate lots of garbage,
+* it can't handle hidden-left recursion (by infinite allocation loop), and
+
 ## Tomita's GSS Algorithm:
 
+When you boil it all down, Tomita's chief contribution is the idea to use
+a directed acyclic graph rather than a tree of states: each node could have
+more than one predecessor, and so after any given machine cycle, you have
+at most one active graph-node per LR table state. (In practice, you'll have
+many fewer such active nodes).
+
+Neglecting epsilon rules, this works pretty well: You still have search
+problem to carry out reductions, but the performance bounds are polynomial
+in the size of the input string.
+
+The problem with epsilon-rules is not immediately obvious, but it's easy
+to trigger with a hidden-left-recursive grammar such as this:
+
+```
+S -> E S a     (rule 1)
+S -> b         (rule 2)
+E -> :epsilon  (rule 3)
+```
+
+It should be clear upon inspection that this context-free grammar describes
+in fact a regular language (`ba*`) but the obvious variations on Tomita all
+fail to recognize the string `baa`. Why? Well, with lookahead `b` we can
+certainly shift the first token of rule 2 (where we'll soon recognize `S`)
+but we can also possibly reduce rule 3 before shifting the `b`, but we wind
+up in the same state after shifting `b` both ways. Now if you carefully
+play this scenario forward: The first branch dies; the second allows `ba`
+but then can't go back in time to recognize however many `E` symbols must
+have preceeded the first `b` so as to consume all the right number of `a`
+tokens which follow.
+
+There are a number of hacks which solve the problem for subsets of the
+epsilon-grammars, but no simple solution for all of them.
+
+Tomita recognized these difficulties but did not offer a complete solution.
+
 ## Farshi's Refinement (and the cost)
+
+Recognizing an epsilon-rule means adding an edge to the stack-graph.
+if that edge connects into a state from which reduction is again possible,
+should we perform that new reduction? Well, the answer is yes, obviously.
+But only those new reductions which become possible on account of the new
+edge, lest we repeat the work corresponding to the old edges.
+
+This change appears to fix hidden-left-recursion but breaks
+hidden-right-recursion! Why? Well, in a hidden-right-recursive scenario
+(Like the above but change rule 1 to `S -> a S E`) then
+each time you recognize rule 3 you've got to go back
+and recognize rule 1 again -- and again -- and again, potentially
+many times. But what's happening is we recognize rule 3 once and only once,
+because it can only have one predecessor node, because we're keeping it to
+one node per state in the "current situation". No new node means no new edge
+whenever (the new) rule 1 is recognized a second time, and so it won't be
+considered for a third go-round, even though that may be necessary.
+
+Farshi figured out that, if a node _has been involved_ in recognizing a rule
+(even if it's not the "recognizing" node, and you add a predecessor to that
+node, then you're adding recognition paths for that rule. Given ordinary
+(non-deterministic) LR parse tables, the only sure way to know this event
+has happened (and to what rule) involves some computationally-expensive
+steps whenever an epsilon-rule is recognized at all.
 
 ## Right-Nullable GLR Algorithm:
 
@@ -41,7 +128,8 @@ Clearly such rules add complexity; both to the parser generator and
 the parse table data structure. They also add to the non-determinism
 inherent in the parse tables. However, they do speed things up
 considerably vs the Farshi approach whenever right-nullable rules
-are present in the grammar.
+are present in the grammar. In fact, they fully recover the original
+Tomita speed and then some.
 
 ## Moose-Dog
 
