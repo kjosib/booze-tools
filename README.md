@@ -1,11 +1,13 @@
 # What is this?
 
-For now there are three major components. Eventually there will be more. These are:
+For now there are four major components. Eventually there will be more. These are:
 
 * MiniParse -- Provides Minimal-LR(1)* or LALR(1) or Canonical-LR(1) with
   operator-precedence grammar facilities (like Lemon, YACC, or Bison), error
   productions, and good-and-proper error recovery.
+  
 * MiniScan -- Provides a DFA-based backtracking scanner (like Flex or Lex) with a few extra goodies.
+
 * MacroParse -- This is the crown jewel of the package right now. It:
     * provides for a separate document containing the definitions of both a scanner and parser.
     * supports error productions and error-recovery in the same manner as MiniParse.
@@ -16,6 +18,15 @@ For now there are three major components. Eventually there will be more. These a
         run and pass the [tests](https://github.com/kjosib/booze-tools/tree/master/tests/).
     * can prepare parse and scan tables ahead of time (serialized to JSON) or just-in-time according to your needs.
     * can generate [DOT graphs](https://github.com/kjosib/booze-tools/blob/master/example/json.png) from grammars.
+
+* Support Library: generic bits and bobs that may also be useful in other contexts.
+    * Strongly Connected Components
+    * Transitive Closure
+    * Visitor Pattern
+    * Equivalence Classification
+    * Hamming Distance
+    * Breadth First Traversal
+    * Various small array hacks
 
 The "minimal-LR(1)" algorithm used here is -- I believe -- provably minimal, even while it
 respects precedence and associativity declarations in the usual way. It is strongly inspired
