@@ -164,9 +164,6 @@ rex.rule('Item', 'c')(regular.Letter)
 rex.rule('Item', 'c - c')(regular.CharRange)
 rex.rule('Item', 'short')()
 rex.rule('Item', 'reference')()
-def classref(subex: regular.Regular):
-	if isinstance(subex, regular.CharSpecial): return subex.cls
-	else: raise NonClassError(foo)
 
 META = Definition()
 def _BEGIN_():
