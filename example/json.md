@@ -135,8 +135,18 @@ implied if the `Patterns` header does not provide an explicit pattern-group iden
 
 ## Precedence
 
-JSON does not require precedence declarations. They will be explained in another tutorial, perhaps
-describing a simple programming language.
+JSON does not require precedence or associativity declarations.
+They will be explained in another tutorial, perhaps
+describing a simple programming language. However, it does take advantage of another
+feature: "void symbols". Typically in a grammar there are certain symbols with no
+particular semantic content: they contribute to syntax alone, so parse-action
+functions normally don't care about them.
+
+In JSON, various punctuation marks fall into this "void symbol" category:
+
+```
+%void ',' ':' '"' '{' '}' '[' ']'
+```
 
 ## Productions: value
 Last but not least appears the context-free portion of the grammar for JSON syntax.
@@ -145,8 +155,8 @@ Intermixed with that grammar are plain-language notes explaining the features.
 value => string | number | object | array | true | false | null
 ```
 Here, `value` is just a renaming abstraction. These come at zero-cost in run-time or storage,
-because the parse table generator is just smart that way.
-
+because the parse table generator is just smart that way. (Stated formally, the
+system performs unit-rule elimination.)
 
 There are various conventions for rendering the "produces" arrow in plain text. Because
 these production rules are known to be context-free, the exact shape of the arrow is quite
@@ -160,25 +170,34 @@ either single `'` or double `"` quotes. Letter case is not enforced as a
 distinguishing feature, although you're welcome to use it that way.
 
 ```
-string : '"' .text '"' :string
-text ==> :empty
-	| text character :append
+string -> '"' text '"' :string
+text ==> :empty | text character :append
 ```
 
-The period/dot `.` is prepended to a symbol to make it significant to the semantic action
-at the end of the rule.
 
 Semantic actions are prepended with the colon `:`. In this case, the application driver would
-need something like `parse_object(...)` and `parse_string(...)` methods, each
+need something like `parse_string(...)`, `parse_empty()`, and `parse_append(...)` methods, each
 taking as many arguments as selected symbols. The parse engine is responsible to select
 only the indicated symbols as relevant to your implementation function.
 
-In a production rule, if nothing is marked (dotted) explicitly, then everything is
-selected implicitly. An example of this shortcut is shown in the rules for `text`.
+Recall that the `'"'` symbol is one of those marked as `%void` above. Therefore,
+the `parse_string(...)` method will need to take only one (non-`self`) argument: to
+wit, the list of `character` symbols called `text`.
+
+The parse-action functions return the semantic content of the left-hand-side.
+So, for example, `parse_empty()` could return a fresh empty list, relying
+on `parse_append(...)` to accept, append-to, and return the updated list.
+
+There's another (older, still supported) way to indicate which part of the right-hand
+side you're interested in. We could have written `string -> '"' .text '"' :string`.
+The period/dot `.` is prepended to a symbol to make it significant to the semantic action
+at the end of the rule. If nothing is marked (dotted) explicitly, then every non-void
+symbol is selected implicitly. (It is possible to use the dot notation to explicitly
+select void-symbols for presentation to a parse-action function.)
 
 ```
-object ::= '{' .list_of(key_value_pair) '}' :object
-key_value_pair -> .string ':' .value
+object ::= '{' list_of(key_value_pair) '}' :object
+key_value_pair -> string ':' value
 ```
 The definition of `object` makes reference to a macro called `list_of`.
 It will be defined presently.
@@ -193,7 +212,7 @@ Here are the grammar-macro definitions appropriate to a grammar for JSON:
 list_of(item) -> :empty | one_or_more(item)
 
 one_or_more(item) -> item :first 
-	| .one_or_more(item) ',' .item :append
+	| one_or_more(item) ',' item :append
 ```
 As may be inferred, `item` is here a formal-parameter to the macros `list_of` and `one_or_more`.
 The macro expansion machinery does the right thing at the context-free-grammar level, but it
@@ -202,7 +221,7 @@ or a `key_value_pair` as appropriate. If you're working in a dynamic language, t
 any trouble at all. In one with strict static typing, you'll doubtless have some sort
 of "parse stack entry" type defined: it needs a variant for "list-of-entries".
 ```
-array = '[' .list_of(value) ']'
+array = '[' list_of(value) ']'
 ```
 The rule for `array` is an example of a bracketing rule like `E -> '(' .E ')'`, without
 an explicit semantic action. In a case like this, the brackets are dropped out and the

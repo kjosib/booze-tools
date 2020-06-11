@@ -1,5 +1,5 @@
 This excerpt removes all the tutorial fluff from the JSON syntax definition in
-the [first tutorial](json.md) and fits in 35 lines, not counting this sentence.
+the [first tutorial](json.md) and fits in 39 lines, not counting this sentence.
 ## Definitions
 ```
 wholeNumber     [1-9]\d*
@@ -24,15 +24,18 @@ true|false|null                               :reserved_word
 \\[bfnrt]       :shorthand_escape
 \\u{xdigit}{4}  :unicode_escape
 ```
+## Precedence
+```
+%void ',' ':' '"' '{' '}' '[' ']'
+```
 ## Productions: value
 ```
 list_of(item) -> :empty | one_or_more(item)
-one_or_more(item) -> item :first | .one_or_more(item) ',' .item :append
-
+one_or_more(item) -> item :first | one_or_more(item) ',' item :append
 value => string | number | object | array | true | false | null
-object ::= '{' .list_of(key_value_pair) '}' :object
-array = '[' .list_of(value) ']'
-key_value_pair -> .string ':' .value
-string : '"' .text '"' :string
+object ::= '{' list_of(key_value_pair) '}' :object
+array = '[' list_of(value) ']'
+key_value_pair -> string ':' value
+string : '"' text '"' :string
 text ==> :empty | text character :append
 ```
