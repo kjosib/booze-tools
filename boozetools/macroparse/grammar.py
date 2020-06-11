@@ -12,11 +12,14 @@ class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
 
+from typing import List
+
 from ..support import failureprone, interfaces
 from ..scanning import miniscan
 from ..parsing import context_free, miniparse
 
 NONDET = object()
+VOID = object()
 
 class DefinitionError(Exception): pass
 
@@ -35,12 +38,19 @@ class Element:
 	def implement(self, ebnf:"EBNF_Definition", head:str, bindings:dict) -> str:
 		""" Interpreting the MacroParse EBNF variant now seems to require a proper environment... """
 		raise NotImplementedError(type(self))
+	
+	def is_void_for(self, ebnf:"EBNF_Definition", head: str) -> bool:
+		raise NotImplementedError(type(self))
 
 class Symbol(Element):
 	def __init__(self, name): self.name = name
 	
 	def implement(self, ebnf: "EBNF_Definition", head: str, bindings: dict) -> str:
 		return head if self.name == '_' else bindings.get(self.name, self.name)
+	
+	def is_void_for(self, ebnf: "EBNF_Definition", head: str) -> bool:
+		key = head if self.name == '_' else self.name
+		return key in ebnf.void_symbols
 
 
 class InlineRenaming(Element):
@@ -55,7 +65,9 @@ class InlineRenaming(Element):
 			for a in alts:
 				ebnf.plain_cfg.rule(symbol, [a], None, None, 0, None)
 		return symbol
-		
+	
+	def is_void_for(self, ebnf: "EBNF_Definition", head: str) -> bool:
+		return all(a.is_void_for(ebnf, head) for a in self.alternatives)
 
 class MacroCall(Element):
 	def __init__(self, name, actual_parameters):
@@ -69,6 +81,9 @@ class MacroCall(Element):
 		symbol = "%s(%s)"%(self.name, ",".join(args))
 		if ebnf.implementing(symbol): ebnf.must_elaborate.append((symbol, self.name, args))
 		return symbol
+	
+	def is_void_for(self, ebnf: "EBNF_Definition", head: str) -> bool:
+		return self.name in ebnf.void_symbols
 
 
 class Rewrite:
@@ -77,18 +92,18 @@ class Rewrite:
 		self.precsym = precsym
 		self.line_nr = 0
 		self.message:Action = self.elements.pop(-1) if isinstance(self.elements[-1], Action) else None
-		self.__args = args = []
 		self.size = len(self.elements)
-		for i,elt in enumerate(self.elements):
-			if hasattr(elt, 'capture'): args.append(i)
-		if not args: args.extend(range(self.size)) # Pick up everything if nothing is special.
 	
-	def prefix_capture(self, size:int):
-		return tuple(c - size for c in self.__args if c < size)
 	
 	def install(self, ebnf:"EBNF_Definition", head, bindings):
+		# Work out which places on the stack (relative to the left edge of the rule)
+		# contain "significant" data (for the action rule):
+		args = [i for i,elt in enumerate(self.elements) if hasattr(elt, 'capture')]
+		if not args: # If no RHS elements specifically have capture marks, respect the void-symbols set.
+			args = [i for i,elt in enumerate(self.elements) if not elt.is_void_for(ebnf, head)]
+		
+		
 		ebnf.error_help.current_line_nr = self.line_nr # Because MACROS.
-		rhs = [elt.implement(ebnf, head, bindings) for elt in self.elements]
 		"""
 		Install one rewrite rule:
 		Does everything necessary to interpret extension forms down to plain BNF,
@@ -99,17 +114,24 @@ class Rewrite:
 			if isinstance(elt, Action):
 				placeholder = ':'+elt.name
 				raw_bnf.append(placeholder)
-				ebnf.internal_action(placeholder, self.prefix_capture(i))
+				ebnf.internal_action(placeholder, prefix_capture(args, i))
 			else:
 				assert isinstance(elt, Element)
 				raw_bnf.append(elt.implement(ebnf, head, bindings))
 		
 		if self.message is None:
 			con = None
-			plc = self.__args[0] if len(self.__args) == 1 else self.__args
+			plc = args[0] if len(args) == 1 else args
 		else:
-			con, plc = self.message.name, self.__args
+			con, plc = self.message.name, args
 		ebnf.plain_cfg.rule(head, raw_bnf, self.precsym, con, plc, ebnf.error_help.current_line_nr)
+
+def prefix_capture(args:List[int], size: int):
+	# This is returning offsets from the size of the stack as seen
+	# by an intermediate action (which is really a special kind of
+	# epsilon-rule).
+	return tuple(c - size for c in args if c < size)
+
 
 """
 The MacroParse metagrammar contains various repetition constructs. The following functions
@@ -179,6 +201,7 @@ METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x: context_free.LEFT)
 METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x: context_free.RIGHT)
 METAGRAMMAR.rule('associativity', 'pragma_nonassoc')(lambda x: context_free.NONASSOC)
 METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda x: context_free.BOGUS)
+METAGRAMMAR.rule('associativity', 'pragma_void')(lambda x: VOID)
 
 # Sub-language: For specifying the connections between scan conditions:
 METAGRAMMAR.rule('condition', 'name')(lambda x:(x,[]))
@@ -252,10 +275,12 @@ class EBNF_Definition:
 		self.must_elaborate = []
 		self.error_help = error_help
 		self.nondeterministic_symbols = set()
+		self.void_symbols = set()
 	
 	def read_precedence_line(self, line:str, line_nr:int):
 		direction, symbols = self.error_help.parse(line, line_nr, 'precedence')
 		if direction is NONDET: self.nondeterministic_symbols.update(symbols)
+		elif direction is VOID: self.void_symbols.update(symbols)
 		else: self.plain_cfg.assoc(direction, symbols)
 
 	def read_production_line(self, line:str, line_nr:int):
