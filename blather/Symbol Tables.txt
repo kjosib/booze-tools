@@ -1,0 +1,74 @@
+Symbol Tables:
+================
+
+In a derivative project, I instantly grasped that mere (Python) dictionaries were
+insufficient for decent symbol tables:
+
+1.	Dictionary assignment can forget an existing value. Usually you'd prefer to
+	complain about the input instead.
+
+2.	Dictionaries don't naturally track where in the input some name got assigned.
+	This is a problem if you'd like error messages to include location information.
+
+Here are a few thoughts on the design of a symbol table for your translator.
+Later, I may codify some of this into the support sub-package, and then perhaps
+rely on it in an upgraded version of the macro-parse compiler.
+
+The simple approach
+---------------------
+
+It's straightforward to write a wrapper around a dictionary which checks whether
+a key already exists before allowing assignment, perhaps throwing a derivative
+of `KeyError`.
+
+It turns out this isn't exactly right: A symbol table should index by string
+value (perhaps normalized in some way) but also remember the location
+associated with the defining name and the definition. In other words, a proper
+symbol-table entry has several characteristics, and the "definition" is only
+one of them.
+
+Instead of shoehorning this additional texture across the dictionary interface,
+overtly named methods supply a descriptive signature and precise semantics.
+
+
+Dealing with (nested) scope
+----------------------------
+
+The natural approach is to arrange query-methods to look at parent-scopes as
+needed -- which means tracking that relationship somehow. And this also means
+the client-application (translator) might need to data about which scope a
+name was found in, which is another attribute to track and return.
+
+
+Entry Type Assertions
+-----------------------
+
+Designs change. You try to update everywhere that makes an entry, but one slips
+through to send a value of the wrong type. Catch it up front. Invoke a type
+assertion in the symbol-assignment method. But which? Pass a predicate to the
+symbol table's `__init__` method. Details are an exercise for the reader.
+
+
+New facts about an old symbol
+-------------------------------
+
+Some languages allow (or require) you to separate a declaration from a definition.
+This is particularly prevalent when "declare before use" is the rule.
+That means potentially multiple facts about a symbol, each with some sort of
+"fact kind" and its own location information. To that end, a slightly different
+symbol-table design may be appropriate.
+
+
+Indirect Inclusions
+-----------------------
+
+Maybe you have a way to import declarations from one scope into another. Then it
+becomes possible to have an indirect symbol conflict. It's worth making sure the
+error protocol can handle this...
+
+
+Generic "Symbol" Type:
+-------------------------
+
+In any source text, a symbol has an actual manifestation in a specific location.
+We can refer to this as the "text" and the "span". For most symbol table

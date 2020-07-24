@@ -141,6 +141,7 @@ class Visitor:
 		try: method = getattr(self, method_name)
 		except AttributeError:
 			# Searching the MRO incurs whatever cost there is to set up an iterator.
+			# NB: Multiple-inheritance with NamedTuple seems to confuse the __mro__.
 			for cls in host.__class__.__mro__:
 				fallback = 'visit_' + cls.__name__
 				if hasattr(self, fallback):
