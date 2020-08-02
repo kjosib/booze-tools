@@ -100,9 +100,8 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	def handle_meta_exception(e: Exception):
 		if isinstance(e, regular.PatternError):
 			raise grammar.DefinitionError('At line %d: %s'%(line_number, STRERROR[type(e)].format(e.args))) from None
-		elif isinstance(e, interfaces.LanguageError):
+		else:
 			raise grammar.DefinitionError('At line %d: Malformed pattern.' % line_number) from None
-		else: raise e
 
 	def definitions():
 		name, regex = current_line_text.split(None, 1)
