@@ -244,9 +244,9 @@ def _BEGIN_():
 		start_class.install_rule(expression=ref('ANY'), action = _instead('in_class'))
 	with META.condition(None, 'in_class') as anywhere:
 		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.Plus(ref('word')), txt('}'), ), action=_bracket_reference)
-		whack = txt('\\')
+		whack = txt('\\') # NB: Python doesn't let you end a raw-string with a backslash.
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]:
-			META.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
+			anywhere.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
 		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharSpecial(charset.range_class(64, 127))), action=_control)
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)

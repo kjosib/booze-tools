@@ -114,3 +114,13 @@ class TestMiniScan(unittest.TestCase):
 		expect = 'T-s-t-n-s-l-mn-s-l-nc-n-d-ll-d-rk-d-ck'
 		self.assertEqual(expect, result)
 	
+	def test_11_escape_in_charclass(self):
+		""" char-class should allow hex escapes. """
+		s = miniscan.Definition()
+		s.token('upper', r'[\x41-\x5a]')
+		s.ignore(r'.')
+		original_text = 'The Quick Brown Fox'
+		result = '-'.join(t[1] for t in s.scan(original_text))
+		expect = 'T-Q-B-F'
+		self.assertEqual(expect, result)
+	
