@@ -176,7 +176,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 			nonlocal current_pattern_group
 			current_pattern_group = tokens[1] if len(tokens)>1 else interfaces.DEFAULT_INITIAL_CONDITION
 			return patterns
-		if head == 'precedence': return precedence
+		if head in ('precedence', 'declarations'): return precedence
 		if head == 'productions':
 			ebnf.current_head = None
 			for t in tokens[1:]:
