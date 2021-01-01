@@ -12,12 +12,19 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 ========================================
 
 """
-import re, os, collections, typing
+import re, os, collections
+from typing import Optional, NamedTuple, List
 from ..support import foundation, compaction, interfaces
 from ..parsing import automata
 from ..scanning import finite, regular, miniscan
 from . import grammar
 
+
+class ScanRule(NamedTuple):
+	line_number: int
+	trail: Optional[int]
+	message: Optional[str]
+	parameter: Optional[str]
 
 def compile_file(pathname, *, method, strict=False) -> dict:
 	with(open(pathname)) as fh: document = fh.read()
@@ -25,7 +32,7 @@ def compile_file(pathname, *, method, strict=False) -> dict:
 
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
-	def __init__(self, *, dfa: finite.DFA, scan_actions:list, parse_table: automata.DragonBookTable):
+	def __init__(self, *, dfa: finite.DFA, scan_actions:List[ScanRule], parse_table: automata.DragonBookTable):
 		self.dfa = dfa
 		self.scan_actions = scan_actions
 		self.parse_table = parse_table
@@ -42,7 +49,7 @@ class TextBookForm:
 		if dfa is None: return
 		return {
 			'dfa': compaction.compress_scanner(initial=dfa.initial, matrix=dfa.states, final=dfa.final),
-			'action': dict(zip(['message', 'parameter', 'trail', 'line_number'], zip(*self.scan_actions))),
+			'action': dict(zip(ScanRule._fields, zip(*self.scan_actions))),
 			'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
 		}
 	def compact_parser(self):
@@ -73,9 +80,9 @@ class TextBookForm:
 		if self.parse_table is not None:
 			self.parse_table.make_csv(pathstem)
 
-class IntermediateForm(typing.NamedTuple):
+class IntermediateForm(NamedTuple):
 	nfa: finite.NFA
-	scan_actions: list
+	scan_actions: List[ScanRule]
 	hfa: automata.HFA
 	parse_style:automata.ParsingStyle
 	def determinize(self) -> TextBookForm:
@@ -144,7 +151,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 		rank = int(rank_string) if rank_string else 0
 		note_pattern(pattern)
 		for trail, list_of_patterns in pending_patterns.items():
-			rule_id = foundation.allocate(scan_actions, (action, parameter, trail, line_number))
+			rule_id = foundation.allocate(scan_actions, ScanRule(line_number, trail, action, parameter))
 			for bol, expression in list_of_patterns:
 				src = nfa.new_node(rank)
 				dst = nfa.new_node(rank)
