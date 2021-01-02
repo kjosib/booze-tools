@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
 	name='booze-tools',
-	version='0.4.4',
+	version='0.4.5',
 	packages=[
 		'boozetools',
 		'boozetools.macroparse',
@@ -16,7 +16,7 @@ setuptools.setup(
 	long_description_content_type="text/markdown",
 	url="https://github.com/kjosib/booze-tools",
 	classifiers=[
-		"Programming Language :: Python :: 3.7",
+		"Programming Language :: Python :: 3.9",
 		"License :: OSI Approved :: MIT License",
 		"Operating System :: OS Independent",
 		"Topic :: Software Development :: Compilers",
