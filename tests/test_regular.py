@@ -50,19 +50,23 @@ class TestAST(unittest.TestCase):
 		Explains the nature of computing the a-priori length of a regular expression.
 		This gets used in working out the details for trailing-context expressions.
 		"""
-		c = regular.CharRange(32, 127) # The ascii printing characters :)
-		two = regular.Sequence(c,c) # Two of them in a row
+		rcl = regular.codepoint.leaf
+		rbl = regular.bound.leaf
+		one = regular.char_range.from_args(rcl(32), rcl(127), ) # The ascii printing characters :)
+		two = regular.sequence.from_args(one, one) # Two of them in a row
 		sizer = regular.Sizer({})
-		assert sizer.visit(c) == 1
-		assert sizer.visit(two) == 2
-		assert sizer.visit(regular.Alternation(c, c)) == 1
-		assert sizer.visit(regular.Alternation(two, two)) == 2
-		assert sizer.visit(regular.Alternation(c, two)) is None
-		assert sizer.visit(regular.Hook(c)) is None
-		assert sizer.visit(regular.Star(c)) is None
-		assert sizer.visit(regular.Plus(c)) is None
-		assert sizer.visit(regular.Counted(c, 4,4)) == 4
-		assert sizer.visit(regular.Counted(two, 4,4)) == 8
-		assert sizer.visit(regular.Counted(two, 3,4)) is None
-		
+		for regex, expected_size in [
+			(one, 1),
+			(two, 2),
+			(regular.alternation.from_args(one, one), 1),
+			(regular.alternation.from_args(two, two), 2),
+			(regular.alternation.from_args(one, two), None),
+			(regular.hook.from_args(one), None),
+			(regular.star.from_args(one), None),
+			(regular.plus.from_args(one), None),
+			(regular.counted.from_args(one, rbl(4), rbl(4)), 4),
+			(regular.counted.from_args(two, rbl(4), rbl(4)), 8),
+			(regular.counted.from_args(two, rbl(3), rbl(4)), None),
+		]: self.assertEqual(regex.tour(sizer), expected_size)
+
 		

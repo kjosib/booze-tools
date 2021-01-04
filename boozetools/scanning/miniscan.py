@@ -1,11 +1,11 @@
 """ Hook regular expression patterns up to method calls on a scanner object. """
-from boozetools.support.interfaces import Scanner
-
+from ..support.interfaces import Scanner
+from ..arborist import trees
 from ..support import interfaces
 from ..parsing import miniparse
 from . import finite, regular, charset, recognition
 
-PRELOAD = {'ASCII': {k: regular.CharSpecial(cls) for k, cls in charset.mode_ascii.items()}}
+PRELOAD = {'ASCII': {k: regular.char_prebuilt.leaf(cls) for k, cls in charset.mode_ascii.items()}}
 
 
 class Definition(interfaces.ScanRules):
@@ -32,12 +32,12 @@ class Definition(interfaces.ScanRules):
 		scanner = recognition.IterableScanner(text=text, automaton=self.get_dfa(), rules=self, start=start, on_error=on_error)
 		return scanner
 		
-	def install_subexpression(self, name:str, expression: regular.Regular):
+	def install_subexpression(self, name:str, expression: trees.Node):
 		assert isinstance(name, str) and name not in self.__subexpressions and len(name) > 1
-		assert isinstance(expression, regular.Regular)
+		assert isinstance(expression, trees.Node)
 		self.__subexpressions[name] = expression
 	
-	def install_rule(self, *, action:callable, expression: regular.Regular, bol=(True, True), condition: (str, list, tuple)=None, trail:int=None, rank:int=0) -> int:
+	def install_rule(self, *, action:callable, expression: trees.Node, bol=(True, True), condition: (str, list, tuple)=None, trail:int=None, rank:int=0) -> int:
 		rule_id = len(self.__actions)
 		self.__actions.append(action)
 		self.__trails.append(trail)
@@ -49,7 +49,7 @@ class Definition(interfaces.ScanRules):
 			for q, b in zip(self.__nfa.condition(C), bol):
 				if b: self.__nfa.link_epsilon(q,src)
 		self.__nfa.final[dst] = rule_id
-		regular.Encoder(self.__nfa, rank, self.__subexpressions).visit(expression, src, dst)
+		expression.tour(regular.Encoder(self.__nfa, rank, self.__subexpressions), src, dst)
 		return rule_id
 	
 	def let(self, name:str, pattern:str):
@@ -99,13 +99,11 @@ class Definition(interfaces.ScanRules):
 def analyze_pattern(pattern:str, env):
 	scanner = META.scan(pattern)
 	bol, expression, trailing_context = rex.parse(scanner)
-	assert isinstance(expression, regular.Regular)
 	if not trailing_context: trail = None
 	else:
-		assert isinstance(trailing_context, regular.Regular), trailing_context
 		sizer = regular.Sizer(env)
-		stem, trail = sizer.visit(expression), sizer.visit(trailing_context)
-		expression = regular.Sequence(expression, trailing_context)
+		stem, trail = expression.tour(sizer), trailing_context.tour(sizer)
+		expression = regular.sequence.from_args(expression, trailing_context)
 		if trail: trail = -trail
 		elif stem: trail = stem
 		else: raise regular.TrailingContextError('Variable stem and variable trailing context in the same pattern are not presently supported.')
@@ -137,31 +135,35 @@ rex.rule('BOL', '^^')(lambda : (True, False))
 rex.rule('Trail', '')()
 rex.rule('Trail', '$')()
 rex.rule('Trail', '/ Regular')()
-rex.rule('Trail', '/ Regular $')(regular.Sequence)
+rex.rule('Trail', '/ Regular $')(regular.sequence.from_args)
 rex.rule('Regular', 'Sequence')()
-rex.rule('Regular', 'Regular | Sequence')(regular.Alternation)
+rex.rule('Regular', 'Regular | Sequence')(regular.alternation.from_args)
 rex.rule('Sequence', 'Term')()
-rex.rule('Sequence', 'Sequence Term')(regular.Sequence)
+rex.rule('Sequence', 'Sequence Term')(regular.sequence.from_args)
 rex.rule('Term', 'Atom')()
-rex.rule('Term', 'Atom ?')(regular.Hook)
-rex.rule('Term', 'Atom *')(regular.Star)
-rex.rule('Term', 'Atom +')(regular.Plus)
-rex.rule('Term', 'Atom { number }')(lambda a, n: regular.Counted(a, n, n))
-rex.rule('Term', 'Atom { number , }')(lambda a, n: regular.Counted(a, n, None))
-rex.rule('Term', 'Atom { , number }')(lambda a, n: regular.Counted(a, 0, n))
-rex.rule('Term', 'Atom { number , number }')(lambda a, m, n: regular.Counted(a, m, n))
+rex.rule('Term', 'Atom ?')(regular.hook.from_args)
+rex.rule('Term', 'Atom *')(regular.star.from_args)
+rex.rule('Term', 'Atom +')(regular.plus.from_args)
+@rex.rule('Term', 'Atom { number }')
+def _exact_count(sub, nr):
+	bound = regular.bound.leaf(nr)
+	return regular.counted.from_args(sub, bound, bound)
+
+rex.rule('Term', 'Atom { number , }')(lambda a, n: regular.counted.from_args(a, regular.bound.leaf(n), regular.bound.leaf(None)))
+rex.rule('Term', 'Atom { , number }')(lambda a, n: regular.counted.from_args(a, regular.bound.leaf(0), regular.bound.leaf(n)))
+rex.rule('Term', 'Atom { number , number }')(lambda a, m, n: regular.counted.from_args(a, regular.bound.leaf(m), regular.bound.leaf(n)))
 rex.rule('Atom', '( Regular )')()
-rex.rule('Atom', 'c')(regular.Letter)
+rex.rule('Atom', 'c')()
 rex.rule('Atom', 'reference')()
 rex.rule('Atom', '[ Class ]')()
 rex.rule('Class', 'Conjunct')()
-rex.rule('Class', 'Class && Conjunct')(regular.CharIntersection)
+rex.rule('Class', 'Class && Conjunct')(regular.char_intersection.from_args)
 rex.rule('Conjunct', 'Members')()
-rex.rule('Conjunct', '^ Members')(regular.CharComplement)
+rex.rule('Conjunct', '^ Members')(regular.char_complement.from_args)
 rex.rule('Members', 'Item')()
-rex.rule('Members', 'Members Item')(regular.CharUnion)
-rex.rule('Item', 'c')(regular.Letter)
-rex.rule('Item', 'c - c')(regular.CharRange)
+rex.rule('Members', 'Members Item')(regular.char_union.from_args)
+rex.rule('Item', 'c')()
+rex.rule('Item', 'c - c')(regular.char_range.from_args)
 rex.rule('Item', 'short')()
 rex.rule('Item', 'reference')()
 
@@ -169,9 +171,9 @@ META = Definition()
 def _BEGIN_():
 	""" This is the bootstrapping routine: it builds the preload and the meta-scanner. """
 	def seq(head, *tail):
-		for t in tail: head = regular.Sequence(head, t)
+		for t in tail: head = regular.sequence.from_args(head, t)
 		return head
-	def txt(s):return seq(*(regular.CharSpecial(charset.singleton(ord(_))) for _ in s))
+	def txt(s):return seq(*(regular.codepoint.leaf(ord(_)) for _ in s))
 	
 	def _metatoken(yy): yy.token(yy.matched_text(), None)
 	def _and_then(condition):
@@ -186,15 +188,15 @@ def _BEGIN_():
 		return fn
 	def _bracket_reference(yy:interfaces.Scanner):
 		name = yy.matched_text()[1:-1]
-		node = regular.NamedSubexpression(name, yy.current_span())
+		node = regular.named_subexpression.leaf(name, yy.current_span())
 		yy.token('reference', node)
 	def _shorthand_reference(yy:interfaces.Scanner):
-		yy.token('reference', regular.NamedSubexpression(yy.matched_text()[1], yy.current_span()))
+		yy.token('reference', regular.named_subexpression.leaf(yy.matched_text()[1], yy.current_span()))
 	def _dot_reference(yy:interfaces.Scanner):
-		yy.token('reference', regular.NamedSubexpression('DOT', yy.current_span()))
-	def _hex_escape(yy): yy.token('c', int(yy.matched_text()[2:], 16))
-	def _control(yy): yy.token('c', 31 & ord(yy.matched_text()[2:]))
-	def _arbitrary_character(yy): yy.token('c', ord(yy.matched_text()))
+		yy.token('reference', regular.named_subexpression.leaf('DOT', yy.current_span()))
+	def _hex_escape(yy): yy.token('c', regular.codepoint.leaf(int(yy.matched_text()[2:], 16)))
+	def _control(yy): yy.token('c', regular.codepoint.leaf(31 & ord(yy.matched_text()[2:])))
+	def _arbitrary_character(yy): yy.token('c', regular.codepoint.leaf(ord(yy.matched_text())))
 	def _class_initial_close_bracket(yy):
 		yy.enter('in_class')
 		_arbitrary_character(yy)
@@ -202,7 +204,7 @@ def _BEGIN_():
 		yy.token('c', ord('-'))
 		yy.token(']', None)
 		yy.enter(None)
-	def _arbitrary_escape(yy): yy.token('c', ord(yy.matched_text()[1:]))
+	def _arbitrary_escape(yy): yy.token('c', regular.codepoint.leaf(ord(yy.matched_text()[1:])))
 	def _number(yy): yy.token('number', int(yy.matched_text()))
 	def _dollar(charclass):
 		def fn(yy:Scanner): yy.token('$', charclass)
@@ -219,8 +221,8 @@ def _BEGIN_():
 	
 	dot = ref('DOT')
 	
-	eof_charclass = regular.CharSpecial(charset.EOF)
-	dollar_charclass = regular.CharSpecial(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].cls))
+	eof_charclass = regular.char_prebuilt.leaf(charset.EOF)
+	dollar_charclass = regular.char_prebuilt.leaf(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].semantic))
 	
 	for t in '^', '^^': META.install_rule(expression=txt(t), action=_metatoken, bol=(False, True))
 	for t,cc in ('$', dollar_charclass), ('<<EOF>>', eof_charclass):
@@ -243,16 +245,17 @@ def _BEGIN_():
 		common_rules(start_class, (']', _class_initial_close_bracket), ('-', _arbitrary_character),)
 		start_class.install_rule(expression=ref('ANY'), action = _instead('in_class'))
 	with META.condition(None, 'in_class') as anywhere:
-		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.Plus(ref('word')), txt('}'), ), action=_bracket_reference)
+		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.plus.from_args(ref('word')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\') # NB: Python doesn't let you end a raw-string with a backslash.
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]:
-			anywhere.install_rule(expression=seq(whack, txt(c), regular.Counted(ref('xdigit'), n, n)), action=_hex_escape)
-		anywhere.install_rule(expression=seq(whack, txt('c'), regular.CharSpecial(charset.range_class(64, 127))), action=_control)
+			hexblock = _exact_count(ref('xdigit'), n)
+			anywhere.install_rule(expression=seq(whack, txt(c), hexblock), action=_hex_escape)
+		anywhere.install_rule(expression=seq(whack, txt('c'), regular.char_prebuilt.leaf(charset.range_class(64, 127))), action=_control)
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)
 		anywhere.install_rule(expression=dot, action=_arbitrary_character)
 	with META.condition('brace') as brace:
-		brace.install_rule(expression=regular.Plus(ref('digit')), action=_number)
+		brace.install_rule(expression=regular.plus.from_args(ref('digit')), action=_number)
 		common_rules(brace, (',', _metatoken), ('}', _and_then(None)),)
 	
 	PRELOAD['ASCII']['R'] = rex.parse(META.scan(r'\r?\n|\r'), language='Regular')

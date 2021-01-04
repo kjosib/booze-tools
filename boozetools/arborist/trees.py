@@ -33,6 +33,22 @@ class _Symbol(NamedTuple):
 	category: Optional[str]
 	origin: object
 
+	def node(self, *, semantic:object, children:tuple["Node", ...], debug_info) -> "Node":
+		"""
+		This is your general-case API to make nodes with this symbol.
+		"""
+		assert isinstance(children, tuple)
+		assert len(children) == len(self.arity), "%r: %d expected, %d given"%(self.label, len(self.arity), len(children))
+		assert not isinstance(semantic, Node)
+		return Node(self, semantic, children, debug_info)
+
+	def leaf(self, semantic:object, debug_info=None) -> "Node":
+		return self.node(semantic=semantic, children=(), debug_info=debug_info)
+
+	def from_args(self, *children, debug_info=None):
+		""" Convenience function for mini-parse grammars. """
+		return self.node(semantic=None, children=children, debug_info=debug_info)
+
 def make_symbol(label:str, kids:dict[str,str], category:str=None, origin=None):
 	return _Symbol(label, tuple(kids.values()), dict((k,i) for i,k in enumerate(kids.keys())), category, origin)
 
@@ -45,16 +61,16 @@ class Node:
 	"""
 	__slots__ = ('symbol', 'semantic', 'children', 'debug_info')
 	symbol: _Symbol     # Refers into a dictionary of symbol definitions.
-	semantic: object   # Mutable in principle, but a bottom-up pass may provide a basis object.
+	semantic: object   # Mutable in general, but a bottom-up pass may provide a basis object.
 	children: tuple    # Must have correct arity for the symbol.
 	debug_info: object # Although this remains application-defined, often a file position might work.
 
-	def __getitem__(self, item):
+	def __getitem__(self, item) -> 'Node':
 		""" Make this work sort of like a record, where the Symbol gives the structure. """
 		return self.children[self.symbol.index[item]]
 
 	def tour(self, host, /, *args, **kwargs):
 		""" Might as well implement classical visitor-pattern double-dispatch. """
 		method = getattr(host, "tour_"+self.symbol.label)
-		method(self, *args, **kwargs)
+		return method(self, *args, **kwargs)
 

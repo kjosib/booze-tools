@@ -54,6 +54,7 @@ class MiniParse(interfaces.ParseErrorListener):
 				else: con,plc = _collect_tuple, offsets
 			else: con,plc = fn, offsets
 			self.__grammar.rule(lhs, rhs, prec_sym, con,plc, None)
+			return fn
 		return decorate
 	
 	def renaming(self, lhs:str, *alternatives):

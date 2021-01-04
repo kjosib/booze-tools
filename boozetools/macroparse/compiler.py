@@ -14,7 +14,7 @@ extremely handy for recovering the syntactic structure of actual rules, so that'
 """
 import re, os, collections
 from typing import Optional, NamedTuple, List
-from ..support import foundation, compaction, interfaces
+from ..support import foundation, compaction, interfaces, failureprone
 from ..parsing import automata
 from ..scanning import finite, regular, miniscan
 from . import grammar
@@ -25,10 +25,6 @@ class ScanRule(NamedTuple):
 	trail: Optional[int]
 	message: Optional[str]
 	parameter: Optional[str]
-
-def compile_file(pathname, *, method, strict=False) -> dict:
-	with(open(pathname)) as fh: document = fh.read()
-	return compile_string(document, method=method).determinize().as_compact_form(filename=os.path.basename(pathname))
 
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
@@ -91,6 +87,16 @@ class IntermediateForm(NamedTuple):
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
+def compile_string(document:str, *, method) -> IntermediateForm:
+	text = failureprone.SourceText(document)
+	return _compile_text(text, method=method)
+
+def compile_file(pathname, *, method, strict=False) -> dict:
+	filename = os.path.basename(pathname)
+	with(open(pathname)) as fh: text = failureprone.SourceText(fh.read(), filename=filename)
+	return _compile_text(text, method=method).determinize().as_compact_form(filename=filename)
+
+
 STRERROR = {
 	regular.BadReferenceError: "The name {0} is not defined.",
 	regular.CircularDefinitionError: "The name {0} is involved in a circular definition.",
@@ -98,13 +104,13 @@ STRERROR = {
 	regular.TrailingContextError: "Variable size for both stem and trailing context is not currently supported.",
 }
 
-def compile_string(document:str, *, method) -> IntermediateForm:
+def _compile_text(document:failureprone.SourceText, *, method) -> IntermediateForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
 	# Each major sub-language is line-oriented and interpreted with one of the following five subroutines:
 	
-	def handle_meta_exception(e: Exception):
+	def handle_meta_exception(e: Exception, pattern_text:str):
 		if isinstance(e, regular.PatternError):
 			raise grammar.DefinitionError('At line %d: %s'%(line_number, STRERROR[type(e)].format(e.args))) from None
 		else:
@@ -115,8 +121,8 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 		if name in env: raise grammar.DefinitionError('You cannot redefine named subexpression %r at line %d.'%(name, line_number))
 		if not re.fullmatch(r'[A-Za-z][A-Za-z_]+', name): raise grammar.DefinitionError('Subexpression %r ought to obey the rule at line %d.'%(name, line_number))
 		try: env[name] = miniscan.rex.parse(miniscan.META.scan(regex), language='Regular')
-		except Exception as e: handle_meta_exception(e)
-		assert isinstance(env[name], regular.Regular), "This would be a bug."
+		except Exception as e: handle_meta_exception(e, regex)
+		assert env[name].symbol.category in ('char_class', 'regex'), "This would be a bug: got a %r."%env[name].symbol.label
 	
 	def conditions():
 		"""
@@ -128,28 +134,29 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 		name, includes = error_help.parse(current_line_text, line_number, "condition")
 		if name in condition_definitions: error_help.gripe('Re-declared scan-condition %r; this is unexpected.'%name)
 		condition_definitions[name] = includes
-	
+
+	def note_pattern(pattern_text):
+		# Now patterns that share a trail length can also share a rule ID number.
+		try: bol, expression, trail = miniscan.analyze_pattern(pattern_text, env)
+		except Exception as e: handle_meta_exception(e, pattern_text)
+		else: pending_patterns[trail].append((bol, expression))
+
 	def patterns():
 		# This could be done better: a nice exercise might be to enhance the present regex parser to also
 		# grok actual scanner rules as an alternate language start-symbol; such could eliminate some of
 		# this contemptible string hackery and thereby enable things like embedded spaces where they make sense.
 		# Such would also involve hacking the metascanner bootstrap code to track paren depth and recognize
 		# the other tokens that can appear.
-		def note_pattern(pattern):
-			# Now patterns that share a trail length can also share a rule ID number.
-			try: bol, expression, trail = miniscan.analyze_pattern(pattern, env)
-			except Exception as e: handle_meta_exception(e)
-			else: pending_patterns[trail].append((bol, expression))
 		if current_line_text.endswith('|'):
-			pattern = current_line_text[:-1].strip()
-			if re.search(r'\s', pattern): raise grammar.DefinitionError('Unable to analyze pattern/same-as-next structure at line %d.')
-			note_pattern(pattern)
+			pattern_text = current_line_text[:-1].strip()
+			if re.search(r'\s', pattern_text): raise grammar.DefinitionError('Unable to analyze pattern/same-as-next structure at line %d.')
+			note_pattern(pattern_text)
 			return
 		m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(?:\s+([A-Za-z_]+))?(?:\s+:(0|[1-9][0-9]*))?', current_line_text)
 		if not m: raise grammar.DefinitionError('Unable to analyze overall pattern/action/parameter/(rank) structure at line %d.'%line_number)
-		pattern, action, parameter, rank_string = m.groups()
+		pattern_text, action, parameter, rank_string = m.groups()
 		rank = int(rank_string) if rank_string else 0
-		note_pattern(pattern)
+		note_pattern(pattern_text)
 		for trail, list_of_patterns in pending_patterns.items():
 			rule_id = foundation.allocate(scan_actions, ScanRule(line_number, trail, action, parameter))
 			for bol, expression in list_of_patterns:
@@ -158,7 +165,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 				for q,b in zip(nfa.condition(current_pattern_group), bol):
 					if b: nfa.link_epsilon(q, src)
 				nfa.final[dst] = rule_id
-				regular.Encoder(nfa, rank, env).visit(expression, src, dst)
+				expression.tour(regular.Encoder(nfa, rank, env), src, dst)
 		pending_patterns.clear()
 		pass
 	
@@ -222,7 +229,7 @@ def compile_string(document:str, *, method) -> IntermediateForm:
 	# Here begins the outermost layer of grammar definition parsing, which is to comprehend the
 	# structure of a supplied mark-down document just enough to extract headers and code-blocks.
 	section, in_code, line_number = None, False, 0
-	for current_line_text in document.splitlines(keepends=False):
+	for current_line_text in document.content.splitlines(keepends=False):
 		line_number += 1
 		if in_code:
 			current_line_text = current_line_text.strip()

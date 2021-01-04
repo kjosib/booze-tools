@@ -722,7 +722,7 @@ class DragonBookTable(interfaces.ParseTable):
 		assert split_id>0
 		return self.splits[split_id]
 
-
+	def get_constructor(self, constructor_id) -> object: return self.constructors[constructor_id]
 
 
 class ParsingStyle:

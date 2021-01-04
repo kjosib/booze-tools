@@ -20,7 +20,7 @@ class TestBootstrap(unittest.TestCase):
 		]:
 			with self.subTest(spec=spec):
 				tokens = list(M.scan(spec))
-				k = ce.visit(miniscan.rex.parse(tokens, language='Regular'))
+				k = miniscan.rex.parse(tokens, language='Regular').tour(ce)
 				for c in inside: assert charset.in_class(k, ord(c))
 				for c in outside: assert not charset.in_class(k, ord(c))
 
