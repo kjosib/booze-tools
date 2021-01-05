@@ -1,7 +1,5 @@
 """ An AST class-hierarchy for regular expressions and mechanisms for translating them. """
 
-from typing import List
-from ..support import foundation
 from ..arborist.trees import make_symbol, Node
 from . import finite, charset
 
