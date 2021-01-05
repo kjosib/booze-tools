@@ -42,10 +42,14 @@ class TestMiniScan(unittest.TestCase):
 			list(s.scan(' abc   123  def456  789XYZ ')),
 		)
 	
-	def semantics(self, expect, s, text):
-		found = [token[1] for token in s.scan(text)]
+	def semantics(self, expect:list[str], miniscanner, text:str):
+		# Test both with string and bytes representations. Note that it's all ASCII here.
+		found = [token[1] for token in miniscanner.scan(text)]
 		self.assertEqual(expect, found)
-	
+		bytes_expect = [s.encode() for s in expect]
+		bytes_found = [token[1] for token in miniscanner.scan(text.encode())]
+		self.assertEqual(bytes_expect, bytes_found)
+
 	def test_03_begin_anchor(self):
 		s = miniscan.Definition()
 		s.token('word', '^\w+') # Yield only those words found at the beginning of lines.

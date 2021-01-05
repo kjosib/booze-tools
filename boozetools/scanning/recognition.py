@@ -4,10 +4,47 @@ lexemes and their syntactic categories (rules/scan-actions) by reference to a
 finite-state machine. It supports backtracking, beginning-of-line anchors,
 and (non-variable) trailing context.
 """
-
+from typing import TypeVar, Generic
 from ..support import interfaces
 
+T = TypeVar('T')
+
 END_OF_INPUT = -1 # Used in place of a character ordinal. Agrees with the DFA builder.
+
+
+class CursorBase(Generic[T]):
+	"""
+	I extracted this bit out of the scanner implementation for three reasons:
+		1. Scanning strings and bytes-objects requires slightly different access syntax.
+		2. Now the scanner and other code can take turns consuming interleaved input.
+		3. It opens a path to asynchronous/online scanning, starting before the full input arrives.
+	"""
+
+	left: int
+	right: int
+
+	_subject: T
+	_size:int
+
+	def __init__(self, subject:T, offset:int=0):
+		self._subject = subject
+		self._size = len(self._subject)
+		self.left = self.right = offset
+	def codepoint_at(self, offset) -> int: raise NotImplementedError(type(self))
+	def selected_portion(self) -> T: return self._subject[self.left:self.right]
+	def finish(self): self.left = self.right
+	def is_at_start_of_line(self) -> bool:
+		return self.left == 0 or self.codepoint_at(self.left - 1) in (10, 13)
+	def is_exhausted(self) -> bool:
+		return self.left >= self._size
+
+class StringCursor(CursorBase[str]):
+	def codepoint_at(self, offset) -> int: return ord(self._subject[offset])
+
+class BytesCursor(CursorBase[bytes]):
+	def codepoint_at(self, offset) -> int: return self._subject[offset]
+
+
 
 class IterableScanner(interfaces.Scanner):
 	"""
@@ -15,16 +52,24 @@ class IterableScanner(interfaces.Scanner):
 	beginning-of-line anchors, and (non-variable) trailing context.
 	
 	Your application must provide a suitable finite-automaton, rule bindings, and error handler.
+
+	It seems convenient that iterating over the scanner should cause it to yield tokens.
+	This is certainly not the only reasonable approach: we could instead explicitly
+	call a method expecting to get a token back. However, this creates a synchronization
+	hassle: some scan rules emit no tokens, while others may emit more than one.
+	Fortunately, Python generators solve the problem: if you want the "call for tokens"
+	metaphor, then the `iter()` and `next()` built-in functions give you that.
 	"""
-	def __init__(self, *, text:str, automaton: interfaces.FiniteAutomaton, rules: interfaces.ScanRules, start, on_error:interfaces.ScanErrorListener):
-		if not isinstance(text, str): raise ValueError('text argument should be a string, not a ', type(text))
-		self.__text = text
+	def __init__(self, *, text, automaton: interfaces.FiniteAutomaton, rules: interfaces.ScanRules, start, on_error:interfaces.ScanErrorListener):
+		if isinstance(text, str): text = StringCursor(text)
+		elif isinstance(text, bytes): text = BytesCursor(text)
+		assert isinstance(text, CursorBase), type(text)
+		self.cursor = text
 		self.__automaton = automaton
 		self.__rules = rules
 		self.on_error = on_error
 		self.enter(start)
 		self.__stack = []
-		self.__start, self.__mark = None, None
 		self.__buffer = []
 	
 	def enter(self, condition):
@@ -41,10 +86,10 @@ class IterableScanner(interfaces.Scanner):
 	def current_condition(self):
 		return self.__condition_name
 	
-	def matched_text(self) -> str:
+	def matched_text(self):
 		""" As advertised. """
-		return self.__text[self.__start:self.__mark]
-	
+		return self.cursor.selected_portion()
+
 	def less(self, nr_chars:int):
 		"""
 		Put trailing characters back into the stream to be matched.
@@ -54,9 +99,10 @@ class IterableScanner(interfaces.Scanner):
 		corresponding number of characters are dropped from the end of the
 		match, and these will be considered again in the next matching cycle.
 		"""
-		new_mark = (self.__mark if nr_chars < 0 else self.__start) + nr_chars
-		assert self.__start <= new_mark <= self.__mark
-		self.__mark = new_mark
+		cursor = self.cursor
+		mark = (cursor.right if nr_chars < 0 else cursor.left) + nr_chars
+		assert cursor.left <= mark <= cursor.right
+		cursor.right = mark
 	
 	def scan_one_raw_lexeme(self, q) -> int:
 		"""
@@ -66,26 +112,27 @@ class IterableScanner(interfaces.Scanner):
 		This algorithm deliberately ignores a zero-width, zero-context match, but it may fail
 		to consume any characters (returning None). The caller must deal properly with that case.
 		"""
-		text, automaton = self.__text, self.__automaton
-		cursor, mark, rule_id, jam = self.__start, self.__start, None, automaton.jam_state()
+		cursor = self.cursor
+		automaton = self.__automaton
+		position, mark, rule_id, jam = cursor.left, cursor.left, None, automaton.jam_state()
 		while True:
-			try: codepoint = ord(text[cursor])
+			try: codepoint = cursor.codepoint_at(position)
 			except IndexError: codepoint = END_OF_INPUT # EAFP: Python will check string length anyway...
 			q = automaton.get_next_state(q, codepoint)
 			if q == jam: break
-			cursor += 1
+			position += 1
 			q_rule = automaton.get_state_rule_id(q)
-			if q_rule is not None: mark, rule_id = cursor, q_rule
-		self.__mark = mark
+			if q_rule is not None: mark, rule_id = position, q_rule
+		cursor.right = mark
 		return rule_id
 	
-	def __q0(self):
-		""" Return the current "initial" state of the automaton, based on condition and context. """
-		at_begin_line = self.__start == 0 or self.__text[self.__start - 1] in '\r\n'
-		return self.__condition[at_begin_line]
-	
-	def token(self, kind, semantic=None):
-		""" Be it established, then, that the token stream shall consist of... """
+	def token(self, kind:str, semantic=None):
+		"""
+		During scan rule invocation, call this method with tokens for the
+		scanner to yield once it gets control back. For integration with
+		the parsing mechanism, a token is defined as a 2-tuple consisting
+		of "kind" and arbitrary/optional semantic value.
+		"""
 		assert kind is not None
 		self.__buffer.append((kind, semantic))
 	
@@ -95,12 +142,8 @@ class IterableScanner(interfaces.Scanner):
 		"""
 		
 		def fire_rule(rule_id):
-			"""
-			The process to fire a rule is somewhat distinct from the decision.
-			There are a couple bits
-			"""
 			if rule_id is None:
-				self.__mark = self.__start + 1 # Prepare to "match" the offending character...
+				cursor.right = cursor.left + 1 # Prepare to "match" the offending character...
 				self.on_error.unexpected_character(self) # and delegate to the error handler, which may do anything.
 			else:
 				trail = rules.get_trailing_context(rule_id)
@@ -110,18 +153,21 @@ class IterableScanner(interfaces.Scanner):
 				yield from self.__buffer
 				self.__buffer.clear()
 
-		automaton, rules = self.__automaton, self.__rules
-		self.__start, eot = 0, len(self.__text)
-		while self.__start < eot:
-			yield from fire_rule(self.scan_one_raw_lexeme(self.__q0()))
-			self.__start = self.__mark
+		def q0():
+			""" Return the current "initial" state of the automaton, based on condition and context. """
+			return self.__condition[cursor.is_at_start_of_line()]
+
+		cursor, automaton, rules = self.cursor, self.__automaton, self.__rules
+		while not cursor.is_exhausted():
+			yield from fire_rule(self.scan_one_raw_lexeme(q0()))
+			cursor.finish()
 		# Now determine if an end-of-file rule needs to execute:
-		q = automaton.get_next_state(self.__q0(), END_OF_INPUT)
+		q = automaton.get_next_state(q0(), END_OF_INPUT)
 		if q>=0: yield from fire_rule(automaton.get_state_rule_id(q))
 		
 	def current_position(self) -> int:
 		""" As advertised. This was motivated by a desire to produce helpful error messages. """
-		return self.__start
+		return self.cursor.left
 	def current_span(self):
 		""" Return the position and length of the current match-text for use in error-reporting calls and the like. """
-		return self.__start, self.__mark - self.__start
+		return self.cursor.left, self.cursor.right - self.cursor.left
