@@ -8,7 +8,7 @@ from . import finite, regular, charset, recognition
 PRELOAD = {'ASCII': {k: regular.char_prebuilt.leaf(cls) for k, cls in charset.mode_ascii.items()}}
 
 
-class Definition(interfaces.ScanRules):
+class Definition:
 	def __init__(self, *, minimize=True, mode='ASCII'):
 		self.__actions = []
 		self.__trails = []
@@ -29,7 +29,7 @@ class Definition(interfaces.ScanRules):
 	
 	def scan(self, text, *, start=None, on_error:interfaces.ScanErrorListener = None):
 		if on_error is None: on_error = interfaces.ScanErrorListener()
-		scanner = recognition.IterableScanner(text=text, automaton=self.get_dfa(), rules=self, start=start, on_error=on_error)
+		scanner = recognition.IterableScanner(text=text, automaton=self.get_dfa(), act=self.invoke, start=start, on_error=on_error)
 		return scanner
 		
 	def install_subexpression(self, name:str, expression: trees.Node):
@@ -90,6 +90,9 @@ class Definition(interfaces.ScanRules):
 	def condition(self, *condition): return ConditionContext(self, *condition)
 	
 	def invoke(self, yy: interfaces.Scanner, rule_id:int):
+		trail = self.get_trailing_context(rule_id)
+		if trail is not None: yy.less(trail)
+
 		action = self.__actions[rule_id]
 		if callable(action): action(yy)
 		else: assert action is None

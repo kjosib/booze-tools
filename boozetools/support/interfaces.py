@@ -17,6 +17,7 @@ data-driven algorithms they support, without regard to their internal structure.
 On a separate note, you could make a good case for splitting this file in twain. Maybe later.
 """
 
+from typing import Callable
 from . import pretty
 
 END_OF_TOKENS = '<END>' # An agreed artificial "end-of-text" terminal-symbol.
@@ -199,42 +200,14 @@ class Scanner:
 		""" Return the most recently entered (or pushed, or popped) start-condition name, which is super-helpful debugging scanners. """
 		raise NotImplementedError(type(self))
 
-class ScanRules:
-	"""
-	The interface a scan-in-progress needs about:
-		1. trailing context, and
-		2. how to invoke scan rules.
-	"""
-	
-	def get_trailing_context(self, rule_id: int):
-		"""
-		Fixed trailing context is supported: return a negative number of characters to chop
-		from the end of the match. Variable trailing context is supported if the leading stem
-		has fixed length: return a positive (or zero) number. The absence of trailing context
-		should be indicated by returning None.
-		
-		It's anticipated that a zero-width stem with trailing context might be used to do things
-		like decide which scan state to enter and then restart the scanner from the same point.
-		
-		It would be a reasonable alternative architecture to design the trailing-context
-		support as a separate object in a chain-of-responsibility between the scanner and
-		driver. The downside is semantic: trailing context is a feature of the scanner-generator
-		and as such should be inseparable from the runtime. It might be a cool performance hack
-		to leave out trailing-context support when the feature is not used but that's the sort
-		of thing that you build into a tool that generates (e.g.) C code from an automaton.
-		
-		At some later date, I may decide to add support for both variable leading and trailing
-		parts of the same rule. That would mean several additional decisions and added complexity,
-		which would definitely justify the alternative design mentioned above.
-		"""
-		raise NotImplementedError(type(self), ScanRules.get_trailing_context.__doc__)
-	
-	def invoke(self, yy:Scanner, rule_id:int) -> object:
-		"""
-		Override this according to your application.
+"""
+The Scan Rule Actor Interface is just a function.
 		For example, if you want to emit tokens, call yy.token(kind, semantic)
-		"""
-		raise NotImplementedError(type(self), ScanRules.invoke.__doc__)
+Said function *IS RESPONSIBLE* for dealing with trailing context, if that's a feature in your scanner.
+		(The simple way is to call yy.less(trail), as documented.)
+"""
+ScanActor = Callable[[Scanner, int], object]
+
 
 class ScanErrorListener:
 	"""

@@ -11,8 +11,7 @@ from . import interfaces, expansion, failureprone
 from ..scanning import recognition
 from ..parsing import shift_reduce
 
-
-class BoundScanRules(interfaces.ScanRules):
+class BoundScanRules:
 	"""
 	This binds symbolic scan-action specifications to a specific "driver" or
 	context object. It cannot act alone, but works in concert with the
@@ -43,14 +42,11 @@ class BoundScanRules(interfaces.ScanRules):
 		self._trail       = action['trail']
 		self._line_number = action['line_number']
 		self.__methods = list(map(bind, action['message'], action['parameter']))
-		self.get_trailing_context = self._trail.__getitem__
-		
-	def get_trailing_context(self, rule_id: int):
-		""" NB: This gets overwritten by a direct bound-method on the trailing-context list. """
-		return self._trail[rule_id]
-	
-	def invoke(self, scan_state: interfaces.Scanner, rule_id:int):
-		return self.__methods[rule_id](scan_state)
+
+	def invoke(self, yy: interfaces.Scanner, rule_id:int):
+		trail = self._trail[rule_id]
+		if trail is not None: yy.less(trail)
+		return self.__methods[rule_id](yy)
 
 class AbstractTypical(interfaces.ScanErrorListener, interfaces.ParseErrorListener):
 	"""
@@ -69,16 +65,16 @@ class AbstractTypical(interfaces.ScanErrorListener, interfaces.ParseErrorListene
 	yy: interfaces.Scanner
 	exception: Exception
 	
-	def __init__(self, *, dfa: interfaces.FiniteAutomaton, scan_rules: interfaces.ScanRules, hfa:interfaces.ParseTable, combine):
+	def __init__(self, *, dfa: interfaces.FiniteAutomaton, act: interfaces.ScanActor, hfa:interfaces.ParseTable, combine):
 		self.__dfa = dfa
-		self.__rules = scan_rules
+		self.__act = act
 		self.__hfa = hfa
 		self.__combine = combine
 	
 	def parse(self, text: str, *, line_breaks='normal', filename: str = None, start=None, language=None):
 		if start is None: start = interfaces.DEFAULT_INITIAL_CONDITION
 		self.source = failureprone.SourceText(text, line_breaks=line_breaks, filename=filename)
-		self.yy = recognition.IterableScanner(text=text, automaton=self.__dfa, rules=self.__rules, start=start, on_error=self)
+		self.yy = recognition.IterableScanner(text=text, automaton=self.__dfa, act=self.__act, start=start, on_error=self)
 		return shift_reduce.parse(self.__hfa, self.__combine, self.yy, language=language, on_error=self)
 	
 	def unexpected_token(self, kind, semantic, pds):
@@ -120,7 +116,7 @@ class TypicalApplication(AbstractTypical):
 		hfa = expansion.CompactHandleFindingAutomaton(tables['parser'])
 		super().__init__(
 			dfa = expansion.CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet']),
-			scan_rules = BoundScanRules(action=scanner_tables['action'], driver=self),
+			act = BoundScanRules(action=scanner_tables['action'], driver=self).invoke,
 			hfa = hfa,
 			combine = parse_action_bindings(self, hfa.message_catalog)
 		)

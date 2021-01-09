@@ -4,7 +4,7 @@ lexemes and their syntactic categories (rules/scan-actions) by reference to a
 finite-state machine. It supports backtracking, beginning-of-line anchors,
 and (non-variable) trailing context.
 """
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, Callable
 from ..support import interfaces
 
 T = TypeVar('T')
@@ -30,7 +30,9 @@ class CursorBase(Generic[T]):
 		self._subject = subject
 		self._size = len(self._subject)
 		self.left = self.right = offset
-	def codepoint_at(self, offset) -> int: raise NotImplementedError(type(self))
+	def codepoint_at(self, offset) -> int:
+		""" This is allowed (even expected) to raise IndexError on out-of-bounds access. -1 is OK too. """
+		raise NotImplementedError(type(self))
 	def selected_portion(self) -> T: return self._subject[self.left:self.right]
 	def finish(self): self.left = self.right
 	def is_at_start_of_line(self) -> bool:
@@ -44,6 +46,33 @@ class StringCursor(CursorBase[str]):
 class BytesCursor(CursorBase[bytes]):
 	def codepoint_at(self, offset) -> int: return self._subject[offset]
 
+
+
+def scan_one_raw_lexeme(cursor:CursorBase, automaton:interfaces.FiniteAutomaton, q:int) -> int:
+	"""
+	This is how the magic happens. Given a starting state, this algorithm finds the
+	end of the lexeme to be matched and the rule number (if any) that applies to the match.
+
+	This algorithm deliberately ignores a zero-width, zero-context match, but it may fail
+	to consume any characters (returning None). The caller must deal properly with that case.
+
+	====
+	Note on style: I'm keeping this separate from the definition of the CursorBase class
+	because it's really an algorithm that happens to make use of the Cursor interface,
+	not an inherent characteristic of that interface. It also equally uses the automaton
+	interface. It needs both. It's not a method.
+	"""
+	position, mark, rule_id, jam = cursor.left, cursor.left, None, automaton.jam_state()
+	while True:
+		try: codepoint = cursor.codepoint_at(position)
+		except IndexError: codepoint = END_OF_INPUT # EAFP: Python will check string length anyway...
+		q = automaton.get_next_state(q, codepoint)
+		if q == jam: break
+		position += 1
+		q_rule = automaton.get_state_rule_id(q)
+		if q_rule is not None: mark, rule_id = position, q_rule
+	cursor.right = mark
+	return rule_id
 
 
 class IterableScanner(interfaces.Scanner):
@@ -60,13 +89,13 @@ class IterableScanner(interfaces.Scanner):
 	Fortunately, Python generators solve the problem: if you want the "call for tokens"
 	metaphor, then the `iter()` and `next()` built-in functions give you that.
 	"""
-	def __init__(self, *, text, automaton: interfaces.FiniteAutomaton, rules: interfaces.ScanRules, start, on_error:interfaces.ScanErrorListener):
+	def __init__(self, *, text, automaton: interfaces.FiniteAutomaton, act:interfaces.ScanActor, start, on_error:interfaces.ScanErrorListener):
 		if isinstance(text, str): text = StringCursor(text)
 		elif isinstance(text, bytes): text = BytesCursor(text)
 		assert isinstance(text, CursorBase), type(text)
 		self.cursor = text
 		self.__automaton = automaton
-		self.__rules = rules
+		self.__act = act
 		self.on_error = on_error
 		self.enter(start)
 		self.__stack = []
@@ -104,28 +133,6 @@ class IterableScanner(interfaces.Scanner):
 		assert cursor.left <= mark <= cursor.right
 		cursor.right = mark
 	
-	def scan_one_raw_lexeme(self, q) -> int:
-		"""
-		This is how the magic happens. Given a starting state, this algorithm finds the
-		end of the lexeme to be matched and the rule number (if any) that applies to the match.
-		
-		This algorithm deliberately ignores a zero-width, zero-context match, but it may fail
-		to consume any characters (returning None). The caller must deal properly with that case.
-		"""
-		cursor = self.cursor
-		automaton = self.__automaton
-		position, mark, rule_id, jam = cursor.left, cursor.left, None, automaton.jam_state()
-		while True:
-			try: codepoint = cursor.codepoint_at(position)
-			except IndexError: codepoint = END_OF_INPUT # EAFP: Python will check string length anyway...
-			q = automaton.get_next_state(q, codepoint)
-			if q == jam: break
-			position += 1
-			q_rule = automaton.get_state_rule_id(q)
-			if q_rule is not None: mark, rule_id = position, q_rule
-		cursor.right = mark
-		return rule_id
-	
 	def token(self, kind:str, semantic=None):
 		"""
 		During scan rule invocation, call this method with tokens for the
@@ -146,25 +153,23 @@ class IterableScanner(interfaces.Scanner):
 				cursor.right = cursor.left + 1 # Prepare to "match" the offending character...
 				self.on_error.unexpected_character(self) # and delegate to the error handler, which may do anything.
 			else:
-				trail = rules.get_trailing_context(rule_id)
-				if trail is not None: self.less(trail)
-				try: rules.invoke(self, rule_id)
+				try: act(self, rule_id)
 				except Exception as ex: self.on_error.exception_scanning(self, rule_id, ex)
-				yield from self.__buffer
-				self.__buffer.clear()
+			yield from self.__buffer
+			self.__buffer.clear()
 
 		def q0():
 			""" Return the current "initial" state of the automaton, based on condition and context. """
 			return self.__condition[cursor.is_at_start_of_line()]
 
-		cursor, automaton, rules = self.cursor, self.__automaton, self.__rules
+		cursor, automaton, act = self.cursor, self.__automaton, self.__act
 		while not cursor.is_exhausted():
-			yield from fire_rule(self.scan_one_raw_lexeme(q0()))
+			yield from fire_rule(scan_one_raw_lexeme(cursor, automaton, q0()))
 			cursor.finish()
 		# Now determine if an end-of-file rule needs to execute:
 		q = automaton.get_next_state(q0(), END_OF_INPUT)
 		if q>=0: yield from fire_rule(automaton.get_state_rule_id(q))
-		
+
 	def current_position(self) -> int:
 		""" As advertised. This was motivated by a desire to produce helpful error messages. """
 		return self.cursor.left

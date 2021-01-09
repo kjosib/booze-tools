@@ -3,10 +3,7 @@ import unittest
 from boozetools.support import interfaces
 from boozetools.scanning import finite, regular, recognition
 
-
-class MockScanRules(interfaces.ScanRules):
-	def invoke(self, yy, action): yy.token(action, yy.matched_text())
-	def get_trailing_context(self, rule_id: int): return None
+def mock_scan_act(yy, rule_id): yy.token(rule_id, yy.matched_text())
 
 mock_scan_error_listener = interfaces.ScanErrorListener()
 
@@ -37,7 +34,7 @@ class TestNFA(unittest.TestCase):
 		nfa.link(q0, qf, [65, 91, 97, 123])
 		nfa.link_epsilon(q1, q0)
 		def assertion():
-			tokens = list(recognition.IterableScanner(text='j', automaton=dfa, rules=MockScanRules(), start=None, on_error=mock_scan_error_listener))
+			tokens = list(recognition.IterableScanner(text='j', automaton=dfa, act=mock_scan_act, start=None, on_error=mock_scan_error_listener))
 			self.assertEqual([(1,'j')], tokens)
 		dfa = nfa.subset_construction()
 		assertion()

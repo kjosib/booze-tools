@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
 	name='booze-tools',
-	version='0.4.5',
+	version='0.5.0',
 	packages=[
 		'boozetools',
 		'boozetools.macroparse',
@@ -11,7 +11,7 @@ setuptools.setup(
 		'boozetools.scanning',
 		'boozetools.support',
 	],
-	description='A panoply of tools for parsing and lexical analysis',
+	description='A panoply of tools for parsing, lexical analysis, and semantic processing',
 	long_description=open('README.md').read(),
 	long_description_content_type="text/markdown",
 	url="https://github.com/kjosib/booze-tools",

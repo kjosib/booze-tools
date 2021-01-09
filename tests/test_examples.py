@@ -69,11 +69,11 @@ class TestMacroJson(unittest.TestCase):
 		cls.automaton = standard_json.loads(serialized)
 		scanner_data = cls.automaton['scanner']
 		cls.dfa = expansion.CompactDFA(dfa=scanner_data['dfa'], alphabet=scanner_data['alphabet'])
-		cls.scan_rules = runtime.BoundScanRules(action=scanner_data['action'], driver=example.macro_json.ExampleJSON())
+		cls.act = runtime.BoundScanRules(action=scanner_data['action'], driver=example.macro_json.ExampleJSON()).invoke
 		pass
 	
 	def macroscan_json(self, text):
-		return recognition.IterableScanner(text=text, automaton=self.dfa, rules=self.scan_rules, start='INITIAL', on_error=mock_scan_listener)
+		return recognition.IterableScanner(text=text, automaton=self.dfa, act=self.act, start='INITIAL', on_error=mock_scan_listener)
 	
 	def test_00_macroparse_compiled_scanner(self):
 		def parse(text):
