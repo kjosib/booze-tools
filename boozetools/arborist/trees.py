@@ -46,6 +46,9 @@ class _Symbol(NamedTuple):
 		assert isinstance(children, tuple)
 		assert len(children) == len(self.arity), "%r: %d expected, %d given"%(self.label, len(self.arity), len(children))
 		assert not isinstance(semantic, Node)
+		for b in children:
+			assert isinstance(b, Node), b
+			#assert a is None or a == b.symbol.category, (a, b.symbol.category) # This is not ready yet... Need an "extends" relationship.
 		return Node(self, semantic, children, debug_info)
 
 	def leaf(self, semantic:object, debug_info=None) -> "Node":
