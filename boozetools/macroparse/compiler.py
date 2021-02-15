@@ -138,7 +138,8 @@ def _compile_text(document:failureprone.SourceText, *, method) -> IntermediateFo
 	def note_pattern(pattern_text):
 		# Now patterns that share a trail length can also share a rule ID number.
 		try: bol, expression, trail = miniscan.analyze_pattern(pattern_text, env)
-		except Exception as e: handle_meta_exception(e, pattern_text)
+		except regular.PatternError as e:
+			handle_meta_exception(e, pattern_text)
 		else: pending_patterns[trail].append((bol, expression))
 
 	def patterns():
@@ -151,22 +152,22 @@ def _compile_text(document:failureprone.SourceText, *, method) -> IntermediateFo
 			pattern_text = current_line_text[:-1].strip()
 			if re.search(r'\s', pattern_text): raise grammar.DefinitionError('Unable to analyze pattern/same-as-next structure at line %d.')
 			note_pattern(pattern_text)
-			return
-		m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(?:\s+([A-Za-z_]+))?(?:\s+:(0|[1-9][0-9]*))?', current_line_text)
-		if not m: raise grammar.DefinitionError('Unable to analyze overall pattern/action/parameter/(rank) structure at line %d.'%line_number)
-		pattern_text, action, parameter, rank_string = m.groups()
-		rank = int(rank_string) if rank_string else 0
-		note_pattern(pattern_text)
-		for trail, list_of_patterns in pending_patterns.items():
-			rule_id = foundation.allocate(scan_actions, ScanRule(line_number, trail, action, parameter))
-			for bol, expression in list_of_patterns:
-				src = nfa.new_node(rank)
-				dst = nfa.new_node(rank)
-				for q,b in zip(nfa.condition(current_pattern_group), bol):
-					if b: nfa.link_epsilon(q, src)
-				nfa.final[dst] = rule_id
-				expression.tour(regular.Encoder(nfa, rank, env), src, dst)
-		pending_patterns.clear()
+		else:
+			m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(?:\s+([A-Za-z_]+))?(?:\s+:(0|[1-9][0-9]*))?', current_line_text)
+			if not m: raise grammar.DefinitionError('Unable to analyze overall pattern/action/parameter/(rank) structure at line %d.'%line_number)
+			pattern_text, action, parameter, rank_string = m.groups()
+			rank = int(rank_string) if rank_string else 0
+			note_pattern(pattern_text)
+			for trail, list_of_patterns in pending_patterns.items():
+				rule_id = foundation.allocate(scan_actions, ScanRule(line_number, trail, action, parameter))
+				for bol, expression in list_of_patterns:
+					src = nfa.new_node(rank)
+					dst = nfa.new_node(rank)
+					for q,b in zip(nfa.condition(current_pattern_group), bol):
+						if b: nfa.link_epsilon(q, src)
+					nfa.final[dst] = rule_id
+					expression.tour(regular.Encoder(nfa, rank, env), src, dst)
+			pending_patterns.clear()
 		pass
 	
 	def precedence(): ebnf.read_precedence_line(current_line_text, line_number)
