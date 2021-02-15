@@ -48,6 +48,7 @@ class ContextFreeGrammar:
 		self.start = [] # The start symbol(s) may be specified asynchronously to construction or the rules.
 		self.rules, self.token_precedence, self.level_assoc = [], {}, []
 		self.symbol_rule_ids = {}
+
 	def display(self):
 		head = ['', 'Symbol', 'Produces', 'Using']
 		body = [[i, rule.lhs, rule.rhs, rule.attribute] for i,rule in enumerate(self.rules)]
@@ -271,6 +272,7 @@ class ContextFreeGrammar:
 		rule = self.rules[rule_id]
 		prec_sym = rule.prec_sym or self.infer_prec_sym(rule.rhs)
 		if prec_sym: return self.token_precedence[prec_sym]
+
 
 class Rule(NamedTuple):
 	# The first few fields define the actual grammar

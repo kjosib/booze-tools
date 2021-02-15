@@ -70,6 +70,7 @@ class MiniParse(interfaces.ParseErrorListener):
 			self.__grammar.rule(lhs, rhs, None, con, plc, None)
 	
 	def display(self): self.__grammar.display()
+
 	def get_hfa_and_combine(self):
 		if self.__hfa is None:
 			if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the final production rule.')
@@ -81,6 +82,7 @@ class MiniParse(interfaces.ParseErrorListener):
 			constructors = self.__hfa.constructors
 			self.__combine = lambda cid,args:constructors[cid](*args)
 		return self.__hfa, self.__combine
+
 	def parse(self, each_token, *, language=None):
 		hfa, combine = self.get_hfa_and_combine()
 		return shift_reduce.parse(hfa, combine, each_token, language=language, on_error=self)
