@@ -15,7 +15,14 @@ Many nice prospects fall out of a standard "normal form" for such a tree:
 My temptation to start down this path came from reading:
 	"Tree Automata Techniques and Applications" (http://tata.gforge.inria.fr/)
 
+In concept, our generic trees re-invent algebraic data types.
+Pragmatic benefits of a centralized implementation include:
+	1. It decouples the concept (essence) from the implementation language (accident).
+	2. Data-driven construction-time sanity-checks on structure.
+	3. A consistent source-tracking channel for tracing the origin(s) of bogus input.
+	4. The possibility of data-driven transformations on tree structures.
 
+What's here isn't necessarily perfect yet, but it's doing some jobs.
 """
 
 __all__ = ['make_symbol', 'Node']
@@ -25,12 +32,11 @@ from dataclasses import dataclass
 
 
 class _Symbol(NamedTuple):
-	""" A tree node's "symbol" gives
-	has various characteristics.... """
+	""" A tree node's "symbol" corresponds to its "constructor" in an "abstract data types" conception of trees. """
 	label: str
 	arity: tuple[str, ...]
 	index: dict[str, int]
-	category: Optional[str]
+	category: Optional[str] # Category may be thought of as a "data type" which may have several constructors/symbols.
 	origin: object
 
 	def node(self, *, semantic:object, children:tuple["Node", ...], debug_info) -> "Node":
