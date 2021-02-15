@@ -5,7 +5,7 @@ from . import finite, charset
 
 class PatternError(Exception):
 	"""
-	Raised if something wrong is found with the semantics of a regular expression.
+	Raised if something wrong is found with a regular expression.
 	"""
 	errmsg = "Generic Pattern Semantic Error."
 class BadReferenceError(PatternError):
@@ -32,29 +32,45 @@ class TrailingContextError(PatternError):
 	This is not supported at this time.
 	"""
 	errmsg = "Pattern has variable-sized both stem and trailing context; currently unsupported."
-
+class PatternSyntaxError(PatternError):
+	"""
+	Raised if the pattern is unsyntactic.
+	"""
+	errmsg = "Pattern syntax does not compute."
 
 codepoint = make_symbol('Codepoint', {}, 'char_class') # Semantic is codepoint.
 
 # A bit of theory: A character class is an intersection of one or more (possibly-inverted) set/unions;
 # each set consists of one or more of codepoints, ranges, and named-classes. Therefore, we get this alphabet:
-char_range = make_symbol('CharRange', {'first':'Codepoint', 'last':'Codepoint'}, 'char_class')
-char_union = make_symbol('CharUnion', {'a':'char_class', 'b':'char_class', }, 'char_class')
-char_intersection = make_symbol('CharIntersection', {'a':'char_class', 'b':'char_class', }, 'char_class')
-char_complement = make_symbol('CharComplement', {'inverse':'char_class'})
+VOCAB = {s:make_symbol(s,k,c) for (s,k,c) in [
+	('CharRange', {'first':'Codepoint', 'last':'Codepoint'}, 'char_class'),
+    ('Sequence', {'a':'regular', 'b':'regular'}, 'regex'),
+    ('Alternation', {'a':'regular', 'b':'regular'}, 'regex'),
+	('Star', {'sub':'regular'}, 'regex'),
+	('Hook', {'sub':'regular'}, 'regex'),
+	('Plus', {'sub':'regular'}, 'regex'),
+	('n_times', {'sub':'regular', 'num':'Bound'}, 'regex'),
+	('n_or_more', {'sub':'regular', 'min':'Bound'}, 'regex'),
+	('n_or_fewer', {'sub':'regular', 'max':'Bound'}, 'regex'),
+	('n_to_m', {'sub':'regular', 'min':'Bound', 'max':'Bound'}, 'regex'),
+	('CharUnion', {'a': 'char_class', 'b': 'char_class', }, 'char_class'),
+	('CharIntersection', {'a': 'char_class', 'b': 'char_class', }, 'char_class'),
+	('CharComplement', {'inverse': 'char_class'}, 'char_class'),
+	('pattern_regular', {'left_context':'left_context', 'stem':'regular'}, 'pattern'),
+	('pattern_with_trail', {'left_context':'left_context', 'stem':'regular', 'trail':'regular'}, 'pattern'),
+	('pattern_only_trail', {'left_context':'left_context', 'trail':'regular'}, 'pattern'),
+]}
 char_prebuilt = make_symbol('CharPrebuilt', {}, 'char_class')
-
-alternation = make_symbol('Alternation', {'a':'regular', 'b':'regular'}, 'regex')
-sequence = make_symbol('Sequence', {'a':'regular', 'b':'regular'}, 'regex')
-
-star = make_symbol('Star', {'sub':'regular'}, 'regex')
-hook = make_symbol('Hook', {'sub':'regular'}, 'regex')
-plus = make_symbol('Plus', {'sub':'regular'}, 'regex')
-
 bound = make_symbol('Bound', {}) # Semantic is number (or None).
-counted = make_symbol('Counted', {'sub':'regular', 'min':'Bound', 'max':'Bound'}, 'regex')
-
 named_subexpression = make_symbol('NamedSubexpression', {}, 'regex') # Semantic is subexpression name.
+
+LEFT_CONTEXT = {
+	'anywhere': (True, True),
+	'begin_line': (False, True),
+	'mid_line': (True, False),
+}
+for x in LEFT_CONTEXT:
+	VOCAB[x] = make_symbol(x, {}, 'left_context')
 
 class Encoder:
 	"""
@@ -96,21 +112,28 @@ class Encoder:
 		self.__eps(src, before)
 		self.__eps(after, before)
 		self.__eps(after, dst)
-	def tour_Counted(self, ct:Node, src:int, dst:int, ):
-		least, most = ct['min'].semantic, ct['max'].semantic
+	def tour_n_times(self, n:Node, src:int, dst:int, ):
+		self._counted(n['sub'], n['num'].semantic, n['num'].semantic, src, dst)
+	def tour_n_to_m(self, n:Node, src:int, dst:int, ):
+		self._counted(n['sub'], n['min'].semantic, n['max'].semantic, src, dst)
+	def tour_n_or_more(self, n:Node, src:int, dst:int, ):
+		self._counted(n['sub'], n['min'].semantic, None, src, dst)
+	def tour_n_or_fewer(self, n:Node, src:int, dst:int, ):
+		self._counted(n['sub'], 0, n['max'].semantic, src, dst)
+	def _counted(self, sub:Node, least:int, most, src:int, dst:int, ):
 		p1 = self.__new_node()
 		self.__eps(src, p1)
 		for _ in range(least):
 			p2 = self.__new_node()
-			ct['sub'].tour(self, p1, p2)
+			sub.tour(self, p1, p2)
 			p1 = p2
 		self.__eps(p1, dst)
 		if most is None:
-			ct['sub'].tour(self, p1, p1)
+			sub.tour(self, p1, p1)
 		else:
 			for _ in range(most - least):
 				p2 = self.__new_node()
-				ct['sub'].tour(self, p1, p2)
+				sub.tour(self, p1, p2)
 				self.__eps(p2, dst)
 				p1 = p2
 	def tour_NamedSubexpression(self, ns:Node, src:int, dst:int, ):
@@ -143,7 +166,12 @@ class Sizer:
 	def tour_Star(self, _:Node): return None
 	def tour_Hook(self, _:Node): return None
 	def tour_Plus(self, _:Node): return None
-	def tour_Counted(self, ct:Node):
+	def tour_n_or_more(self, _:Node): return None
+	def tour_n_or_fewer(self, _:Node): return None
+	def tour_n_times(self, n:Node):
+		sub = n['sub'].tour(self)
+		if sub is not None: return sub * n['num'].semantic
+	def tour_n_to_m(self, ct:Node):
 		if ct['min'].semantic == ct['max'].semantic:
 			x = ct['sub'].tour(self)
 			if x is not None: return x * ct['min'].semantic

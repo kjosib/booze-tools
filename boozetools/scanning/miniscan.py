@@ -34,7 +34,7 @@ class Definition:
 		
 	def install_subexpression(self, name:str, expression: trees.Node):
 		assert isinstance(name, str) and name not in self.__subexpressions and len(name) > 1
-		assert isinstance(expression, trees.Node)
+		assert isinstance(expression, trees.Node), type(expression)
 		self.__subexpressions[name] = expression
 	
 	def install_rule(self, *, action:callable, expression: trees.Node, bol=(True, True), condition: (str, list, tuple)=None, trail:int=None, rank:int=0) -> int:
@@ -97,20 +97,19 @@ class Definition:
 		if callable(action): action(yy)
 		else: assert action is None
 	
-
-
-def analyze_pattern(pattern:str, env):
-	scanner = META.scan(pattern)
-	bol, expression, trailing_context = rex.parse(scanner)
-	if not trailing_context: trail = None
-	else:
+def analyze_pattern(pattern_text, env):
+	pattern = rex.parse(META.scan(pattern_text), language='Pattern')
+	if pattern.symbol.label == 'pattern_regular': expression, trail = pattern['stem'], None
+	elif pattern.symbol.label == 'pattern_only_trail': expression, trail = pattern['trail'], 0
+	elif pattern.symbol.label == 'pattern_with_trail':
 		sizer = regular.Sizer(env)
-		stem, trail = expression.tour(sizer), trailing_context.tour(sizer)
-		expression = regular.sequence.from_args(expression, trailing_context)
+		stem, trail = pattern['stem'].tour(sizer), pattern['trail'].tour(sizer)
+		expression = regular.VOCAB['Sequence'].from_args(pattern['stem'], pattern['trail'])
 		if trail: trail = -trail
 		elif stem: trail = stem
 		else: raise regular.TrailingContextError('Variable stem and variable trailing context in the same pattern are not presently supported.')
-	return bol, expression, trail
+	else: assert False, pattern.symbol.label
+	return regular.LEFT_CONTEXT[pattern['left_context'].symbol.label], expression, trail
 
 class ConditionContext:
 	""" I'd like to be able to use Python's context manager protocol to simplify writing definitions of scan conditions. """
@@ -127,54 +126,59 @@ class ConditionContext:
 
 #########################
 # A pattern parser is easy to build using the miniparse module:
+class RegexParser(miniparse.MiniParse):
+	def did_not_recover(self):
+		raise regular.PatternSyntaxError
 
-rex = miniparse.MiniParse('Pattern', 'Regular')
-rex.void_symbols.update('^ ^^ / | ? * + { } , ( ) [ - ] &&'.split())
-rex.rule('Pattern', 'BOL Regular Trail')()
-rex.rule('Pattern', 'BOL $')(lambda bol, eof:(bol, eof, None)) # To specify end-of-file rules without introducing yet another metacharacter
-rex.rule('BOL', '')(lambda : (True, True))
-rex.rule('BOL', '^')(lambda : (False, True))
-rex.rule('BOL', '^^')(lambda : (True, False))
-rex.rule('Trail', '')()
-rex.rule('Trail', '$')()
-rex.rule('Trail', '/ Regular')()
-rex.rule('Trail', '/ Regular $')(regular.sequence.from_args)
-rex.rule('Regular', 'Sequence')()
-rex.rule('Regular', 'Regular | Sequence')(regular.alternation.from_args)
-rex.rule('Sequence', 'Term')()
-rex.rule('Sequence', 'Sequence Term')(regular.sequence.from_args)
-rex.rule('Term', 'Atom')()
-rex.rule('Term', 'Atom ?')(regular.hook.from_args)
-rex.rule('Term', 'Atom *')(regular.star.from_args)
-rex.rule('Term', 'Atom +')(regular.plus.from_args)
-@rex.rule('Term', 'Atom { number }')
-def _exact_count(sub, nr):
-	bound = regular.bound.leaf(nr)
-	return regular.counted.from_args(sub, bound, bound)
+	def __init__(self):
+		super(RegexParser, self).__init__('Pattern', 'Regular')
+		self.void_symbols.update('^ ^^ / | ? * + { } , ( ) [ - ] && ; whitespace'.split())
+		for line in """
+			Pattern: left_context Regular               :pattern_regular
+			Pattern: left_context Regular right_context :pattern_with_trail
+			Pattern: left_context right_context         :pattern_only_trail
+			left_context:    :anywhere
+			left_context: ^  :begin_line
+			left_context: ^^ :mid_line
+			right_context: end
+			right_context: / Regular
+			right_context: / Regular end :Sequence
+			Regular: sequence
+			Regular: Regular | sequence :Alternation
+			sequence: term
+			sequence: sequence term :Sequence
+			term: atom
+			term: atom ? :Hook
+			term: atom * :Star
+			term: atom + :Plus
+			term: atom { number }          :n_times
+			term: atom { number , }        :n_or_more
+			term: atom { , number }        :n_or_fewer
+			term: atom { number , number } :n_to_m
+			atom: codepoint
+			atom: reference
+			atom: ( Regular )
+			atom: [ class ]
+			class: conjunct
+			class: class && conjunct :CharIntersection
+			conjunct: members
+			conjunct: ^ members :CharComplement
+			members: item
+			members: members item :CharUnion
+			item: codepoint
+			item: codepoint - codepoint :CharRange
+			item: reference
+		""".splitlines():
+			bits = [x.strip() for x in line.split(':')]
+			if len(bits)==2: self.rule(*bits)()
+			elif len(bits)==3:
+				symbol = regular.VOCAB[bits.pop()]
+				self.rule(*bits)(symbol.from_args)
 
-rex.rule('Term', 'Atom { number , }')(lambda a, n: regular.counted.from_args(a, regular.bound.leaf(n), regular.bound.leaf(None)))
-rex.rule('Term', 'Atom { , number }')(lambda a, n: regular.counted.from_args(a, regular.bound.leaf(0), regular.bound.leaf(n)))
-rex.rule('Term', 'Atom { number , number }')(lambda a, m, n: regular.counted.from_args(a, regular.bound.leaf(m), regular.bound.leaf(n)))
-rex.rule('Atom', '( Regular )')()
-rex.rule('Atom', 'c')()
-rex.rule('Atom', 'reference')()
-rex.rule('Atom', '[ Class ]')()
-rex.rule('Class', 'Conjunct')()
-rex.rule('Class', 'Class && Conjunct')(regular.char_intersection.from_args)
-rex.rule('Conjunct', 'Members')()
-rex.rule('Conjunct', '^ Members')(regular.char_complement.from_args)
-rex.rule('Members', 'Item')()
-rex.rule('Members', 'Members Item')(regular.char_union.from_args)
-rex.rule('Item', 'c')()
-rex.rule('Item', 'c - c')(regular.char_range.from_args)
-rex.rule('Item', 'short')()
-rex.rule('Item', 'reference')()
-
-META = Definition()
-def _BEGIN_():
+def _BOOTSTRAP_REGEX_SCANNER_():
 	""" This is the bootstrapping routine: it builds the preload and the meta-scanner. """
 	def seq(head, *tail):
-		for t in tail: head = regular.sequence.from_args(head, t)
+		for t in tail: head = regular.VOCAB['Sequence'].from_args(head, t)
 		return head
 	def txt(s):return seq(*(regular.codepoint.leaf(ord(_)) for _ in s))
 	
@@ -197,20 +201,20 @@ def _BEGIN_():
 		yy.token('reference', regular.named_subexpression.leaf(yy.matched_text()[1], yy.current_span()))
 	def _dot_reference(yy:interfaces.Scanner):
 		yy.token('reference', regular.named_subexpression.leaf('DOT', yy.current_span()))
-	def _hex_escape(yy): yy.token('c', regular.codepoint.leaf(int(yy.matched_text()[2:], 16)))
-	def _control(yy): yy.token('c', regular.codepoint.leaf(31 & ord(yy.matched_text()[2:])))
-	def _arbitrary_character(yy): yy.token('c', regular.codepoint.leaf(ord(yy.matched_text())))
+	def _hex_escape(yy): yy.token('codepoint', regular.codepoint.leaf(int(yy.matched_text()[2:], 16)))
+	def _control(yy): yy.token('codepoint', regular.codepoint.leaf(31 & ord(yy.matched_text()[2:])))
+	def _arbitrary_character(yy): yy.token('codepoint', regular.codepoint.leaf(ord(yy.matched_text())))
 	def _class_initial_close_bracket(yy):
 		yy.enter('in_class')
 		_arbitrary_character(yy)
 	def _class_final_dash(yy):
-		yy.token('c', ord('-'))
+		yy.token('codepoint', ord('-'))
 		yy.token(']', None)
 		yy.enter(None)
-	def _arbitrary_escape(yy): yy.token('c', regular.codepoint.leaf(ord(yy.matched_text()[1:])))
-	def _number(yy): yy.token('number', int(yy.matched_text()))
+	def _arbitrary_escape(yy): yy.token('codepoint', regular.codepoint.leaf(ord(yy.matched_text()[1:])))
+	def _number(yy): yy.token('number', regular.bound.leaf(int(yy.matched_text())))
 	def _dollar(charclass):
-		def fn(yy:Scanner): yy.token('$', charclass)
+		def fn(yy:Scanner): yy.token('end', charclass)
 		return fn
 	def _meta_caret(yy):
 		yy.token(yy.matched_text()[:-1], None)
@@ -226,40 +230,45 @@ def _BEGIN_():
 	
 	eof_charclass = regular.char_prebuilt.leaf(charset.EOF)
 	dollar_charclass = regular.char_prebuilt.leaf(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].semantic))
-	
-	for t in '^', '^^': META.install_rule(expression=txt(t), action=_metatoken, bol=(False, True))
+
+	meta = Definition()
+
+	for t in '^', '^^': meta.install_rule(expression=txt(t), action=_metatoken, bol=(False, True))
 	for t,cc in ('$', dollar_charclass), ('<<EOF>>', eof_charclass):
-		META.install_rule(expression=seq(txt(t), eof_charclass), trail=-1, action=_dollar(cc))
-	common_rules(META,
+		meta.install_rule(expression=seq(txt(t), eof_charclass), trail=-1, action=_dollar(cc))
+	common_rules(meta,
 		('.', _dot_reference),
 		('{', _and_then('brace')),
 		('[', _and_then('start_class')),
 		('[^', _meta_caret),
 		*((c, _metatoken) for c in '(|)?*+/'),
 	)
-	common_rules(META.condition('in_class'),
+	common_rules(meta.condition('in_class'),
 		(']', _and_then(None)),
 		('&&', _metatoken),
 		('&&^', _meta_caret),
 		('-', _metatoken),
 		('-]', _class_final_dash),
 	)
-	with META.condition('start_class') as start_class:
+	with meta.condition('start_class') as start_class:
 		common_rules(start_class, (']', _class_initial_close_bracket), ('-', _arbitrary_character),)
 		start_class.install_rule(expression=ref('ANY'), action = _instead('in_class'))
-	with META.condition(None, 'in_class') as anywhere:
-		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.plus.from_args(ref('word')), txt('}'), ), action=_bracket_reference)
+	with meta.condition(None, 'in_class') as anywhere:
+		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.VOCAB['Plus'].from_args(ref('word')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\') # NB: Python doesn't let you end a raw-string with a backslash.
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]:
-			hexblock = _exact_count(ref('xdigit'), n)
+			hexblock = regular.VOCAB['n_times'].from_args(ref('xdigit'), regular.bound.leaf(n))
 			anywhere.install_rule(expression=seq(whack, txt(c), hexblock), action=_hex_escape)
-		anywhere.install_rule(expression=seq(whack, txt('c'), regular.char_prebuilt.leaf(charset.range_class(64, 127))), action=_control)
+		anywhere.install_rule(expression=seq(whack, txt('codepoint'), regular.char_prebuilt.leaf(charset.range_class(64, 127))), action=_control)
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)
 		anywhere.install_rule(expression=dot, action=_arbitrary_character)
-	with META.condition('brace') as brace:
-		brace.install_rule(expression=regular.plus.from_args(ref('digit')), action=_number)
+	with meta.condition('brace') as brace:
+		brace.install_rule(expression=regular.VOCAB['Plus'].from_args(ref('digit')), action=_number)
 		common_rules(brace, (',', _metatoken), ('}', _and_then(None)),)
-	
-	PRELOAD['ASCII']['R'] = rex.parse(META.scan(r'\r?\n|\r'), language='Regular')
-_BEGIN_()
+	return meta
+
+rex = RegexParser()
+META = _BOOTSTRAP_REGEX_SCANNER_()
+PRELOAD['ASCII']['R'] = rex.parse(META.scan(r'\r?\n|\r'), language='Regular')
+

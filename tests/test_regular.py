@@ -49,21 +49,21 @@ class TestAST(unittest.TestCase):
 		"""
 		rcl = regular.codepoint.leaf
 		rbl = regular.bound.leaf
-		one = regular.char_range.from_args(rcl(32), rcl(127), ) # The ascii printing characters :)
-		two = regular.sequence.from_args(one, one) # Two of them in a row
+		one = regular.VOCAB['CharRange'].from_args(rcl(32), rcl(127), ) # The ascii printing characters :)
+		two = regular.VOCAB['Sequence'].from_args(one, one) # Two of them in a row
 		sizer = regular.Sizer({})
 		for regex, expected_size in [
 			(one, 1),
 			(two, 2),
-			(regular.alternation.from_args(one, one), 1),
-			(regular.alternation.from_args(two, two), 2),
-			(regular.alternation.from_args(one, two), None),
-			(regular.hook.from_args(one), None),
-			(regular.star.from_args(one), None),
-			(regular.plus.from_args(one), None),
-			(regular.counted.from_args(one, rbl(4), rbl(4)), 4),
-			(regular.counted.from_args(two, rbl(4), rbl(4)), 8),
-			(regular.counted.from_args(two, rbl(3), rbl(4)), None),
+			(regular.VOCAB['Alternation'].from_args(one, one), 1),
+			(regular.VOCAB['Alternation'].from_args(two, two), 2),
+			(regular.VOCAB['Alternation'].from_args(one, two), None),
+			(regular.VOCAB['Hook'].from_args(one), None),
+			(regular.VOCAB['Star'].from_args(one), None),
+			(regular.VOCAB['Plus'].from_args(one), None),
+			(regular.VOCAB['n_times'].from_args(one, rbl(4)), 4),
+			(regular.VOCAB['n_times'].from_args(two, rbl(4)), 8),
+			(regular.VOCAB['n_to_m'].from_args(two, rbl(3), rbl(4)), None),
 		]: self.assertEqual(regex.tour(sizer), expected_size)
 
 		
