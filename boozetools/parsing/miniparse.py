@@ -1,6 +1,6 @@
 """ No frills. Plenty useful. """
 
-from ..support import interfaces, foundation
+from ..support import interfaces
 from . import automata, context_free, shift_reduce
 
 
