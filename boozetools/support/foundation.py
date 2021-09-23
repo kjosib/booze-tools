@@ -4,7 +4,10 @@ from collections.abc import Sequence
 import operator
 
 def allocate(a_list:list, item):
-	""" Too frequent an idiom not to abbreviate. """
+	"""
+	Append an item to a list, and return the new item's index in that list.
+	Too frequent an idiom not to abbreviate.
+	"""
 	idx = len(a_list)
 	a_list.append(item)
 	return idx
@@ -49,6 +52,11 @@ class BreadthFirstTraversal:
 		return path
 
 class EquivalenceClassifier:
+	"""
+	Conceivably you might want to normalize the keys,
+	but you can do that in advance of the .classify call,
+	so there is no point folding it into this object.
+	"""
 	def __init__(self):
 		self.catalog = {}
 		self.exemplars = []
@@ -63,11 +71,15 @@ def hamming_distance(a, b):
 	return sum(map(operator.ne, a, b))
 
 def grade(seq:Sequence, *, descending=False) -> list:
-	""" returns result such that [seq[i] for i in grade(seq)] == sorted(seq). Cribbed from APL's grade_up/down. """
+	"""
+	Returns an index permutation, such that:
+		[seq[i] for i in grade(seq)] == sorted(seq)
+	Cribbed from APL's grade_up/grade_down primitives.
+	"""
 	return sorted(range(len(seq)), key=seq.__getitem__, reverse=descending)
 
 def everted(permutation:Sequence) -> list:
-	""" Creates and returns an inverse permutation: like it's been turned inside-out """
+	""" Creates and returns the inverse of a given permutation: like it's been turned inside-out """
 	result = [None] * len(permutation)
 	for i, x in enumerate(permutation): result[x] = i
 	return result
@@ -94,7 +106,7 @@ def strongly_connected_components_by_tarjan(graph):
 		for r in graph[q]:
 			if unvisited(r): low_link = min(low_link, connect(r))
 			elif on_stack[r]: low_link = min(low_link, index[r])
-		if low_link == index[q]: # i.e. if node q is the root of an SCC:
+		if low_link == index[q]:  # i.e. if node q is the root of an SCC:
 			component = stack[low_link:]
 			del stack[low_link:]
 			for r in component: on_stack[r] = False
@@ -112,7 +124,11 @@ def strongly_connected_components_by_tarjan(graph):
 	return output
 
 def strongly_connected_components_hashable(graph:dict):
-	""" This adapts Tarjan's SCC algorithm for more kinds of graph node labels than strictly integers. """
+	"""
+	Adaptation of Tarjan's SCC algorithm for more kinds of graph node labels than strictly integers.
+	The input graph is represented as a dictionary, with values being lists of keys.
+	The result will again be lists of keys.
+	"""
 	table = list(graph.keys())
 	index = {key:i for i,key in enumerate(table)}
 	prime = [
@@ -149,4 +165,43 @@ class Visitor:
 					break
 			else: raise
 		return method(host, *args, **kwargs)
+
+def generate_primes():
+	"""
+	Generate and yield an unbounded ordered sequence of prime numbers.
+	* If you want the first N primes, compose with itertools.islice(..., N).
+	* If you want primes less than N, compose with itertools.dropWhile(N.__gt__, ...)
+
+	Various algorithms rely on having a convenient source of prime numbers.
+	Although generating primes isn't all that expensive an activity,
+	compute-by-need means thinking about thread-safety, so design with care.
+	
+	There are faster algorithms for large primes, but this wheel-sieve
+	(see https://en.wikipedia.org/wiki/Wheel_factorization) is more than
+	adequate for general use outside of cryptography and heavy number-theory.
+	"""
+	yield from (2, 3, 5)  # The basis of the wheel
+	
+	# Generate a wheel via simple trial division of odd numbers (themselves a sort of minimal wheel):
+	# The wheel consists of the non-basis primes less than `2+circumference`.
+	# Hard-coded trial division of odd numbers is sufficient to find it:
+	offset = circumference = 2 * 3 * 5  # The product of the basis-primes.
+	wheel = [n for n in range(7, 2 + circumference, 2) if n % 3 and n % 5]
+	yield from wheel
+	
+	# Henceforth, candidate primes are of the form:
+	#     wheel[i] + k * circumference
+	# where k ranges from 1..infinity.
+	primes, trials, next_trial, next_square = list(wheel), [], 7, 49
+	while True:
+		for spoke in wheel:
+			candidate = spoke + offset
+			if candidate >= next_square:
+				trials.append(next_trial)
+				next_trial = primes[len(trials)]
+				next_square = next_trial * next_trial
+			if all(candidate % p for p in trials):
+				yield candidate
+				primes.append(candidate)
+		offset += circumference
 
