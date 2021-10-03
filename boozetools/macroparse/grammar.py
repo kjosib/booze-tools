@@ -63,7 +63,7 @@ class InlineRenaming(Element):
 		symbol = "[%s]"%("|".join(alts))
 		if ebnf.implementing(symbol):
 			for a in alts:
-				ebnf.plain_cfg.rule(symbol, [a], None, None, 0, None)
+				ebnf.plain_cfg.rule(symbol, [a], None, 0, None)
 		return symbol
 	
 	def is_void_for(self, ebnf: "EBNF_Definition", head: str) -> bool:
@@ -120,11 +120,10 @@ class Rewrite:
 				raw_bnf.append(elt.implement(ebnf, head, bindings))
 		
 		if self.message is None:
-			con = None
-			plc = args[0] if len(args) == 1 else args
+			action = args[0] if len(args) == 1 else context_free.SemanticAction(None, args)
 		else:
-			con, plc = self.message.name, args
-		ebnf.plain_cfg.rule(head, raw_bnf, self.precsym, con, plc, ebnf.error_help.current_line_nr)
+			action = context_free.SemanticAction(self.message.name, args)
+		ebnf.plain_cfg.rule(head, raw_bnf, self.precsym, action, ebnf.error_help.current_line_nr)
 
 def prefix_capture(args:List[int], size: int):
 	# This is returning offsets from the size of the stack as seen
@@ -267,7 +266,7 @@ def illustrate_position(line:str, column:int): return line[:column]+'<<_here_>>'
 
 class EBNF_Definition:
 	def __init__(self, error_help:ErrorHelper):
-		self.plain_cfg = context_free.ContextFreeGrammar()
+		self.plain_cfg = context_free.ContextFreeGrammar(context_free.SimpleFaultHandler())
 		self.current_head = None # This bit of state facilitates the feature of beginning a line with an alternation symbol.
 		self.inferential_start = None # Use this to infer a start symbol if necessary.
 		self.macro_definitions = {} # name -> MacroDefinition

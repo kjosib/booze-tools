@@ -396,7 +396,7 @@ def abstract_lr1_construction(
 		graph.append(LA_State(shift=ure.find_shifts(reachable(step, reduce, grammar)), reduce=reduce,))
 	
 	RHS = grammar.augmented_rules()
-	transparent = find_transparent(grammar.find_first_and_epsilon()[1], RHS)
+	transparent = find_transparent(grammar.find_epsilon(), RHS)
 	bft = foundation.BreadthFirstTraversal()
 	ure = UnitReductionEliminator(grammar, bft)
 	graph = []
@@ -650,17 +650,31 @@ class DragonBookTable(interfaces.ParseTable):
 		nontranslate = {symbol: i for i, symbol in enumerate(nonterminals)}
 		self.terminals, self.nonterminals = terminals, nonterminals
 		self.breadcrumbs = breadcrumbs
-		self.constructors = [None, *(set(rule.constructor for rule in rules) - {None})]
-		ctrans = {c:i for i,c in enumerate(self.constructors)}
+		
 		def translate_rule(rule:context_free.Rule):
+			"""
+			The current approach to storing rule actions is:
+			Each rule gets a constructor number and a list of "places".
+			A negative constructor-number means a bracketing- rule,
+			with an offset from the stack pointer telling where to find the semantic item.
+			A non-negative points into a table of semantic actions
+			for use with a translated ``places`` vector, which gives argument offsets.
+			Perhaps the ``places`` vector should also be part of the equivalence relationship?
+			"""
 			size = len(rule.rhs)
-			if isinstance(rule.places, int):
-				assert rule.constructor is None
-				c,p = rule.places-size, ()
-			else: c,p = ctrans[rule.constructor], tuple(x-size for x in rule.places)
+			if isinstance(rule.action, int):
+				assert rule.action < size
+				c,p = rule.action-size, ()
+			else:
+				assert isinstance(rule.action, context_free.SemanticAction)
+				c,p = messages.classify(rule.action.message), tuple(x-size for x in rule.action.places)
 			return nontranslate[rule.lhs], size, c, p
+		
+		messages = foundation.EquivalenceClassifier()
 		self.rule_table = list(map(translate_rule, rules))
-		self.rule_origin = [rule.origin for rule in rules]
+		self.constructors = messages.exemplars
+		
+		self.rule_provenance = [rule.provenance for rule in rules]
 		self.splits = splits # A non-deterministic table just needs one extra bit: this list of lists.
 		
 		interactive = []

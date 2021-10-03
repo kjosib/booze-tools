@@ -8,7 +8,7 @@ def shorthand(cfg: context_free.ContextFreeGrammar, rules:dict):
 	""" Just a quick way to enter a grammar where semantic-value is irrelevant. """
 	for lhs, rhs in rules.items():
 		for alt in rhs.split('|'):
-			cfg.rule(lhs, list(alt), None, None, 0, None)
+			cfg.rule(lhs, list(alt), None, 0, None)
 
 def mysterious_reduce_conflict(cfg: context_free.ContextFreeGrammar):
 	""" This is your standard way to trigger a "mysterious" reduce/reduce conflict in LALR. """
@@ -65,7 +65,7 @@ class TableMethodTester(unittest.TestCase):
 				else: assert False, "This should have raised an exception."
 	def r(self, lhs, rhs:str):
 		rhs = rhs.split()
-		self.g.rule(lhs.strip(), rhs, None, 'x', (), None)
+		self.g.rule(lhs.strip(), rhs, None, context_free.SemanticAction('x', ()), None)
 	def R(self, text):
 		lhs, rest = text.split(':')
 		for rhs in rest.split('|'): self.r(lhs, rhs)

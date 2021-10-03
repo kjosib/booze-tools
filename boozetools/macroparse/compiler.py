@@ -60,7 +60,7 @@ class TextBookForm:
 			'terminals': table.terminals,
 			'nonterminals': table.nonterminals,
 			'breadcrumbs': [symbol_index[s] for s in table.breadcrumbs],
-			'rule': encode_parse_rules(table.rule_table, table.constructors, table.rule_origin),
+			'rule': encode_parse_rules(table.rule_table, table.constructors, table.rule_provenance),
 		}
 		if table.splits: form['splits'] = table.splits
 		return form

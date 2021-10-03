@@ -1,5 +1,6 @@
 """ No frills. Plenty useful. """
 
+import inspect
 from ..support import interfaces
 from . import automata, context_free, shift_reduce
 
@@ -7,8 +8,9 @@ from . import automata, context_free, shift_reduce
 class MiniParse(interfaces.ParseErrorListener):
 	""" Connects BNF production rules directly to Python functions. No frills. Very useful as-is. """
 	def __init__(self, *start, method='LALR', strict=False):
-		self.__grammar = context_free.ContextFreeGrammar()
+		self.__grammar = context_free.ContextFreeGrammar(context_free.SimpleFaultHandler())
 		self.__grammar.start.extend(start)
+		self.__attrribute = []
 		self.__hfa: automata.DragonBookTable = None
 		self.__combine = None
 		self.__awaiting_action = False
@@ -44,16 +46,17 @@ class MiniParse(interfaces.ParseErrorListener):
 		assert self.__hfa is None
 		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the prior production rule.')
 		self.__awaiting_action = True
-		rhs, offsets = self.__analyze(rhs)
+		rhs, offsets = self.__analyze(rhs) # Ack! Changing type mid-stream.
 		def decorate(fn=None):
 			assert self.__awaiting_action
 			self.__awaiting_action = False
 			if fn is None:
-				if len(rhs) == 1: con,plc = None,0 # Unit/renaming rule
-				elif len(offsets) == 1: con,plc = None, offsets[0]  # Bracketing rule
-				else: con,plc = _collect_tuple, offsets
-			else: con,plc = fn, offsets
-			self.__grammar.rule(lhs, rhs, prec_sym, con,plc, None)
+				if len(rhs) == 1: action = 0 # Unit/renaming rule
+				elif len(offsets) == 1: action = offsets[0]  # Bracketing rule
+				else: action = context_free.SemanticAction(_collect_tuple, offsets)
+			else: action = context_free.SemanticAction(fn, offsets)
+			previous_frame = inspect.currentframe().f_back
+			self.__grammar.rule(lhs, rhs, prec_sym, action, inspect.getframeinfo(previous_frame)[:2])
 			return fn
 		return decorate
 	
@@ -64,10 +67,11 @@ class MiniParse(interfaces.ParseErrorListener):
 		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the prior production rule.')
 		for branch in alternatives:
 			rhs, offsets = self.__analyze(branch)
-			if len(rhs) == 1: con, plc = None, 0  # Unit/renaming rule
-			elif len(offsets) == 1: con, plc = None, offsets[0]  # Bracketing rule
+			if len(rhs) == 1: action = 0  # Unit/renaming rule
+			elif len(offsets) == 1: action = offsets[0]  # Bracketing rule
 			else: raise AssertionError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.' % branch)
-			self.__grammar.rule(lhs, rhs, None, con, plc, None)
+			previous_frame = inspect.currentframe().f_back
+			self.__grammar.rule(lhs, rhs, None, action, inspect.getframeinfo(previous_frame)[:2])
 	
 	def display(self): self.__grammar.display()
 
