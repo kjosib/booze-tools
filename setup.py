@@ -6,6 +6,7 @@ setuptools.setup(
 	packages=[
 		'boozetools',
 		'boozetools.macroparse',
+		'boozetools.arborist',
 		'boozetools.parsing',
 		'boozetools.parsing.general',
 		'boozetools.scanning',
