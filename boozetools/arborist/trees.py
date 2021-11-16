@@ -22,10 +22,10 @@ Pragmatic benefits of a centralized implementation include:
 	3. A consistent source-tracking channel for tracing the origin(s) of bogus input.
 	4. The possibility of data-driven transformations on tree structures.
 
-What's here isn't necessarily perfect yet, but it's doing some jobs.
+What's here is far from perfect yet, but it's doing some jobs.
 """
 
-__all__ = ['make_symbol', 'Node']
+__all__ = ['Ontology', 'OntologyError', 'Node']
 
 from typing import NamedTuple, Optional
 from dataclasses import dataclass
@@ -34,10 +34,10 @@ from dataclasses import dataclass
 class _Symbol(NamedTuple):
 	""" A tree node's "symbol" corresponds to its "constructor" in an "abstract data types" conception of trees. """
 	label: str
-	arity: tuple[str, ...]
+	arity: tuple[str, ...] # Why strings? Why can't they be category-objects? Or have the list nature?
 	index: dict[str, int]
 	category: Optional[str] # Category may be thought of as a "data type" which may have several constructors/symbols.
-	origin: object
+	ontology: "Ontology"
 
 	def node(self, *, semantic:object, children:tuple["Node", ...], debug_info) -> "Node":
 		"""
@@ -58,9 +58,48 @@ class _Symbol(NamedTuple):
 		""" Convenience function for mini-parse grammars. """
 		return self.node(semantic=None, children=children, debug_info=debug_info)
 
-def make_symbol(label:str, kids:dict[str,str], category:str=None, origin=None):
-	return _Symbol(label, tuple(kids.values()), dict((k,i) for i,k in enumerate(kids.keys())), category, origin)
+class OntologyError(ValueError):
+	pass
 
+class Ontology:
+	"""
+	The symbols in a given ontology are meant to hang together.
+	This is fairly simplistic, in that the categories do not form any sort of network.
+	But it will do for experimentation.
+	
+	Two obvious enhancement ideas:
+		For error reporting, you might want to know where the ontology came from.
+		For language embedding, you might want to import symbols from another ontology.
+	"""
+	def __init__(self):
+		self.symbols = {}
+		self.defined_categories = {}
+		self.mentioned_categories = set()
+		
+	def __getitem__(self, item):
+		return self.symbols[item]
+		
+	def define_category(self, category:str, cases:dict[str,dict[str,str]]):
+		"""
+		category: a string describing the general data type all the cases fulfill.
+		cases: dict[label, dict[field, category]]
+		Why not accept a term from a meta-ontology? Because -- well -- not yet.
+		"""
+		if category in self.defined_categories: raise OntologyError(category)
+		self.defined_categories[category] = set(cases.keys())
+		for label, kids in cases.items():
+			if label in self.symbols: raise OntologyError(label)
+			self.mentioned_categories.update(kids.values())
+			self.symbols[label] = _Symbol(label, tuple(kids.values()), dict((k,i) for i,k in enumerate(kids.keys())), category, self)
+	
+	def check_sanity(self):
+		"""
+		The ontology is sane when every field's category is defined.
+		This would have to change if and when imports happen.
+		"""
+		bogons = self.mentioned_categories - self.defined_categories.keys()
+		if bogons: raise OntologyError(bogons)
+		
 
 @dataclass(eq=False)
 class Node:
@@ -69,7 +108,7 @@ class Node:
 	This structure will be the backbone of the "arborist" framework.
 	"""
 	__slots__ = ('symbol', 'semantic', 'children', 'debug_info')
-	symbol: _Symbol     # Refers into a dictionary of symbol definitions.
+	symbol: _Symbol    # Refers into a dictionary of symbol definitions.
 	semantic: object   # Mutable in general, but a bottom-up pass may provide a basis object.
 	children: tuple    # Must have correct arity for the symbol.
 	debug_info: object # Although this remains application-defined, often a file position might work.

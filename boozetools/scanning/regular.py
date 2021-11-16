@@ -1,6 +1,6 @@
 """ An AST class-hierarchy for regular expressions and mechanisms for translating them. """
 
-from ..arborist.trees import make_symbol, Node
+from ..arborist.trees import Ontology, Node
 from . import finite, charset
 
 class PatternError(Exception):
@@ -38,39 +38,45 @@ class PatternSyntaxError(PatternError):
 	"""
 	errmsg = "Pattern syntax does not compute."
 
-codepoint = make_symbol('Codepoint', {}, 'char_class') # Semantic is codepoint.
-
+VOCAB = Ontology()
 # A bit of theory: A character class is an intersection of one or more (possibly-inverted) set/unions;
 # each set consists of one or more of codepoints, ranges, and named-classes. Therefore, we get this alphabet:
-VOCAB = {s:make_symbol(s,k,c) for (s,k,c) in [
-	('CharRange', {'first':'Codepoint', 'last':'Codepoint'}, 'char_class'),
-    ('Sequence', {'a':'regular', 'b':'regular'}, 'regex'),
-    ('Alternation', {'a':'regular', 'b':'regular'}, 'regex'),
-	('Star', {'sub':'regular'}, 'regex'),
-	('Hook', {'sub':'regular'}, 'regex'),
-	('Plus', {'sub':'regular'}, 'regex'),
-	('n_times', {'sub':'regular', 'num':'Bound'}, 'regex'),
-	('n_or_more', {'sub':'regular', 'min':'Bound'}, 'regex'),
-	('n_or_fewer', {'sub':'regular', 'max':'Bound'}, 'regex'),
-	('n_to_m', {'sub':'regular', 'min':'Bound', 'max':'Bound'}, 'regex'),
-	('CharUnion', {'a': 'char_class', 'b': 'char_class', }, 'char_class'),
-	('CharIntersection', {'a': 'char_class', 'b': 'char_class', }, 'char_class'),
-	('CharComplement', {'inverse': 'char_class'}, 'char_class'),
-	('pattern_regular', {'left_context':'left_context', 'stem':'regular'}, 'pattern'),
-	('pattern_with_trail', {'left_context':'left_context', 'stem':'regular', 'trail':'regular'}, 'pattern'),
-	('pattern_only_trail', {'left_context':'left_context', 'trail':'regular'}, 'pattern'),
-]}
-char_prebuilt = make_symbol('CharPrebuilt', {}, 'char_class')
-bound = make_symbol('Bound', {}) # Semantic is number (or None).
-named_subexpression = make_symbol('NamedSubexpression', {}, 'regex') # Semantic is subexpression name.
-
+VOCAB.define_category('Codepoint', {
+	'Codepoint': {},  # Semantic is codepoint.
+})
+VOCAB.define_category('char_class', {
+	'CharRange': {'first':'Codepoint', 'last':'Codepoint'},
+	'CharUnion': {'a': 'char_class', 'b': 'char_class', },
+	'CharIntersection': {'a': 'char_class', 'b': 'char_class', },
+	'CharComplement': {'inverse': 'char_class'},
+	'CharPrebuilt': {}, # Semantic is a pre-built character-class vector.
+})
+VOCAB.define_category('regex', {
+    'Sequence': {'a':'regex', 'b':'regex'},
+    'Alternation': {'a':'regex', 'b':'regex'},
+	'Star': {'sub':'regex'},
+	'Hook': {'sub':'regex'},
+	'Plus': {'sub':'regex'},
+	'n_times': {'sub':'regex', 'num':'Bound'},
+	'n_or_more': {'sub':'regex', 'min':'Bound'},
+	'n_or_fewer': {'sub':'regex', 'max':'Bound'},
+	'n_to_m': {'sub':'regex', 'min':'Bound', 'max':'Bound'},
+	'NamedSubexpression': {}, # Semantic is subexpression name.
+})
+VOCAB.define_category('pattern', {
+	'pattern_regular':    {'left_context':'left_context', 'stem':'regex'},                   
+	'pattern_with_trail': {'left_context':'left_context', 'stem':'regex', 'trail':'regex'},
+	'pattern_only_trail': {'left_context':'left_context', 'trail':'regex'},                  
+})
+VOCAB.define_category('Bound', {
+	"Bound": {} # Semantic is number (or None).
+})
 LEFT_CONTEXT = {
 	'anywhere': (True, True),
 	'begin_line': (False, True),
 	'mid_line': (True, False),
 }
-for x in LEFT_CONTEXT:
-	VOCAB[x] = make_symbol(x, {}, 'left_context')
+VOCAB.define_category('left_context', {x:{} for x in LEFT_CONTEXT.keys()})
 
 class Encoder:
 	"""

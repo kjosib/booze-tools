@@ -47,8 +47,8 @@ class TestAST(unittest.TestCase):
 		Explains the nature of computing the a-priori length of a regular expression.
 		This gets used in working out the details for trailing-context expressions.
 		"""
-		rcl = regular.codepoint.leaf
-		rbl = regular.bound.leaf
+		rcl = regular.VOCAB['Codepoint'].leaf
+		rbl = regular.VOCAB['Bound'].leaf
 		one = regular.VOCAB['CharRange'].from_args(rcl(32), rcl(127), ) # The ascii printing characters :)
 		two = regular.VOCAB['Sequence'].from_args(one, one) # Two of them in a row
 		sizer = regular.Sizer({})
@@ -66,4 +66,5 @@ class TestAST(unittest.TestCase):
 			(regular.VOCAB['n_to_m'].from_args(two, rbl(3), rbl(4)), None),
 		]: self.assertEqual(regex.tour(sizer), expected_size)
 
-		
+	def test_01_ontology_is_sane(self):
+		regular.VOCAB.check_sanity()

@@ -5,7 +5,8 @@ from ..support import interfaces
 from ..parsing import miniparse
 from . import finite, regular, charset, recognition
 
-PRELOAD = {'ASCII': {k: regular.char_prebuilt.leaf(cls) for k, cls in charset.mode_ascii.items()}}
+char_prebuilt = regular.VOCAB['CharPrebuilt']
+PRELOAD = {'ASCII': {k: char_prebuilt.leaf(cls) for k, cls in charset.mode_ascii.items()}}
 
 
 class Definition:
@@ -180,7 +181,7 @@ def _BOOTSTRAP_REGEX_SCANNER_():
 	def seq(head, *tail):
 		for t in tail: head = regular.VOCAB['Sequence'].from_args(head, t)
 		return head
-	def txt(s):return seq(*(regular.codepoint.leaf(ord(_)) for _ in s))
+	def txt(s):return seq(*(regular.VOCAB['Codepoint'].leaf(ord(_)) for _ in s))
 	
 	def _metatoken(yy): yy.token(yy.matched_text(), None)
 	def _and_then(condition):
@@ -195,15 +196,15 @@ def _BOOTSTRAP_REGEX_SCANNER_():
 		return fn
 	def _bracket_reference(yy:interfaces.Scanner):
 		name = yy.matched_text()[1:-1]
-		node = regular.named_subexpression.leaf(name, yy.current_span())
+		node = regular.VOCAB['NamedSubexpression'].leaf(name, yy.current_span())
 		yy.token('reference', node)
 	def _shorthand_reference(yy:interfaces.Scanner):
-		yy.token('reference', regular.named_subexpression.leaf(yy.matched_text()[1], yy.current_span()))
+		yy.token('reference', regular.VOCAB['NamedSubexpression'].leaf(yy.matched_text()[1], yy.current_span()))
 	def _dot_reference(yy:interfaces.Scanner):
-		yy.token('reference', regular.named_subexpression.leaf('DOT', yy.current_span()))
-	def _hex_escape(yy): yy.token('codepoint', regular.codepoint.leaf(int(yy.matched_text()[2:], 16)))
-	def _control(yy): yy.token('codepoint', regular.codepoint.leaf(31 & ord(yy.matched_text()[2:])))
-	def _arbitrary_character(yy): yy.token('codepoint', regular.codepoint.leaf(ord(yy.matched_text())))
+		yy.token('reference', regular.VOCAB['NamedSubexpression'].leaf('DOT', yy.current_span()))
+	def _hex_escape(yy): yy.token('codepoint', regular.VOCAB['Codepoint'].leaf(int(yy.matched_text()[2:], 16)))
+	def _control(yy): yy.token('codepoint', regular.VOCAB['Codepoint'].leaf(31 & ord(yy.matched_text()[2:])))
+	def _arbitrary_character(yy): yy.token('codepoint', regular.VOCAB['Codepoint'].leaf(ord(yy.matched_text())))
 	def _class_initial_close_bracket(yy):
 		yy.enter('in_class')
 		_arbitrary_character(yy)
@@ -211,8 +212,8 @@ def _BOOTSTRAP_REGEX_SCANNER_():
 		yy.token('codepoint', ord('-'))
 		yy.token(']', None)
 		yy.enter(None)
-	def _arbitrary_escape(yy): yy.token('codepoint', regular.codepoint.leaf(ord(yy.matched_text()[1:])))
-	def _number(yy): yy.token('number', regular.bound.leaf(int(yy.matched_text())))
+	def _arbitrary_escape(yy): yy.token('codepoint', regular.VOCAB['Codepoint'].leaf(ord(yy.matched_text()[1:])))
+	def _number(yy): yy.token('number', regular.VOCAB['Bound'].leaf(int(yy.matched_text())))
 	def _dollar(charclass):
 		def fn(yy:Scanner): yy.token('end', charclass)
 		return fn
@@ -228,8 +229,8 @@ def _BOOTSTRAP_REGEX_SCANNER_():
 	
 	dot = ref('DOT')
 	
-	eof_charclass = regular.char_prebuilt.leaf(charset.EOF)
-	dollar_charclass = regular.char_prebuilt.leaf(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].semantic))
+	eof_charclass = regular.VOCAB['CharPrebuilt'].leaf(charset.EOF)
+	dollar_charclass = regular.VOCAB['CharPrebuilt'].leaf(charset.union(charset.EOF, PRELOAD['ASCII']['vertical'].semantic))
 
 	meta = Definition()
 
@@ -257,9 +258,9 @@ def _BOOTSTRAP_REGEX_SCANNER_():
 		anywhere.install_rule(expression=seq(txt('{'), ref('alpha'), regular.VOCAB['Plus'].from_args(ref('word')), txt('}'), ), action=_bracket_reference)
 		whack = txt('\\') # NB: Python doesn't let you end a raw-string with a backslash.
 		for c, n in [('x', 2), ('u', 4), ('U', 8)]:
-			hexblock = regular.VOCAB['n_times'].from_args(ref('xdigit'), regular.bound.leaf(n))
+			hexblock = regular.VOCAB['n_times'].from_args(ref('xdigit'), regular.VOCAB['Bound'].leaf(n))
 			anywhere.install_rule(expression=seq(whack, txt(c), hexblock), action=_hex_escape)
-		anywhere.install_rule(expression=seq(whack, txt('codepoint'), regular.char_prebuilt.leaf(charset.range_class(64, 127))), action=_control)
+		anywhere.install_rule(expression=seq(whack, txt('codepoint'), regular.VOCAB['CharPrebuilt'].leaf(charset.range_class(64, 127))), action=_control)
 		anywhere.install_rule(expression=seq(whack, ref('alnum')), action=_shorthand_reference)
 		anywhere.install_rule(expression=seq(whack, dot), action=_arbitrary_escape)
 		anywhere.install_rule(expression=dot, action=_arbitrary_character)
