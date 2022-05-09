@@ -1,5 +1,5 @@
 """
-This file gives the essential shift-reduce algorithm for parsing with with LR-family parse tables.
+This file gives the essential shift-reduce algorithm for parsing with LR-family parse tables.
 The exact form of the table is not important to this exposition, so this module treats the parse
 table as an abstract data type defined and implemented elsewhere.
 
