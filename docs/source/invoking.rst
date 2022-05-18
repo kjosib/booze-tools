@@ -17,6 +17,7 @@ Extremely Short Version
 On the command line:
 
 .. code-block:: text
+
     D:\GitHub\booze-tools>py -m boozetools example\pascal.md
     Wrote automaton in JSON format to:
             example\pascal.automaton
@@ -24,6 +25,7 @@ On the command line:
 Then later, in Python code, something like:
 
 .. code-block:: python
+
     import json
     from boozetools.support import runtime, interfaces
 
@@ -47,6 +49,7 @@ A Bit More Detail
 You have lots of options about how you invoke this:
 
 .. code-block:: text
+
     D:\GitHub\booze-tools>py -m boozetools -h
     usage: py -m boozetools [-h] [-f] [-o OUTPUT] [-i] [--pretty] [--csv] [--dev] [--dot] [-m {LALR,CLR,LR1}] [-v]
                             source_path
