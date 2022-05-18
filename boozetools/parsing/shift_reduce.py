@@ -290,32 +290,43 @@ def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None,
 		
 		:return True if the parser is able to resynchronize.
 		"""
-		# Begin by making a map of the recoverable states.
-		#  nb: This relies on dictionary insertion order.
+		avenues = paths_to_recovery()
+		if not avenues:
+			on_error.cannot_recover()
+			return False
+		
+		if terminal_id == sentinel_end: success = try_proposal(avenues, [(sentinel_end, None)])
+		else: success = any(try_proposal(avenues, p) for p in generate_proposals(terminal_id, semantic, 3))
+		if not success: on_error.did_not_recover()
+		return success
+	
+	def paths_to_recovery():
+		"""
+		We're in a situation where we need to shift the error token.
+		We need to pop zero or more elements off the top of the stack before shifting.
+		We won't know how many is best to pop until we find which gives the best (and smallest) recovery.
+		So this function returns the candidates, fit for iteration over.
+		"""
+		#  nb: This relies on dictionary insertion order, which is assured in recent Python.
 		avenues = {}
 		for depth in range(len(pds)): # There's a madness to this un-pythonic method...
 			if not table.get_action(pds.index_state(depth), error_token_id): continue
 			try: recovery_state = contemplate_recovery(depth, ())
 			except ValueError: continue
 			if recovery_state not in avenues: avenues[recovery_state] = depth
-		if not avenues:
-			on_error.cannot_recover()
-			return False
-		
-		# Try each possible re-start against all avenues for recovery.
-		# It's a bit brutish, but it works.
-		for proposal in generate_proposals(terminal_id, semantic, 3):
-			ts, vs = zip(*proposal)
-			for recovery_state, depth in avenues.items():
-				if table.get_action(recovery_state, ts[0]): # i.e. the proposal has some hope of working here...
-					try: contemplate_recovery(depth, ts)
-					except ValueError: continue
-					else:
-						commit_recovery(depth, proposal)
-						return True
-		on_error.did_not_recover()
-		return False
-		
+		return tuple(avenues.items())
+	def try_proposal(avenues, proposal):
+		ts, vs = zip(*proposal)
+		for recovery_state, depth in avenues:
+			if table.get_action(recovery_state, ts[0]):  # i.e. the proposal has some hope of working here...
+				try:
+					contemplate_recovery(depth, ts)
+				except ValueError:
+					continue
+				else:
+					commit_recovery(depth, proposal)
+					return True
+	
 	def contemplate_recovery(depth, terminal_ids) -> int:
 		h = Hypothetical(table, pds, depth)
 		h.consume(error_token_id)

@@ -87,7 +87,7 @@ class IntermediateForm(NamedTuple):
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
-def compile_string(document:str, *, method) -> IntermediateForm:
+def compile_string(document:str, *, method="LR1") -> IntermediateForm:
 	text = failureprone.SourceText(document)
 	return _compile_text(text, method=method)
 

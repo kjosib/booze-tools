@@ -170,7 +170,7 @@ def compress_dfa_delta_function(matrix:list) -> dict:
 	# Splitting the matrix into two planes (residue and exceptions):
 	zeros, ones, residue, exceptions = [], [], [], []
 	for row in matrix:
-		common = [k for k,v in collections.Counter(row).most_common(2) if v > 1]
+		common = [k for k,v in collections.Counter(row).most_common(2) if v > 1] or row[:2] or [None]
 		zeros.append(common[0])
 		ones.append(common[-1]) # Because if len(common) == 1, duplicate it.
 		look_up = {v:i for i,v in enumerate(common)}
