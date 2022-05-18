@@ -33,7 +33,8 @@ respects precedence and associativity declarations in the usual way. It is stron
 by the IELR(1) algorithm, but it is NOT exactly that algorithm. As far as I can tell it is a
 new contribution. As such, I would appreciate feedback respecting your results with it.
 
-Full documentation is at [the wiki page](https://github.com/kjosib/booze-tools/wiki).
+Full documentation is moving from [the wiki page](https://github.com/kjosib/booze-tools/wiki)
+over to [ReadTheDocs](https://boozetools.readthedocs.io/en/latest/).
 Worked examples may be found at [/example/](https://github.com/kjosib/booze-tools/tree/master/example/).
 
 # Priorities?
