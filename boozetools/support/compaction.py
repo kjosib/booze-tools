@@ -372,10 +372,11 @@ def compress_goto_table(goto_table:list) -> dict:
 		col_index[nonterm_id] = col_class_offset[cls_id] + hi_water_mark
 	
 	# Wrap up and return.
-	if VERBOSE: print("GOTO table original size: %d rows, %d columns -> %d cells"%(height, width, height * width))
 	result = {'row_index': row_index, 'col_index': col_index, 'quotient': quotient+residue, 'mark': hi_water_mark}
-	metric = measure_approximate_cost(result)
-	if VERBOSE: print("GOTO compact size: %d (%.2f%%)"%(metric, 100.0*metric/(height * width)))
+	if VERBOSE:
+		print("GOTO table original size: %d rows, %d columns -> %d cells"%(height, width, height * width))
+		metric = measure_approximate_cost(result)
+		print("GOTO compact size: %d (%.2f%%)"%(metric, 100.0*metric/(height * width)))
 	return result
 
 def compose_reduce_plane(action, nonassoc_errors):
