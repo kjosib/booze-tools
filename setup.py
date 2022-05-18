@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
 	name='booze-tools',
-	version='0.5.0',
+	version='0.5.1',
 	packages=[
 		'boozetools',
 		'boozetools.macroparse',
@@ -23,4 +23,6 @@ setuptools.setup(
 		"Topic :: Software Development :: Compilers",
 		"Development Status :: 4 - Beta",
     ],
+	author="Ian Kjos",
+	author_email="kjosib@gmail.com"
 )
