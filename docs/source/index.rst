@@ -25,6 +25,7 @@ Project Maturity Level:
 
    intro
    invoking
+   tables
 
 Why the odd name?
    * A few programming languages were named for beverages.
