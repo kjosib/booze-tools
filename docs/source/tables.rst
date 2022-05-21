@@ -23,7 +23,7 @@ with keys as follows:
 * description: A string. Currently always ``"MacroParse Automaton"``, but in principle could be taken from the grammar definition.
 * parser: Another JSON object described below.
 * scanner: Another JSON object described below.
-* source: The base-name oof the file from which the grammar definition came.
+* source: The base-name of the file from which the grammar definition came.
 * version: An array of three small integers meant to obey the conventions of `semantic versioning <https://semver.org>`_.
 
 Scanner Table
