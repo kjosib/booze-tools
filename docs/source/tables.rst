@@ -67,26 +67,51 @@ When you feel ready for the rest, check out the ``parse`` function in the same f
 
 Top-Level Fields
 .................
-* action: tells the parser how to respond to a terminal symbol, and when the right-hand side of a production rule is recognized.
-* breadcrumbs: Used in error reporting; maps states to the symbols that reach those states.
-* goto: tells the parser how to respond once a non-terminal symbol has been synthesized.
-* initial: tells the parser where to start for each supported language.
-* nonterminals: this list is useful principally for error-reporting.
-* rule: tells how to synthesize a non-terminal symbol from a sequence of symbols from the stack.
-* terminals: A list of the string representations of the terminals from the grammar. Useful in error reporting, but may also inform a reserved-word table.
+action
+    Tells the parser how to respond to a terminal symbol,
+    and when the right-hand side of a production rule is recognized.
+breadcrumbs
+    Used in error reporting; maps states to the symbols that reach those states.
+goto
+    Tells how to respond once a non-terminal symbol has been synthesized.
+initial
+    Tells where to start for each supported language.
+nonterminals
+    A list of the non-terminal symbols used in defining the grammar.
+    This list is useful principally for error-reporting.
+rule
+    Tells how to synthesize a non-terminal symbol from a sequence of symbols from the stack.
+    These are described in greater detail below.
+terminals
+    A list of the string representations of the terminals from the grammar.
+    Useful in error reporting, but you might use it to prepare a reserved-word table.
 
-Enoding of Rules
+Encoding of Rules
 ..................
 The format of the parser's ``rule`` object is probably sub-optimal, but is also:
 
-* constructor: list of distinct possible messages from the ends of production rules.
-* line_number: index of production rules to corresponding line numbers in the grammar definition file.
-* rules: a list of 4-tuples for each right-hand side.
+constructor
+    | List of distinct possible messages from the ends of production rules.
+    | ``null`` means to just create a tuple of the (non-void) right-hand-side symbols.
+    | Strings that begin with ``:`` are considered *mid-rule actions*.
+    | All other strings are the names of ordinary *constructor* messages.
+line_number
+    List of the grammar definition source line number for each rule.
+rules
+    List of 4-tuples for each right-hand side.
 
 The 4-tuples for a parser rule are:
 
-* Non-terminal index. This can index into the ``nonterminals`` list, mentioned earlier.
-* Size of right-hand side. This number of symbols get popped before pushing the non-terminal symbol.
-* Constructor index. This can index into the ``constructor`` list, mentioned earlier.
-* Capture list. This list of integer offsets from top-of-stack (before any popping) describe where to find the arguments for the constructor.
+Non-terminal index.
+    This can index into the ``nonterminals`` list, mentioned earlier.
+Length of the rule's right-hand side.
+    | This number of symbols get popped before pushing the non-terminal symbol.
+    | Zero is a valid size: Epsilon rules and mid-rule actions both use it.
+Constructor index:
+    | If negative: the stack offset of the semantic value.
+    | If zero or positive: an index into the ``constructor`` list, mentioned earlier.
+Capture list.
+    This list of integer offsets from top-of-stack (before any popping) describe where to find the arguments for the constructor.
+    In case of a bracketing rule (negative constructor index), the capture-list is meaningless.
 
+.. Note:: Note that all stack-offsets are negative, with -1 being the top-of-stack.
