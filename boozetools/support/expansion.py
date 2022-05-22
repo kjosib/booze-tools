@@ -4,7 +4,7 @@ prepared using the algorithms in .compaction.py. If you were to build
 a runtime system for another host language, you'd have to port these.
 """
 
-from typing import Callable
+from typing import Callable, Iterable
 from . import interfaces
 from ..scanning import charclass
 
@@ -86,12 +86,16 @@ def parser_reduce_function(*, d_reduce, row_class, col_class, offset, check):
 		return dr if dr and predicate(row, col) else 0 # Do it only at need.
 	return fn
 
+def scan_actions(action:dict) -> Iterable[interfaces.ScanAction]:
+	args = [action[what] for what in interfaces.ScanAction._fields]
+	return map(interfaces.ScanAction, *args)
+
 class CompactDFA(interfaces.FiniteAutomaton):
 	"""
 	This implements the FiniteAutomaton interface (for use with the generic scanner algorithm)
 	by reference to a set of scanner tables that have been built using the MacroParse machinery.
-	It's not the whole story; BoundScanRules (defined below) are involved in binding the
-	action specifications to a specific context object.
+	It's not the whole story: Something else needs to interpret the rules (given here only by number),
+	and rules can possibly alter the state of the scanner also.
 	"""
 	def __init__(self, *, dfa:dict, alphabet:dict):
 		self.classifier = charclass.MetaClassifier(**alphabet)
@@ -108,25 +112,33 @@ class CompactDFA(interfaces.FiniteAutomaton):
 	def get_next_state(self, current_state: int, codepoint: int) -> int:
 		return self.delta(current_state, self.classifier.classify(codepoint))
 	
-class CompactHandleFindingAutomaton(interfaces.ParseTable):
+class CompactHFA(interfaces.HandleFindingAutomaton):
 	"""
-	This implements the ParseTable interface (for use with the generic parse algorithm)
+	This implements the HandleFindingAutomaton interface (for use with the generic parse algorithm)
 	by reference to a set of parser tables that have been built using the MacroParse machinery.
 	It's not the whole story: something needs to provide reduction bindings.
 	"""
-	def __init__(self, parser:dict):
-		self.get_action, self.interactive_step = parser_action_function(**parser['action'])
-		self.get_goto = parser_goto_function(**parser['goto'])
-		self.terminals = parser['terminals']
+	def __init__(self, parse_table:dict):
+		# Parts devoted to finding handles per-se
+		self.get_action, self.interactive_step = parser_action_function(**parse_table['action'])
+		self.get_goto = parser_goto_function(**parse_table['goto'])
+		self.terminals = parse_table['terminals']
 		self.__translation = {symbol:i for i,symbol in enumerate(self.terminals)}
-		self.nonterminals = parser['nonterminals']
-		self.initial = parser['initial']
-		self.breadcrumbs = parser['breadcrumbs']
-		self.__rule = parser['rule']['rules']
-		self.message_catalog = parser['rule']['constructor']
-		if 'splits' in parser:
-			self.get_split_offset = parser['action']['reduce']['d_reduce'].__len__ # Gets the number of states.
-			self.get_split = parser['splits'].__getitem__
+		self.nonterminals = parse_table['nonterminals']
+		self.initial = parse_table['initial']
+		self.breadcrumbs = parse_table['breadcrumbs']
+		
+		# Parts devoted to reducing according to rules
+		rule = parse_table['rule']
+		self.__constructor = rule['constructor']
+		self.__line_number = rule['line_number']
+		self.__rule = rule['rules']
+		self.get_rule = self.__rule.__getitem__
+		
+		# Parts devoted to generalized LR parsing
+		if 'splits' in parse_table:
+			self.get_split_offset = parse_table['action']['reduce']['d_reduce'].__len__ # Gets the number of states.
+			self.get_split = parse_table['splits'].__getitem__
 		
 	def get_translation(self, symbol) -> int:
 		try: return self.__translation[symbol]
@@ -134,8 +146,6 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 	
 	def get_action(self, state_id: int, terminal_id) -> int: assert False, 'See the constructor.'
 	def get_goto(self, state_id: int, nonterminal_id) -> int: assert False, 'See the constructor.'
-	def get_rule(self, rule_id: int) -> tuple: return self.__rule[rule_id]
-	def get_constructor(self, constructor_id) -> object: return self.message_catalog[constructor_id]
 	def get_initial(self, language) -> int: return 0 if language is None else self.initial[language]
 	def get_breadcrumb(self, state_id: int) -> str:
 		bcid = self.breadcrumbs[state_id]
@@ -145,6 +155,18 @@ class CompactHandleFindingAutomaton(interfaces.ParseTable):
 	def interactive_step(self, state_id: int) -> int: assert False, 'See the constructor.'
 	def get_split_offset(self) -> int: assert False, 'See the constructor.'
 	def get_split(self, split_id: int) -> list: assert False, 'See the constructor.'
+	def get_rule(self, rule_id: int) -> tuple: return self.__rule[rule_id]
+	def get_constructor(self, constructor_id) -> object: return self.__constructor[constructor_id]
+	
+	def each_constructor(self):
+		mentions = [set() for _ in self.__constructor]
+		for line_number, (ntid, size, cid, places) in zip(self.__line_number, self.__rule):
+			if cid >= 0:
+				mentions[cid].add(line_number)
+		return zip(self.__constructor, mentions)
+
+
+		
 
 def _expand_rules(raw):
 	"""

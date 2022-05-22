@@ -5,48 +5,106 @@ This module may still be doing too many different things. I'll probably break it
 2. It provides a (maybe) convenient runtime interface to the most common use cases.
 """
 
-import inspect, functools, sys
+import inspect, functools, sys, warnings
+from typing import Callable, Optional, Iterable
 
 from . import interfaces, expansion, failureprone
 from ..scanning import recognition
 from ..parsing import shift_reduce
 
-class BoundScanRules:
+
+class BindErrorListener:
+	""" Factors out the details concerning how we report binding problems. """
+	def __init__(self, filename, strict):
+		self._filename = filename
+		self._strict = strict
+		
+	def _gripe(self, line_number:int, message:str):
+		def blame(*args): raise ValueError(full_message)
+		full_message = "For %s line %s: %s"%(self._filename, line_number, message)
+		if self._strict: raise ValueError(full_message)
+		else:
+			warnings.warn(full_message)
+			return blame
+		
+	def missing_methods(self, line_number:int, chain:Iterable):
+		phrase = ' nor '.join(map(repr, chain))
+		return self._gripe(line_number, "driver has neither method %s." % phrase)
+	
+	def needs_parameter(self, action:interfaces.ScanAction, method_name:str):
+		return self._gripe(action.line_number, "driver method %r only accepts the scan state. It needs another parameter for %r."%(method_name, action.argument))
+	
+	def wrong_scan_arity(self, action:interfaces.ScanAction, method_name:str, arity:int):
+		acceptable = ['two', 'one (or perhaps two)'][action.argument is None]
+		return self._gripe(action.line_number, "driver method %r takes %d argument(s), but needs to take %s."%(method_name, arity, acceptable))
+	
+		
+def _bind_trail(function, trail):
+	# Deal smartly with the common case of no trailing context.
+	def trail_binding(yy):
+		yy.less(trail)
+		return function(yy)
+	return function if trail is None else trail_binding
+
+def _make_scan_actor(binding_list:list[Callable]):
+	# A separate context unpins left-over garbage in the caller's stack frame.
+	return lambda yy, rule_id: binding_list[rule_id](yy)
+
+def _bind_argument(function, argument):
+	# Same concept: leave the caller's stack out of the closure.
+	return lambda yy: function(yy, argument)
+
+def scan_action_bindings(*, each_action:Iterable[interfaces.ScanAction], driver:object, on_error:BindErrorListener):
 	"""
-	This binds symbolic scan-action specifications to a specific "driver" or
+	Bind symbolic scan-action specifications to a specific "driver" or
 	context object. It cannot act alone, but works in concert with the
 	CompactDFA (in module support.expansion) and the generic scan algorithm.
-	
-	Also, it needs to be more like parse_action_bindings, not a class.
 	"""
-	def __init__(self, *, action:dict, driver:object):
+	def bind(action):
+		method_name = 'scan_' + action.message
+		if hasattr(driver, method_name):
+			fn = getattr(driver, method_name)
+		elif default_method is None:
+			fn = on_error.missing_methods(action.line_number, (method_name, default_method_name))
+		else:
+			fn = functools.partial(default_method, action.message)
+			method_name = "%s(%r, ...)"%(default_method_name, action.message)
+		arity = len(inspect.signature(fn).parameters)
+		if arity == 1:
+			if action.argument is None:return fn
+			else: return on_error.needs_parameter(action, method_name)
+		elif arity == 2: return _bind_argument(fn, action.argument)
+		else:
+			return on_error.wrong_scan_arity(action, method_name, arity)
 		
-		def bind(message, parameter):
-			method_name = 'scan_' + message
-			if hasattr(driver, method_name):
-				fn = getattr(driver, method_name)
-			elif default_method is None:
-				raise ValueError("IterableScanner driver has neither method %r nor %r." % (method_name, default_method_name))
-			else:
-				fn = functools.partial(default_method, message)
-				method_name = "%s(%r, ...)"%(default_method_name, message)
-			arity = len(inspect.signature(fn).parameters)
-			if arity == 1:
-				if parameter is None: return fn
-				else: raise ValueError("Message %r is used with parameter %r but handler %r only takes one argument (the scan state) and needs to take a second (the message parameter)." % (message, parameter, method_name))
-			elif arity == 2: return lambda scan_state: fn(scan_state, parameter)
-			else: raise ValueError("Scan handler %r takes %d arguments, but needs to take %s." % (method_name, arity, ['two', 'one or two'][parameter is None]))
-		
-		default_method_name = 'default_scan_action'
-		default_method = getattr(driver, default_method_name, None)
-		self._trail       = action['trail']
-		self._line_number = action['line_number']
-		self.__methods = list(map(bind, action['message'], action['parameter']))
+	default_method_name = 'default_scan_action'
+	default_method = getattr(driver, default_method_name, None)
+	return _make_scan_actor([_bind_trail(bind(action), action.trail) for action in each_action])
 
-	def invoke(self, yy: interfaces.Scanner, rule_id:int):
-		trail = self._trail[rule_id]
-		if trail is not None: yy.less(trail)
-		return self.__methods[rule_id](yy)
+
+def parse_action_bindings(driver, each_constructor, on_error:BindErrorListener):
+	"""
+	Build a reduction function (combiner) for the parse engine out of an arbitrary Python object.
+	Because this checks the message catalog it can be sure the method lookup will never fail.
+	"""
+	def bind(constructor, mentions):
+		if constructor is None: return None
+		is_mid_rule_action = constructor.startswith(':')
+		kind, constructor = ('mid_rule', constructor[1:]) if is_mid_rule_action else ('parse', constructor)
+		specfic = kind + '_' + constructor
+		try: return getattr(driver, specfic)
+		except AttributeError:
+			generic = 'default_'+kind
+			try: method = getattr(driver, generic)
+			except AttributeError: return on_error.missing_methods(min(mentions), (specfic, generic))
+			else: return functools.partial(method, constructor)
+	dispatch = [bind(constructor, mentions) for constructor, mentions in each_constructor]
+	def combine(cid:int, args):
+		message = dispatch[cid]
+		if message is None: return tuple(args) # The null check is like one bytecode and very fast.
+		return message(*args)
+	return combine
+
 
 class AbstractTypical(interfaces.ScanErrorListener, interfaces.ParseErrorListener):
 	"""
@@ -65,7 +123,7 @@ class AbstractTypical(interfaces.ScanErrorListener, interfaces.ParseErrorListene
 	yy: interfaces.Scanner
 	exception: Exception
 	
-	def __init__(self, *, dfa: interfaces.FiniteAutomaton, act: interfaces.ScanActor, hfa:interfaces.ParseTable, combine):
+	def __init__(self, *, dfa: interfaces.FiniteAutomaton, act: interfaces.ScanActor, hfa:interfaces.HandleFindingAutomaton, combine):
 		self.__dfa = dfa
 		self.__act = act
 		self.__hfa = hfa
@@ -103,6 +161,11 @@ class AbstractTypical(interfaces.ScanErrorListener, interfaces.ParseErrorListene
 		self.source.complain(*yy.current_span())
 		raise ex from None
 
+def _upgrade_table_0_0_1(tables):
+	assert tables['version'] == (0,0,1), tables['version']
+	action = tables['scanner']['action']
+	action['argument'] = action.pop('parameter')
+	tables['version'] = (0,0,2)
 
 class TypicalApplication(AbstractTypical):
 	"""
@@ -110,36 +173,22 @@ class TypicalApplication(AbstractTypical):
 	to provide reasonable default error handling behavior.
 	"""
 	
-	def __init__(self, tables):
-		assert list(tables.get('version', [])) == [0,0,1], 'Data table version mismatch: '+repr(tables.get('version'))
-		scanner_tables = tables['scanner']
-		hfa = expansion.CompactHandleFindingAutomaton(tables['parser'])
-		super().__init__(
-			dfa = expansion.CompactDFA(dfa=scanner_tables['dfa'], alphabet=scanner_tables['alphabet']),
-			act = BoundScanRules(action=scanner_tables['action'], driver=self).invoke,
-			hfa = hfa,
-			combine = parse_action_bindings(self, hfa.message_catalog)
-		)
+	def __init__(self, tables, strict=True):
+		def version(): return tuple(tables.get('version', ()))
+		if version() == (0, 0, 1): _upgrade_table_0_0_1(tables)
+		if version() != (0, 0, 2):
+			raise ValueError('Installed package cannot understand table version: ' + repr(version()))
+		
+		on_error = BindErrorListener(tables['source'], strict=strict)
 
-
-def parse_action_bindings(driver, message_catalog):
-	"""
-	Build a reduction function (combiner) for the parse engine out of an arbitrary Python object.
-	Because this checks the message catalog it can be sure the method lookup will never fail.
-	"""
-	assert isinstance(message_catalog, list), type(message_catalog)
-	def bind(message):
-		if message is None: return None
-		attr = 'action_' + message[1:] if message.startswith(':') else 'parse_' + message
-		try: return getattr(driver, attr)
-		except AttributeError as ex:
-			y = ex # Apparently Py3.8 doesn't close over exception objects unless you assign them.
-			def fail(*items): raise y
-			return fail
-	dispatch = [bind(message) for message in message_catalog]
-	def combine(cid:int, args):
-		message = dispatch[cid]
-		if message is None: return tuple(args) # The null check is like one bytecode and very fast.
-		return message(*args)
-	return combine
+		scanner_table = tables['scanner']
+		each_action = expansion.scan_actions(scanner_table['action'])
+		dfa = expansion.CompactDFA(dfa=scanner_table['dfa'], alphabet=scanner_table['alphabet'])
+		act = scan_action_bindings(each_action=each_action, driver=self, on_error=on_error)
+		
+		parser_table = tables['parser']
+		hfa = expansion.CompactHFA(parser_table)
+		combine = parse_action_bindings(self, hfa.each_constructor(), on_error)
+		
+		super().__init__(dfa=dfa, act=act, hfa=hfa, combine=combine)
 

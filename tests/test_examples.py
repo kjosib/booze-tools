@@ -63,17 +63,17 @@ class TestMiniJson(unittest.TestCase):
 class TestMacroJson(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
-		automaton = compile_example('json', 'LALR')
+		tables = compile_example('json', 'LALR')
 		# The transition into and back out of JSON should be non-destructive, but it's worth being sure.
-		serialized = standard_json.dumps(automaton)
-		cls.automaton = standard_json.loads(serialized)
-		scanner_data = cls.automaton['scanner']
-		cls.dfa = expansion.CompactDFA(dfa=scanner_data['dfa'], alphabet=scanner_data['alphabet'])
-		cls.act = runtime.BoundScanRules(action=scanner_data['action'], driver=example.macro_json.ExampleJSON()).invoke
-		pass
-	
+		serialized = standard_json.dumps(tables)
+		cls.tables = standard_json.loads(serialized)
+		cls.on_error = runtime.BindErrorListener(cls.tables['source'], strict=False)
+
 	def macroscan_json(self, text):
-		return recognition.IterableScanner(text=text, automaton=self.dfa, act=self.act, start='INITIAL', on_error=mock_scan_listener)
+		scanner_table = self.tables['scanner']
+		dfa = expansion.CompactDFA(dfa=scanner_table['dfa'], alphabet=scanner_table['alphabet'])
+		act = runtime.scan_action_bindings(each_action=expansion.scan_actions(scanner_table['action']), driver=example.macro_json.ExampleJSON(), on_error=self.on_error)
+		return recognition.IterableScanner(text=text, automaton=dfa, act=act, start='INITIAL', on_error=mock_scan_listener)
 	
 	def test_00_macroparse_compiled_scanner(self):
 		def parse(text):
@@ -83,9 +83,8 @@ class TestMacroJson(unittest.TestCase):
 		parse_tester(self, parse)
 	
 	def test_01_macroparse_compiled_parser(self):
-		parser_data = self.automaton['parser']
-		spt = expansion.CompactHandleFindingAutomaton(parser_data)
-		combine = runtime.parse_action_bindings(example.macro_json.ExampleJSON(), spt.message_catalog)
+		spt = expansion.CompactHFA(self.tables['parser'])
+		combine = runtime.parse_action_bindings(example.macro_json.ExampleJSON(), spt.each_constructor(), on_error=self.on_error)
 		parse_tester(self, lambda text: shift_reduce.parse(spt, combine, self.macroscan_json(text), on_error=mock_parse_listener))
 		pass
 
@@ -126,15 +125,17 @@ class TestNonDeterministic(unittest.TestCase):
 	
 	@classmethod
 	def setUpClass(cls) -> None:
-		automaton = compile_example('nondeterministic_grammar', 'LR1')
-		cls.parse_table = expansion.CompactHandleFindingAutomaton(automaton['parser'])
+		cls.automaton = compile_example('nondeterministic_grammar', 'LR1')
+		cls.hfa = expansion.CompactHFA(cls.automaton['parser'])
+		
 	
 	# @unittest.skip('time trials')
 	def test_brute_force_and_ignorance(self):
-		combine = runtime.parse_action_bindings(SimpleParseDriver(), self.parse_table.message_catalog)
+		on_error = runtime.BindErrorListener('--test--', True)
+		combine = runtime.parse_action_bindings(SimpleParseDriver(), self.hfa.each_constructor(), on_error)
 		for string in PALINDROMES:
 			with self.subTest('Palindrome: '+string):
-				parser = brute_force.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
+				parser = brute_force.BruteForceAndIgnorance(self.hfa, combine, language="Palindrome")
 				for c in string: parser.consume(c, c)
 				result = parser.finish()
 				assert len(result) == 1
@@ -143,7 +144,7 @@ class TestNonDeterministic(unittest.TestCase):
 					assert tree[0] == tree[2]
 					tree = tree[1]
 				if tree: assert isinstance(tree, str) and len(tree)==1
-		parser = brute_force.BruteForceAndIgnorance(self.parse_table, combine, language="Palindrome")
+		parser = brute_force.BruteForceAndIgnorance(self.hfa, combine, language="Palindrome")
 		for c in LONG_STRING: parser.consume(c, c)
 		try: result = parser.finish()
 		except interfaces.GeneralizedParseError: pass
@@ -154,29 +155,29 @@ class TestNonDeterministic(unittest.TestCase):
 	def test_gss_trial_palindromes(self):
 		for string in PALINDROMES:
 			with self.subTest('Palindrome: '+string):
-				gss.gss_trial_parse(self.parse_table, string, language="Palindrome")
-		try: gss.gss_trial_parse(self.parse_table, LONG_STRING, language="Palindrome")
+				gss.gss_trial_parse(self.hfa, string, language="Palindrome")
+		try: gss.gss_trial_parse(self.hfa, LONG_STRING, language="Palindrome")
 		except interfaces.GeneralizedParseError: pass
 		else: assert False
 	
 	def test_gss_hidden_right(self):
 		for s in ['b', 'ab', 'aab', 'aaaaaaab']:
 			with self.subTest(s=s):
-				gss.gss_trial_parse(self.parse_table, s, language="HiddenRight")
+				gss.gss_trial_parse(self.hfa, s, language="HiddenRight")
 	
 	def test_gss_hidden_left(self):
 		for s in ['a', 'ab', 'abb', 'abbb']:
 			with self.subTest(s=s):
-				gss.gss_trial_parse(self.parse_table, s, language="HiddenLeft")
-		try: gss.gss_trial_parse(self.parse_table, 'ba', language="HiddenLeft")
+				gss.gss_trial_parse(self.hfa, s, language="HiddenLeft")
+		try: gss.gss_trial_parse(self.hfa, 'ba', language="HiddenLeft")
 		except interfaces.GeneralizedParseError: pass
 		else: assert False
 	
 	def test_hidden_mid(self):
-		gss.gss_trial_parse(self.parse_table, 'a', language='HiddenMid')
+		gss.gss_trial_parse(self.hfa, 'a', language='HiddenMid')
 		for bad in ['aa', '']:
 			with self.subTest(s=bad):
-				try: gss.gss_trial_parse(self.parse_table, bad, language='HiddenMid')
+				try: gss.gss_trial_parse(self.hfa, bad, language='HiddenMid')
 				except interfaces.GeneralizedParseError: pass
 				else: assert False
 	

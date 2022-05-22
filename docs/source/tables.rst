@@ -44,7 +44,7 @@ Top-Level Fields
 .................
 * action: a table of information telling the scan algorithm what to do once it's found a match.
 * alphabet: encodes a function from character code-point to character class.
-* dfa: encodes the deterministic finite state machine which the scanner follows.
+* dfa: encodes the deterministic finite state automaton which the scanner follows.
 
 Fields of the DFA
 .................

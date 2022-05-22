@@ -20,22 +20,16 @@ from ..scanning import finite, regular, miniscan
 from . import grammar
 
 
-class ScanRule(NamedTuple):
-	line_number: int
-	trail: Optional[int]
-	message: Optional[str]
-	parameter: Optional[str]
-
 class TextBookForm:
 	""" This provides the various views of the text-book form of scan and parse tables. """
-	def __init__(self, *, dfa: finite.DFA, scan_actions:List[ScanRule], parse_table: automata.DragonBookTable):
+	def __init__(self, *, dfa: finite.DFA, scan_actions:List[interfaces.ScanAction], parse_table: automata.DragonBookTable):
 		self.dfa = dfa
 		self.scan_actions = scan_actions
 		self.parse_table = parse_table
 	def as_compact_form(self, *, filename):
 		return {
 			'description': 'MacroParse Automaton',
-			'version': (0, 0, 1),
+			'version': (0, 0, 2),
 			'source': filename,
 			'scanner': self.compact_scanner(),
 			'parser': self.compact_parser(),
@@ -45,7 +39,7 @@ class TextBookForm:
 		if dfa is None: return
 		return {
 			'dfa': compaction.compress_scanner(initial=dfa.initial, matrix=dfa.states, final=dfa.final),
-			'action': dict(zip(ScanRule._fields, zip(*self.scan_actions))),
+			'action': dict(zip(interfaces.ScanAction._fields, zip(*self.scan_actions))),
 			'alphabet': {'bounds': dfa.alphabet.bounds, 'classes': dfa.alphabet.classes,}
 		}
 	def compact_parser(self):
@@ -78,7 +72,7 @@ class TextBookForm:
 
 class IntermediateForm(NamedTuple):
 	nfa: finite.NFA
-	scan_actions: List[ScanRule]
+	scan_actions: List[interfaces.ScanAction]
 	hfa: automata.HFA
 	parse_style:automata.ParsingStyle
 	def determinize(self) -> TextBookForm:
@@ -154,12 +148,12 @@ def _compile_text(document:failureprone.SourceText, *, method) -> IntermediateFo
 			note_pattern(pattern_text)
 		else:
 			m = re.fullmatch(r'(.*?)\s*:([A-Za-z][A-Za-z_]*)(?:\s+([A-Za-z_]+))?(?:\s+:(0|[1-9][0-9]*))?', current_line_text)
-			if not m: raise grammar.DefinitionError('Unable to analyze overall pattern/action/parameter/(rank) structure at line %d.'%line_number)
-			pattern_text, action, parameter, rank_string = m.groups()
+			if not m: raise grammar.DefinitionError('Unable to analyze overall pattern/action/argument/(rank) structure at line %d.'%line_number)
+			pattern_text, action, argument, rank_string = m.groups()
 			rank = int(rank_string) if rank_string else 0
 			note_pattern(pattern_text)
 			for trail, list_of_patterns in pending_patterns.items():
-				rule_id = foundation.allocate(scan_actions, ScanRule(line_number, trail, action, parameter))
+				rule_id = foundation.allocate(scan_actions, interfaces.ScanAction(line_number, trail, action, argument))
 				for bol, expression in list_of_patterns:
 					src = nfa.new_node(rank)
 					dst = nfa.new_node(rank)

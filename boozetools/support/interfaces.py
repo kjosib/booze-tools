@@ -2,7 +2,7 @@
 This file aggregates various abstract classes and exception types which BoozeTools deals in.
 
 There's a principle of object-oriented design which says "ask not for data, but for help."
-At first glance the ADTs for FiniteAutomaton and ParseTable appear to respect that dictum
+At first glance the ADTs for FiniteAutomaton and HandleFindingAutomaton appear to respect that dictum
 only by its violation, as suggested by all these `get_foobar` methods. What gives?
 
 Quite a bit, actually: The scanning and parsing algorithms are data-driven, but the essential
@@ -11,14 +11,13 @@ data, so long as the proper relevant questions may be answered. This provides th
 to plug in different types of compaction (or no compaction at all) without a complete re-write.
 
 A good modular interface exposes abstract data types and the operations among those types.
-The methods on FiniteAutomaton and ParseTable are exactly those needed for the interesting
+The methods on FiniteAutomaton and HandleFindingAutomaton are exactly those needed for the interesting
 data-driven algorithms they support, without regard to their internal structure.
 
 On a separate note, you could make a good case for splitting this file in twain. Maybe later.
 """
 
-from typing import Callable
-from . import pretty
+from typing import Callable, NamedTuple, Optional, Iterable
 
 END_OF_TOKENS = '<END>' # An agreed artificial "end-of-text" terminal-symbol.
 ERROR_SYMBOL = '$error$' # An agreed "error" symbol.
@@ -143,21 +142,26 @@ class FiniteAutomaton:
 	def get_state_rule_id(self, state_id: int) -> int:
 		""" Return the associated rule ID if this state is terminal, otherwise None. """
 		raise NotImplementedError(type(self))
-
-
-class ParseTable:
+	
+class HandleFindingAutomaton:
 	"""
 	This interface captures the operations needed to perform table-driven parsing, as well as a modicum
 	of reasonable error reporting. Again, no particular structure or organization is implied.
 	"""
+	
+	# The first several methods are involved in actually finding handles.
+	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language, which by the way is usually `None `.')
 	def get_translation(self, symbol) -> int: raise NotImplementedError(type(self, 'Because scanners should not care the order of terminals in the parse table. Zero is reserved for end-of-text.'))
 	def get_action(self, state_id:int, terminal_id) -> int: raise NotImplementedError(type(self), 'Positive -> successor state id. Negative -> rule id for reduction. Zero -> error.')
 	def get_goto(self, state_id:int, nonterminal_id) -> int: raise NotImplementedError(type(self, 'return a successor state id.'))
-	def get_rule(self, rule_id:int) -> tuple: raise NotImplementedError(type(self), 'return a (nonterminal_id, length, constructor_id, view) quad.')
-	def get_constructor(self, constructor_id) -> object: raise NotImplementedError(type(self), 'return whatever will make sense to the corresponding combiner.')
-	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language, which by the way is usually `None `.')
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of the symbol that shifts into this state.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self), 'Return the reduce instruction for interactive-reducing states; zero otherwise.')
+
+	# The next few are involved in reducing handles. (Yes, this interface is therefore overgrown.)
+	def get_rule(self, rule_id:int) -> tuple: raise NotImplementedError(type(self), 'return a (nonterminal_id, length, constructor_id, view) quad.')
+	def get_constructor(self, constructor_id) -> object: raise NotImplementedError(type(self), 'return whatever will make sense to the corresponding combiner.')
+	def each_constructor(self) : raise NotImplementedError(type(self), "Involved in binding parser tables to drivers. Yield pairs of <constructor, set of mentions>.")
+	
 	# These next two methods are in support of GLR parsing:
 	def get_split_offset(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
 	def get_split(self, split_id:int) -> list: raise NotImplementedError(type(self), "A list of parse actions of the usual (deterministic) form.")
@@ -208,6 +212,12 @@ Said function *IS RESPONSIBLE* for dealing with trailing context, if that's a fe
 """
 ScanActor = Callable[[Scanner, int], object]
 
+class ScanAction(NamedTuple):
+	""" The information necessary to connect to a driver (presumably) or yield a usable error message. """
+	line_number: int
+	trail: Optional[int]
+	message: str
+	argument: Optional[str]
 
 class ScanErrorListener:
 	"""
@@ -244,7 +254,7 @@ class AbstractGeneralizedParser:
 	"""
 	Before I get too deep into it, let's lay out the general structure of a generalized parse:
 	"""
-	def __init__(self, table: ParseTable, combine, language=None):
+	def __init__(self, table: HandleFindingAutomaton, combine, language=None):
 		""" Please note this takes a driver not a combiner: it does its own selection of arguments from the stack. """
 		self._table = table
 		self._combine = combine

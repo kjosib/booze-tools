@@ -33,7 +33,7 @@ The Unicode line-breaking algorithm calls for no less than ELEVEN ways to break 
 
 The applications I've tested treat the Unix, Apple, and DOS conventions as line-breaks
 and mostly ignore the other options defined in the Unicode standard, so that's the
-default behavior of the SourceText. But you can supply a mode parameter to specify
+default behavior of the SourceText. But you can supply a mode argument to specify
 different line-ending conventions. The options are given symbolically as keys in the
 LINEBREAK_MODE dictionary.
 

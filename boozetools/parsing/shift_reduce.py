@@ -24,7 +24,7 @@ for positive `constructor_id` numbers.
 from ..support import interfaces
 
 
-def trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
+def trial_parse(table: interfaces.HandleFindingAutomaton, sentence, *, language=None):
 	"""
 	This quick-and-dirty trial parser will tell you if a sentence is a member of the language by throwing
 	an exception otherwise. It leaves out everything to do with semantic values or parse trees.
@@ -145,7 +145,7 @@ class Hypothetical:
 	"hypothetical parse" facility. This object latches on to an existing PDS
 	and acts like a hypothetical branch of that PDS strictly for testing hypothesis.
 	"""
-	def __init__(self, table:interfaces.ParseTable, pds:PushDownState, initial_depth):
+	def __init__(self, table:interfaces.HandleFindingAutomaton, pds:PushDownState, initial_depth):
 		self.table = table
 		self.host = pds
 		self.initial_depth = self.watermark = initial_depth
@@ -174,9 +174,9 @@ class Hypothetical:
 				return step
 
 
-def parse(table: interfaces.ParseTable, combine, token_stream, *, language=None, on_error:interfaces.ParseErrorListener):
+def parse(table: interfaces.HandleFindingAutomaton, combine, token_stream, *, language=None, on_error:interfaces.ParseErrorListener):
 	"""
-		:param table: Satisfy the ParseTable interface however you like.
+		:param table: Satisfy the HandleFindingAutomaton interface however you like.
 			By reference to the "look-ahead" (terminal) symbol and the current
 			state of the PDA, the parse table tells the machine how to act.
 		

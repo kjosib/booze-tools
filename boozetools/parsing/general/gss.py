@@ -59,7 +59,7 @@ class GNode:
 	
 	def __repr__(self): return "<%d / %s>" % (self.state_id, ",".join(str(e.state_id) for e in self.arcs))
 
-def gss_trial_parse(table: interfaces.ParseTable, sentence, *, language=None):
+def gss_trial_parse(table: interfaces.HandleFindingAutomaton, sentence, *, language=None):
 	def act_on(node: GNode, step: int):
 		if step == 0: return
 		elif step < 0: primary_reduction(node, -1-step)

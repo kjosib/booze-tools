@@ -623,7 +623,7 @@ def find_conflicts(graph, follow_sets, grammar) -> List[ConflictData]:
 	return result
 
 
-class DragonBookTable(interfaces.ParseTable):
+class DragonBookTable(interfaces.HandleFindingAutomaton):
 	"""
 	This is the classic textbook view of a set of parse tables: a pair of dense matrices
 	(implemented here as lists-of-lists) representing the "ACTION" and "GOTO" tables, along
@@ -634,7 +634,7 @@ class DragonBookTable(interfaces.ParseTable):
 	machine. In days of old, it would be necessary to compress the parse tables. Today,
 	that's still not such a bad idea if you can pre-compute the tables. The compaction
 	submodule contains some code for a typical method of parser table compression, and
-	the runtime submodule implements the ParseTable interface atop a compressed table.
+	the runtime submodule implements the HandleFindingAutomaton interface atop a compressed table.
 	
 	Design note: There's a temptation to make the constructor take an HFA object, but
 	that limits the ways you can instantiate this class. See the function `tabulate(...)`.
@@ -655,7 +655,7 @@ class DragonBookTable(interfaces.ParseTable):
 			"""
 			The current approach to storing rule actions is:
 			Each rule gets a constructor number and a list of "places".
-			A negative constructor-number means a bracketing- rule,
+			A negative constructor-number means a bracketing-rule,
 			with an offset from the stack pointer telling where to find the semantic item.
 			A non-negative points into a table of semantic actions
 			for use with a translated ``places`` vector, which gives argument offsets.
@@ -664,11 +664,11 @@ class DragonBookTable(interfaces.ParseTable):
 			size = len(rule.rhs)
 			if isinstance(rule.action, int):
 				assert rule.action < size
-				c,p = rule.action-size, ()
+				cid,places = rule.action-size, ()
 			else:
 				assert isinstance(rule.action, context_free.SemanticAction)
-				c,p = messages.classify(rule.action.message), tuple(x-size for x in rule.action.places)
-			return nontranslate[rule.lhs], size, c, p
+				cid,places = messages.classify(rule.action.message), tuple(x-size for x in rule.action.places)
+			return nontranslate[rule.lhs], size, cid, places
 		
 		messages = foundation.EquivalenceClassifier()
 		self.rule_table = list(map(translate_rule, rules))
@@ -737,6 +737,13 @@ class DragonBookTable(interfaces.ParseTable):
 		return self.splits[split_id]
 
 	def get_constructor(self, constructor_id) -> object: return self.constructors[constructor_id]
+	
+	def each_constructor(self):
+		mentions = [set() for _ in self.constructors]
+		for provenance, (ntid, size, cid, places) in zip(self.rule_provenance, self.rule_table):
+			if cid >= 0:
+				mentions[cid].add(provenance)
+		return zip(self.constructors, mentions)
 
 
 class ParsingStyle:
@@ -831,7 +838,7 @@ class GeneralizedStyle(ParsingStyle):
 
 
 def encode_reduce(rule_id:int) -> int:
-	""" See interface.ParseTable.get_action. """
+	""" See interface.HandleFindingAutomaton.get_action. """
 	return -1 - rule_id
 
 def tabulate(hfa: HFA[LA_State], *, style:ParsingStyle) -> DragonBookTable:
