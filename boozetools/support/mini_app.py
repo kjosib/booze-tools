@@ -12,7 +12,7 @@ class TypicalMiniApp(runtime.AbstractTypical):
 		hfa, combine = parse.get_hfa_and_combine()
 		super().__init__(
 			dfa=scan.get_dfa(),
-			scan_rules=scan,
+			act=scan.invoke,
 			hfa=hfa,
 			combine=combine,
 		)
