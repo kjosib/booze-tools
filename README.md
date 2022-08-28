@@ -1,5 +1,18 @@
 # What is this?
 
+At the moment, this is undirected exploration in the space of language recognition and translation.
+I'd like to try to discover the most ideal formulations of classic approaches.
+
+# What's New?
+
+* The project moves back to alpha stage for the time being.
+
+* Scanners stop being iterable. They find tokens and *maybe* dispatch actions. That is all.
+
+* The interface to parsing must become push-mode.
+
+# What's Here?
+
 For now there are four major components. Eventually there will be more. These are:
 
 * MiniParse -- Provides Minimal-LR(1)* or LALR(1) or Canonical-LR(1) with
@@ -40,13 +53,6 @@ Worked examples may be found at [/example/](https://github.com/kjosib/booze-tool
 # Priorities?
 * These operate within a Python environment.
 * They have some features not found in other such tools.
-* The code is deliberately kept simple, small and well-factored:
-    * Easy to extend, approachable, and informative. 
-    * Aiming for suitability in an instructional context.
-* These modules do not generate free-standing code:
-    * Mini-Foo plugs directly into a Python application and works right away, which is nice for rapid prototyping.
-    * MacroParse compiles automatons to JSON, and appropriate run-time support is in the library.
-    * Code generation for other languages is foreseeable: translate the JSON and supply a suitable runtime.
 * Performance is accordingly NOT a top priority, but:
     * the profiler has been used to solve one or two problems,
     * if someone wants to play with the profiler they are welcome, and
