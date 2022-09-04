@@ -5,8 +5,10 @@ a runtime system for another host language, you'd have to port these.
 """
 
 from typing import Callable, Iterable
-from . import interfaces
-from ..scanning import charclass
+from .interface import ScanAction
+from boozetools.scanning.interface import FiniteAutomaton
+from boozetools.scanning import charclass
+from boozetools.parsing.interface import HandleFindingAutomaton
 
 def displacement_function(otherwise:callable, *, offset, check, value) -> callable:
 	"""
@@ -86,11 +88,11 @@ def parser_reduce_function(*, d_reduce, row_class, col_class, offset, check):
 		return dr if dr and predicate(row, col) else 0 # Do it only at need.
 	return fn
 
-def scan_actions(action:dict) -> Iterable[interfaces.ScanAction]:
-	args = [action[what] for what in interfaces.ScanAction._fields]
-	return map(interfaces.ScanAction, *args)
+def scan_actions(action:dict) -> Iterable[ScanAction]:
+	args = [action[what] for what in ScanAction._fields]
+	return map(ScanAction, *args)
 
-class CompactDFA(interfaces.FiniteAutomaton):
+class CompactDFA(FiniteAutomaton):
 	"""
 	This implements the FiniteAutomaton interface (for use with the generic scanner algorithm)
 	by reference to a set of scanner tables that have been built using the MacroParse machinery.
@@ -104,15 +106,15 @@ class CompactDFA(interfaces.FiniteAutomaton):
 		self.final = dict(zip(dfa['final'], dfa['rule']))
 	
 	def jam_state(self): return -1
-	def get_condition(self, condition_name) -> tuple:
+	def condition(self, condition_name) -> tuple:
 		try: return self.initial[condition_name]
 		except KeyError: raise KeyError(condition_name, set(self.initial.keys()))
-	def get_state_rule_id(self, state_id: int) -> int: return self.final.get(state_id)
+	def accept(self, state_id: int) -> int: return self.final.get(state_id)
 
-	def get_next_state(self, current_state: int, codepoint: int) -> int:
+	def transition(self, current_state: int, codepoint: int) -> int:
 		return self.delta(current_state, self.classifier.classify(codepoint))
 	
-class CompactHFA(interfaces.HandleFindingAutomaton):
+class CompactHFA(HandleFindingAutomaton):
 	"""
 	This implements the HandleFindingAutomaton interface (for use with the generic parse algorithm)
 	by reference to a set of parser tables that have been built using the MacroParse machinery.
@@ -153,7 +155,7 @@ class CompactHFA(interfaces.HandleFindingAutomaton):
 		if bcid < len(self.terminals): return self.terminals[bcid]
 		else: return self.nonterminals[bcid-len(self.terminals)]
 	def interactive_step(self, state_id: int) -> int: assert False, 'See the constructor.'
-	def get_split_offset(self) -> int: assert False, 'See the constructor.'
+	def get_split_offset(self) -> int: assert False, 'This method gets replaced if there are splits.'
 	def get_split(self, split_id: int) -> list: assert False, 'See the constructor.'
 	def get_rule(self, rule_id: int) -> tuple: return self.__rule[rule_id]
 	def get_constructor(self, constructor_id) -> object: return self.__constructor[constructor_id]

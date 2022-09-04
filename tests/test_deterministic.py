@@ -1,14 +1,14 @@
 import unittest
 
-from boozetools.support import interfaces
 from boozetools.parsing import automata, context_free, shift_reduce
-
+from boozetools.parsing.lalr import lalr_construction
+from boozetools.parsing.lr1 import canonical_lr1, minimal_lr1
 
 def shorthand(cfg: context_free.ContextFreeGrammar, rules:dict):
 	""" Just a quick way to enter a grammar where semantic-value is irrelevant. """
 	for lhs, rhs in rules.items():
 		for alt in rhs.split('|'):
-			cfg.rule(lhs, list(alt), None, 0, None)
+			cfg.add_rule(context_free.Rule(lhs, tuple(alt), None, 0, None))
 
 def mysterious_reduce_conflict(cfg: context_free.ContextFreeGrammar):
 	""" This is your standard way to trigger a "mysterious" reduce/reduce conflict in LALR. """
@@ -49,12 +49,13 @@ class TableMethodTester(unittest.TestCase):
 	@staticmethod
 	def construct(cfg) -> automata.HFA: raise NotImplementedError()
 	def tearDown(self):
-		try: table = automata.tabulate(self.construct(self.g), style=automata.DeterministicStyle(True))
+		try: table = automata.tabulate(self.construct(self.g), self.g, style=automata.DeterministicStyle(True))
 		except automata.PurityError:
 			assert not self.pure
-			if self.good or self.bad: table = automata.tabulate(self.construct(self.g), style=automata.DeterministicStyle(False))
+			if self.good or self.bad: table = automata.tabulate(self.construct(self.g), self.g,
+																style=automata.DeterministicStyle(False))
 			else: return
-		table.display()
+		#table.display()
 		for sentence in self.good:
 			with self.subTest(sentence=sentence):
 				shift_reduce.trial_parse(table, sentence.split())
@@ -65,14 +66,15 @@ class TableMethodTester(unittest.TestCase):
 				else: assert False, "This should have raised an exception."
 	def r(self, lhs, rhs:str):
 		rhs = rhs.split()
-		self.g.rule(lhs.strip(), rhs, None, context_free.SemanticAction('x', ()), None)
+		rule = context_free.Rule(lhs.strip(), tuple(rhs), None, context_free.SemanticAction('x', ()), None)
+		self.g.add_rule(rule)
 	def R(self, text):
 		lhs, rest = text.split(':')
 		for rhs in rest.split('|'): self.r(lhs, rhs)
 
 class TestLALR(TableMethodTester):
 	
-	construct = staticmethod(automata.lalr_construction)
+	construct = staticmethod(lalr_construction)
 	
 	def test_00_single_rename(self):
 		self.R('S:r')
@@ -121,7 +123,7 @@ class TestLALR(TableMethodTester):
 		
 
 class TestCLR(TableMethodTester):
-	construct = staticmethod(automata.canonical_lr1)
+	construct = staticmethod(canonical_lr1)
 	def test_invasive(self):
 		mysterious_invasive_conflict(self.g)
 		self.good = ['a a a', 'b a b', 'b a a b',]
@@ -131,7 +133,7 @@ class TestCLR(TableMethodTester):
 		self.good = ['a c d', 'a c e', 'b c d', 'b c e']
 
 class TestLR1(TableMethodTester):
-	construct = staticmethod(automata.minimal_lr1)
+	construct = staticmethod(minimal_lr1)
 	def test_invasive(self):
 		mysterious_invasive_conflict(self.g)
 		self.good = ['a a a', 'b a b', 'b a a b',]

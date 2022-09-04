@@ -1,8 +1,10 @@
 import unittest
 
-from boozetools.support import interfaces
-from boozetools.parsing import automata, context_free
-
+from boozetools.parsing import context_free
+from boozetools.parsing.interface import ParseError
+from boozetools.parsing.lr0 import lr0_construction, ParseItemMap
+from boozetools.parsing.lalr import lalr_construction
+from boozetools.parsing.lr1 import canonical_lr1, minimal_lr1
 
 class GrammarTester(unittest.TestCase):
 	
@@ -13,8 +15,9 @@ class GrammarTester(unittest.TestCase):
 		self.pathological = False
 	
 	def r(self, lhs, rhs: str):
-		rhs = rhs.split()
-		self.cfg.rule(lhs.strip(), rhs, None, context_free.SemanticAction('x', ()), None)
+		rhs_syms = tuple(rhs.split())
+		rule = context_free.Rule(lhs.strip(), rhs_syms, None, context_free.SemanticAction('x', ()), None)
+		self.cfg.add_rule(rule)
 	
 	def R(self, text):
 		lhs, rest = text.split(':')
@@ -43,23 +46,24 @@ class TestTableConstructions(GrammarTester):
 		self.expect_lr1_size = 0
 	
 	def check_postcondition(self):
+		pim = ParseItemMap.from_grammar(self.cfg)
 		constructions = [
-			automata.lr0_construction(self.cfg),
-			automata.lalr_construction(self.cfg),
-			automata.canonical_lr1(self.cfg),
-			automata.minimal_lr1(self.cfg),
+			("LR(0)", lr0_construction(pim)),
+			("LALR(1)", lalr_construction(self.cfg)),
+			("Canonical LR(1)", canonical_lr1(self.cfg)),
+			("Minimal LR(1)", minimal_lr1(self.cfg)),
 		]
 		if self.expect_lr1_size:
-			self.assertEqual(self.expect_lr1_size, len(constructions[-1].graph))
-		for sentence in self.good:
-			with self.subTest(sentence=sentence):
-				for hfa in constructions:
-					assert hfa.trial_parse(sentence)
-		for sentence in self.bad:
-			with self.subTest(sentence=sentence):
-				for hfa in constructions:
-					try: hfa.trial_parse(sentence)
-					except interfaces.GeneralizedParseError: pass
+			self.assertEqual(self.expect_lr1_size, len(constructions[-1][1].graph))
+		for cons_name, hfa in constructions:
+			for sentence in self.good:
+				with self.subTest(cons=cons_name, sentence=sentence):
+					assert hfa.trial_parse(self.cfg.rules, sentence)
+			for sentence in self.bad:
+				with self.subTest(cons=cons_name, sentence=sentence):
+					try:
+						hfa.trial_parse(self.cfg.rules, sentence)
+					except ParseError: pass
 					else: assert False, "%r should not be accepted." % sentence
 	
 	def test_00_non_lalr(self):
@@ -125,7 +129,8 @@ class TestTableConstructions(GrammarTester):
 		"""
 		self.R('S: X c')
 		self.R('X : X a')
-		print(automata.lr0_construction(self.cfg).graph[0].shift)
+		pim = ParseItemMap.from_grammar(self.cfg)
+		print(lr0_construction(pim).graph[0].shift)
 		self.pathological = True
 
 	def test_07_pathology_mutual_no_base_case(self):

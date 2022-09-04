@@ -1,14 +1,15 @@
 """ No frills. Plenty useful. """
 
 import inspect
-from ..support import interfaces
-from . import automata, context_free, shift_reduce
+from . import automata, shift_reduce
+from .interface import ParseErrorListener
+from .context_free import Rule, SemanticAction, ContextFreeGrammar, LEFT, RIGHT, NONASSOC
+from .all_methods import PARSE_TABLE_METHODS
 
-
-class MiniParse(interfaces.ParseErrorListener):
+class MiniParse(ParseErrorListener):
 	""" Connects BNF production rules directly to Python functions. No frills. Very useful as-is. """
 	def __init__(self, *start, method='LALR', strict=False):
-		self.__grammar = context_free.ContextFreeGrammar(context_free.SimpleFaultHandler())
+		self.__grammar = ContextFreeGrammar()
 		self.__grammar.start.extend(start)
 		self.__attrribute = []
 		self.__hfa: automata.DragonBookTable = None
@@ -18,9 +19,9 @@ class MiniParse(interfaces.ParseErrorListener):
 		self.__strict = strict
 		self.void_symbols = set() # These won't get picked up as arguments.
 	
-	def left(self, symbols:list): self.__grammar.assoc(context_free.LEFT, symbols)
-	def right(self, symbols:list): self.__grammar.assoc(context_free.RIGHT, symbols)
-	def nonassoc(self, symbols:list): self.__grammar.assoc(context_free.NONASSOC, symbols)
+	def left(self, symbols:list): self.__grammar.assoc(LEFT, symbols)
+	def right(self, symbols:list): self.__grammar.assoc(RIGHT, symbols)
+	def nonassoc(self, symbols:list): self.__grammar.assoc(NONASSOC, symbols)
 	
 	def __analyze(self, rhs):
 		rhs = rhs.split()
@@ -33,7 +34,7 @@ class MiniParse(interfaces.ParseErrorListener):
 			args = tuple(i for i, symbol in enumerate(rhs) if symbol not in self.void_symbols)
 		return tuple(rhs), args
 	
-	def rule(self, lhs:str, rhs:str, prec_sym=None):
+	def rule(self, lhs:str, rhs_str:str, prec_sym=None):
 		"""
 		Decorates a callable as applying when the given rule is recognized.
 		Prefix significant arguments with ., or get the whole right-hand side passed as arguments.
@@ -44,19 +45,21 @@ class MiniParse(interfaces.ParseErrorListener):
 			def add(a,b): return a+b
 		"""
 		assert self.__hfa is None
-		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the prior production rule.')
+		assert not self.__awaiting_action, "You forgot to provide the action for the prior production rule."
 		self.__awaiting_action = True
-		rhs, offsets = self.__analyze(rhs) # Ack! Changing type mid-stream.
+		rhs, offsets = self.__analyze(rhs_str)
 		def decorate(fn=None):
+			hash(fn) # Because later it will need to be hashable; push failures to the fore.
 			assert self.__awaiting_action
 			self.__awaiting_action = False
 			if fn is None:
 				if len(rhs) == 1: action = 0 # Unit/renaming rule
 				elif len(offsets) == 1: action = offsets[0]  # Bracketing rule
-				else: action = context_free.SemanticAction(_collect_tuple, offsets)
-			else: action = context_free.SemanticAction(fn, offsets)
+				else: action = SemanticAction(_collect_tuple, offsets)
+			else: action = SemanticAction(fn, offsets)
 			previous_frame = inspect.currentframe().f_back
-			self.__grammar.rule(lhs, rhs, prec_sym, action, inspect.getframeinfo(previous_frame)[:2])
+			rule = Rule(lhs, rhs, prec_sym, action, inspect.getframeinfo(previous_frame)[:2])
+			self.__grammar.add_rule(rule)
 			return fn
 		return decorate
 	
@@ -64,14 +67,15 @@ class MiniParse(interfaces.ParseErrorListener):
 		"""
 		Facilitates those "X => A | B | C | D" type rules you often find in real grammars.
 		"""
-		if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the prior production rule.')
+		assert not self.__awaiting_action, "You forgot to provide the action for the prior production rule."
 		for branch in alternatives:
 			rhs, offsets = self.__analyze(branch)
 			if len(rhs) == 1: action = 0  # Unit/renaming rule
 			elif len(offsets) == 1: action = offsets[0]  # Bracketing rule
 			else: raise AssertionError('%r is not a single-member branch -- although you could prepend the significant member with a dot ( like .this ) to fix it.' % branch)
 			previous_frame = inspect.currentframe().f_back
-			self.__grammar.rule(lhs, rhs, None, action, inspect.getframeinfo(previous_frame)[:2])
+			rule = Rule(lhs, rhs, None, action, inspect.getframeinfo(previous_frame)[:2])
+			self.__grammar.add_rule(rule)
 	
 	def display(self): self.__grammar.display()
 
@@ -79,10 +83,8 @@ class MiniParse(interfaces.ParseErrorListener):
 		if self.__hfa is None:
 			if self.__awaiting_action: raise AssertionError('You forgot to provide the action for the final production rule.')
 			self.__grammar.validate()
-			self.__hfa = automata.tabulate(
-				automata.PARSE_TABLE_METHODS[self.__method](self.__grammar),
-				style=automata.DeterministicStyle(self.__strict),
-			)
+			self.__hfa = automata.tabulate(PARSE_TABLE_METHODS[self.__method](self.__grammar), self.__grammar,
+										   style=automata.DeterministicStyle(self.__strict))
 			constructors = self.__hfa.constructors
 			self.__combine = lambda cid,args:constructors[cid](*args)
 		return self.__hfa, self.__combine

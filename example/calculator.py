@@ -13,12 +13,13 @@ variables with the '=' sign.
 
 """
 import operator, math, os
-from boozetools.support import runtime, interfaces
+from boozetools.scanning.engine import IterableScanner
+from boozetools.macroparse.runtime import TypicalApplication
 from boozetools.macroparse import compiler
 
 tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'), method='LALR')
 
-class Calculator(runtime.TypicalApplication):
+class Calculator(TypicalApplication):
 	"""
 	This is relatively simple, but it does demonstrate a persistent memory.
 	"""
@@ -34,11 +35,11 @@ class Calculator(runtime.TypicalApplication):
 		# Subtlety: call the superclass initializer last because of dynamically added parse methods...
 		super().__init__(tables)
 	
-	def scan_ignore_whitespace(self, yy: interfaces.Scanner): pass
-	def scan_punctuation(self, yy: interfaces.Scanner): yy.token(yy.matched_text())
-	def scan_real(self, yy: interfaces.Scanner): yy.token('number', float(yy.matched_text()))
-	def scan_imaginary(self, yy: interfaces.Scanner): yy.token('number', float(yy.matched_text()[:-1]) * 1j)
-	def scan_variable(self, yy: interfaces.Scanner): yy.token('variable', yy.matched_text())
+	def scan_ignore_whitespace(self, yy: IterableScanner): pass
+	def scan_punctuation(self, yy: IterableScanner): yy.token(yy.match())
+	def scan_real(self, yy: IterableScanner): yy.token('number', float(yy.match()))
+	def scan_imaginary(self, yy: IterableScanner): yy.token('number', float(yy.match()[:-1]) * 1j)
+	def scan_variable(self, yy: IterableScanner): yy.token('variable', yy.match())
 	
 	def parse_evaluate(self, value):
 		print(" -->",value)
@@ -60,19 +61,19 @@ class Calculator(runtime.TypicalApplication):
 	def exception_parsing(self, ex: Exception, message, args):
 		""" For this application there is one non-fatal parse exception... """
 		if message == 'lookup' and isinstance(ex, KeyError):
-			self.source.complain(*self.yy.current_span(), message="-- OCH! No such variable %r. --"%ex.args)
+			self.source.complain(*self.yy.slice(), message="-- OCH! No such variable %r. --"%ex.args)
 			return 0
 		else:
 			return super().exception_parsing(ex, message, args)
 	
-instance = Calculator()
+calculator = Calculator()
 
 def main():
 	import sys
-	instance.parse_help(None)
+	calculator.parse_help(None)
 	for line in sys.stdin:
 		text = line.strip()
 		if text.lower() == 'quit': break
-		elif text: instance.parse(text)
+		elif text: calculator.parse(text)
 	
 if __name__ == '__main__': main()

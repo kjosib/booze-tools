@@ -39,12 +39,10 @@ By implementing a small driver, you can re-use a language definition
 that was originally made for some other purpose. This feature may
 keep an ecosystem of tools in sync with each other.
 
-Another key goal is that the project source code should end up clear and
-instructive. In a perfect world, you could reference this code in a
-compiler-compiler course. (The world is far from perfect.) Therefore,
-there are heavy comments in parts that deal in the classical algorithms
-and data structures peculiar to the field of compilers. If you see
-something unclear, please speak up. Opacity is a bug.
+A once-and-future goal is that the project source code should end up clear and instructive.
+Therefore, there are heavy comments in parts that deal in the classical algorithms
+and data structures peculiar to the field of compilers.
+If you see something unclear, please speak up. Opacity is a bug.
 
 To that same end, I may eventually add on some alternative constructions,
 as (perhaps) for SLR and LR(0) as ends in themselves, with heavy commentary.

@@ -16,7 +16,8 @@ Project Maturity Level:
    but there are some rough edges. Some APIs may change,
    but the general concept to keep the grammar definition
    independent of the target-language is not going anywhere.
-   (In concept, this should allow a compiler, a pretty-printer, and an IDE to all run from the same grammar defintion.)
+   (In concept, this should allow a compiler, a pretty-printer,
+   and an IDE to all run from the same grammar definition.)
    It's used in a few different projects and generates feedback.
 
 .. toctree::

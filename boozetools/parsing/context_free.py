@@ -58,7 +58,7 @@ simple as adding a predicate for whether something *looks* like a non-terminal. 
 """
 
 import collections, itertools
-from typing import List, Optional, NamedTuple, Hashable, Sequence, Union, Protocol
+from typing import Optional, NamedTuple, Hashable, Sequence, Union, Protocol
 from ..support import foundation, pretty
 
 
@@ -71,12 +71,14 @@ class FaultHandler(Protocol):
 	"""
 	This generic handler just raises exceptions.
 	More sophisticated handlers might do something more sophisticated.
-	The concept is to report faults as they are noticed.
-	
-	This may not be the final form of the protocol, but it will do for now.
+	This is not the final form of the protocol.
+
+	It might be nice to get a more complete read-out of problems, but that would mean
+	inventing some sort of document structure to talk about faults in grammars.
+	Then again, maybe that's in the pipeline.
 	"""
-	def rule_produces_bogons(self, rule, bogons):
-		raise Fault("Rule at %r produces bogus terminal(s) %r."%(rule.provenance, bogons))
+	def rule_produces_bogon(self, rule, symbol):
+		raise Fault("Rule at %r produces bogus terminal(s) %r." % (rule.provenance, symbol))
 	
 	def epsilon_right_recursion(self, rule):
 		raise Fault("Rule at %r produces epsilon right-recursion."%rule.provenance)
@@ -93,11 +95,10 @@ class FaultHandler(Protocol):
 	def unreachable_symbols(self, symbols):
 		raise Fault("Unreachable Symbols: %r."%symbols)
 	
-	def duplicate_rule(self, rule, extra):
-		raise Fault("Rule at %r gets duplicated at %r."%(rule.provenance, extra))
+	def duplicate_rules(self, rules):
+		raise Fault("Duplicated rules at %r."%', '.join(map(str, (r.provenance for r in rules))))
 	
-	def precedence_declared_twice(self, symbol):
-		# FIXME: convey the locations involved in the conflict?
+	def precedence_redeclared(self, symbol, first, extras):
 		raise Fault("Precedence declared twice on symbol %r."%symbol)
 
 	def self_recursive_loop(self, symbol):
@@ -113,8 +114,132 @@ class FaultHandler(Protocol):
 		raise Fault("Symbols %r form a mutually-recursive epsilon loop."%symbols)
 
 class SimpleFaultHandler(FaultHandler):
-	""" Raise for everything. """
+	""" Protocols cannot be instantiated, so here's a simple way to get "raise for everything" behavior. """
 	pass
+
+
+class SemanticAction(NamedTuple):
+	"""
+	Designate semantics for the attribute synthesis portion of the rule specification.
+	Consists of an ostensible *message* and a list of indices within the right-hand-side from
+	which to gather arguments to that message. The indices are zero-indexed from the left.
+	At this level, we don't interpret messages further: That's for the driver to handle.
+	"""
+	message: Optional[Hashable]
+	indices: Sequence[int]
+
+class Rule(NamedTuple):
+	"""
+	Arbitrary plain-jane BNF rule.
+
+	lhs: The "left-hand-side" non-terminal symbol which is declared to produce...
+	rhs: this "right-hand-side" sequence of symbols.
+	prec_sym: Optional explicit rule precedence symbol. If missing, may be inferred.
+	action:
+		* If an integer, then the significant-symbol index for a renaming or bracketing rule.
+		* If a SemanticAction object, then as explained there.
+
+	Unit/renaming productions are recognized and treated specially. The parser tables
+	will generally optimize such rules to a zero-cost abstraction, bypassing pointless
+	extra stack activity and leaving out needless extra states. Certain very rare
+	constructions may defeat the optimization by rendering it unsound. The tables will
+	be constructed *correctly* in any event.
+
+	provenance: Use this to indicate the provenance of the rule. It can be a source
+	line number, or whatever else makes sense in your application.
+	"""
+	lhs: Hashable  # What non-terminal symbol...
+	rhs: tuple[Hashable, ...]  # ...produces what string of other symbols?
+	prec_sym: Optional[Hashable]  # If this rule has explicit precedence, what symbol represents its precedence level?
+	action: Union[int, SemanticAction]  # What to do for attribute synthesis when recognizing this rule?
+	provenance: object  # Where did this rule come from? We need to know for reporting and debugging.
+	
+	def __str__(self):
+		return "%s -> %s"%(self.lhs, ' '.join(map(str, self.rhs)))
+	
+	def is_rename(self):
+		return len(self.rhs) == 1 and self.action == 0
+	
+	def assert_valid_action(self):
+		""" If this check fails, it's held to be a bug in whatever code created the rule object. """
+		arity = len(self.rhs)
+		if isinstance(self.action, SemanticAction):
+			assert all(p<arity for p in self.action.indices), self.action
+		else:
+			assert isinstance(self.action, int) and 0 <= self.action < arity
+	
+	def as_dotted(self, position):
+		rhs = [str(s) for s in self.rhs]
+		rhs.insert(position, pretty.DOT)
+		return str(self.lhs)+' -> '+(" ".join(rhs))
+
+class OperatorPrecedenceSupport:
+	""" Coherent bits that deal with operator-precedence parsing. This decides most shift-reduce conflicts. """
+	
+	def __init__(self):
+		# The fundamental essentials:
+		self.token_precedence = {}
+		self.level_assoc = []
+		
+		# Now for some error-reporting help:
+		self.level_provenance = []  # Used for error-reporting.
+		self.bogons = set()
+		self.extra_declarations = collections.defaultdict(list)
+
+	def assoc(self, direction, symbols, provenance=None):
+		assert direction in (LEFT, NONASSOC, RIGHT, BOGUS)
+		assert symbols
+		level = foundation.allocate(self.level_assoc, direction)
+		self.level_provenance.append(provenance)
+		for symbol in symbols:
+			if symbol in self.token_precedence:
+				self.extra_declarations[symbol].append(provenance)
+			else:
+				self.token_precedence[symbol] = level
+	
+	def infer_prec_sym(self, rhs):
+		"""
+		If a rule without an explicit precedence declaration is involved in a shift/reduce conflict,
+		the parse table generation algorithm will call this to decide which symbol represents the
+		precedence of this right-hand-side.
+
+		As a slight refinement to the BISON approach, this returns the first terminal with an
+		assigned precedence, as opposed to the first terminal symbol whatsoever. Often that's
+		a distinction without a difference, but when it matters I think this makes more sense.
+		"""
+		for symbol in rhs:
+			if symbol in self.token_precedence:
+				return symbol
+
+	def validate(self, fault_handler:FaultHandler, rules):
+		for symbol, extras in self.extra_declarations.items():
+			first = self.level_provenance[self.token_precedence[symbol]]
+			fault_handler.precedence_redeclared(symbol, first, extras)
+		for rule in rules:
+			if rule.lhs in self.token_precedence:
+				fault_handler.nonterminal_given_precedence(rule)
+			if rule.prec_sym and rule.prec_sym not in self.token_precedence:
+				fault_handler.bad_prec_sym(rule)
+			for symbol in rule.rhs:
+				if self.token_precedence.get(symbol,None) is BOGUS:
+					fault_handler.rule_produces_bogon(rule, symbol)
+	
+	def determine_rule_precedence(self, rule):
+		prec_sym = rule.prec_sym or self.infer_prec_sym(rule.rhs)
+		if prec_sym: return self.token_precedence[prec_sym]
+	
+	def decide_shift_reduce(self, symbol, rule):
+		try: sp = self.token_precedence[symbol]
+		except KeyError: return None
+		rp = self.determine_rule_precedence(rule)
+		if rp is None: return None
+		if rp < sp: return LEFT
+		# NB: Bison and Lemon both treat later declarations as higher-precedence,
+		# which is unintuitive, in that you perform higher-precedence operations
+		# first so it makes sense to list them first. Please excuse my dear aunt Sally!
+		if rp == sp: return self.level_assoc[rp]
+		return RIGHT
+
 
 class ContextFreeGrammar:
 	"""
@@ -123,20 +248,14 @@ class ContextFreeGrammar:
 	This object follows a builder pattern: You're expected to construct an empty grammar,
 	give it a bunch of declarations, and then start calculating based on the completed grammar.
 	"""
-	def __init__(self, fault_handler:FaultHandler = None):
+	def __init__(self):
 		# Context-free bits
 		self.symbols = set()
-		self.rules = []
+		self.rules:list[Rule] = []
 		self.start = []  # The start symbol(s) may be specified asynchronously to construction or the rules.
 		self.symbol_rule_ids = {}
-		
-		# Operator-Precedence Support
-		self.token_precedence = {}
-		self.level_assoc = []
-		self.level_provenance = []  # Used for error-reporting.
-		
-		# Oh yes, let's don't forget about fault handling and detection:
-		self.fault_handler = fault_handler or SimpleFaultHandler()
+		self.ops = OperatorPrecedenceSupport()
+		# A reverse mapping from right-hand side symbols to rule IDs makes various algorithms easier/faster:
 		self.mentions = collections.defaultdict(list)
 	
 	def display(self):
@@ -144,55 +263,24 @@ class ContextFreeGrammar:
 		body = [[i, rule.lhs, rule.rhs, rule.action] for i,rule in enumerate(self.rules)]
 		pretty.print_grid([head] + body)
 
-	def rule(self, lhs:str, rhs:List[str], prec_sym, action, provenance):
+	def add_rule(self, rule):
 		"""
-		This is your basic mechanism to install arbitrary plain-jane BNF rules.
-		It provides the consistency checks better than if you were to instantiate Rule directly.
-		
-		For the sake of simplicity, at this layer symbols are all strings.
-		Duplicate rules are rejected by raising an exception.
-		
-		:param lhs: The "left-hand-side" non-terminal symbol which is declared to produce...
-		
-		:param rhs: this "right-hand-side" sequence of symbols.
-		
-		:param prec_sym: Set the precedence of this reduction explicitly according to that
-		of the given symbol as previously declared. If this is not supplied and the table
-		construction algorithm finds it necessary, method infer_prec_sym(...) implements
-		default processing on the right-hand-side.
-		
-		:param action:
-		* If an integer, then the significant-symbol index for a renaming or bracketing rule.
-		* If a SemanticAction object, then as explained there.
-		
-		Unit/renaming productions are recognized and treated specially. The parser tables
-		will generally optimize such rules to a zero-cost abstraction, bypassing pointless
-		extra stack activity and leaving out needless extra states. Certain very rare
-		constructions may defeat the optimization by rendering it unsound. The tables will
-		be constructed *correctly* in any event.
-		
-		:param provenance: Use this to indicate the provenance of the rule. It can be a source
-		line number, or whatever else makes sense in your application.
-		
+		This is your basic mechanism to add BNF rules.
+		It's responsible for various bits of internal accounting.
 		:return: Nothing.
-		
 		"""
-		if lhs in self.token_precedence:
-			return self.fault_handler.nonterminal_given_precedence(lhs)
-		self.symbols.add(lhs)
-		self.symbols.update(rhs)
-		if lhs not in self.symbol_rule_ids: self.symbol_rule_ids[lhs] = []
-		if isinstance(action, int): assert 0 <= action < len(rhs)
-		else: assert isinstance(action, SemanticAction) and all(p<len(rhs) for p in action.places), action
-		sri = self.symbol_rule_ids[lhs]
-		if any(self.rules[rule_id].rhs == rhs for rule_id in sri):
-			# This may technically be quadratic, but it's only looking within the same nonterminal's rules.
-			return self.fault_handler.duplicate_rule(lhs, rhs)
-		else:
-			rule_id = foundation.allocate(self.rules, Rule(lhs, rhs, prec_sym, action, provenance))
-			sri.append(rule_id)
-			for symbol in rhs:
-				self.mentions[symbol].append(rule_id)
+		rule.assert_valid_action()
+		self.symbols.add(rule.lhs)
+		self.symbols.update(rule.rhs)
+		
+		if rule.lhs not in self.symbol_rule_ids:
+			# Don't use a defaultdict; we can't be adding keys by checking for them.
+			self.symbol_rule_ids[rule.lhs] = []
+		sri = self.symbol_rule_ids[rule.lhs]
+		rule_id = foundation.allocate(self.rules, rule)
+		sri.append(rule_id)
+		for symbol in rule.rhs:
+			self.mentions[symbol].append(rule_id)
 
 	def augmented_rules(self) -> list:
 		"""
@@ -215,54 +303,11 @@ class ContextFreeGrammar:
 		first = len(self.rules)
 		return range(first, first+len(self.start))
 	
-	################
-	#
-	#  Here begin bits associated with the operator-precedence disambiguation feature:
-	#
-	################
-	
 	def assoc(self, direction, symbols, provenance=None):
-		assert direction in (LEFT, NONASSOC, RIGHT, BOGUS)
-		assert symbols
-		level = foundation.allocate(self.level_assoc, direction)
-		self.level_provenance.append(provenance)
-		for symbol in symbols:
-			if symbol in self.symbol_rule_ids: self.fault_handler.nonterminal_given_precedence(symbol)
-			elif symbol in self.token_precedence: self.fault_handler.precedence_declared_twice(symbol)
-			else: self.token_precedence[symbol] = level
-	
+		self.ops.assoc(direction, symbols, provenance)
+		
 	def decide_shift_reduce(self, symbol, rule_id):
-		try:
-			sp = self.token_precedence[symbol]
-		except KeyError:
-			return None
-		rp = self.determine_rule_precedence(rule_id)
-		if rp is None: return None
-		if rp < sp: return LEFT
-		# NB: Bison and Lemon both treat later declarations as higher-precedence,
-		# which is unintuitive, in that you perform higher-precedence operations
-		# first so it makes sense to list them first. Please excuse my dear aunt Sally!
-		if rp == sp: return self.level_assoc[rp]
-		return RIGHT
-	
-	def infer_prec_sym(self, rhs):
-		"""
-		If a rule without an explicit precedence declaration is involved in a shift/reduce conflict,
-		the parse table generation algorithm will call this to decide which symbol represents the
-		precedence of this right-hand-side.
-
-		As a slight refinement to the BISON approach, this returns the first terminal with an
-		assigned precedence, as opposed to the first terminal symbol whatsoever. Often that's
-		a distinction without a difference, but when it matters I think this makes more sense.
-		"""
-		for symbol in rhs:
-			if symbol in self.token_precedence:
-				return symbol
-	
-	def determine_rule_precedence(self, rule_id):
-		rule = self.rules[rule_id]
-		prec_sym = rule.prec_sym or self.infer_prec_sym(rule.rhs)
-		if prec_sym: return self.token_precedence[prec_sym]
+		return self.ops.decide_shift_reduce(symbol, self.rules[rule_id])
 	
 	def apparent_terminals(self) -> set:
 		""" Of all symbols mentioned, those without production rules are apparently terminal. """
@@ -293,27 +338,6 @@ class ContextFreeGrammar:
 		""" Which symbols may produce the empty string? """
 		return self.bipartite_closure(rule.lhs for rule in self.rules if not rule.rhs)
 	
-	def assert_well_founded(self):
-		"""
-		Here, "well-founded" means "can possibly produce a finite sequence of terminals."
-		The opposite is called "ill-founded".
-		
-		Here are two examples of ill-founded grammars:
-			S -> x S   -- This is ill-founded because there's always one more S.
-			A -> B y;  B -> A x     -- Similar, but with mutual recursion.
-
-		A terminal symbol is well-founded. So is an epsilon symbol, since zero is finite.
-		A rule with only well-founded symbols in the right-hand side is well-founded.
-		A non-terminal symbol with at least one well-founded rule is well-founded.
-		Induction applies. That induction happens to be called ``bipartite_closure``.
-		
-		A grammar with only well-founded symbols is well-founded.
-		"""
-		well_founded = self.bipartite_closure(self.apparent_terminals() | self.find_epsilon())
-		ill_founded = self.symbol_rule_ids.keys() - well_founded
-		if ill_founded:
-			self.fault_handler.ill_founded_symbols(ill_founded)
-
 	def find_first(self):
 		"""
 		Particularly the LL school of grammar processing uses first-sets.
@@ -344,28 +368,31 @@ class ContextFreeGrammar:
 			for symbol in component:  # Not sure about performance with large SCCs.
 				f.update(*(first[x] for x in first[symbol]))
 				first[symbol] = f
-			f.difference_update(self.symbol_rule_ids)
+			f.difference_update(self.symbol_rule_ids) # Thus subtracting out nonterminals
 		return first
 	
-	def assert_valid_prec_sym(self):
-		for rule in self.rules:
-			if rule.prec_sym and rule.prec_sym not in self.token_precedence:
-				self.fault_handler.bad_prec_sym(rule)
-	
-	def assert_no_bogons(self):
+	def assert_well_founded(self, fault_handler: FaultHandler):
 		"""
-		"Bogus" tokens only exist to establish precedence levels and must not appear in right-hand sides.
+		Here, "well-founded" means "can possibly produce a finite sequence of terminals."
+		The opposite is called "ill-founded".
+
+		Here are two examples of ill-founded grammars:
+			S -> x S   -- This is ill-founded because there's always one more S.
+			A -> B y;  B -> A x     -- Similar, but with mutual recursion.
+
+		A terminal symbol is well-founded. So is an epsilon symbol, since zero is finite.
+		A rule with only well-founded symbols in the right-hand side is well-founded.
+		A non-terminal symbol with at least one well-founded rule is well-founded.
+		Induction applies. That induction happens to be called ``bipartite_closure``.
+
+		A grammar with only well-founded symbols is well-founded.
 		"""
-		bogons = collections.defaultdict(list)
-		for sym, prec in self.token_precedence.items():
-			if self.level_assoc[prec] is BOGUS:
-				if sym in self.mentions:
-					for rule_id in self.mentions[sym]:
-						bogons[rule_id].append(sym)
-		for rule_id, symbols in sorted(bogons.items()):
-			self.fault_handler.rule_produces_bogons(self.rules[rule_id], symbols)
+		well_founded = self.bipartite_closure(self.apparent_terminals() | self.find_epsilon())
+		ill_founded = self.symbol_rule_ids.keys() - well_founded
+		if ill_founded:
+			fault_handler.ill_founded_symbols(ill_founded)
 	
-	def assert_no_orphans(self):
+	def assert_no_orphans(self, fault_handler:FaultHandler):
 		"""
 		Every symbol should be reachable from the start symbol(s).
 		This is a simple transitive closure.
@@ -374,21 +401,21 @@ class ContextFreeGrammar:
 		for rule in self.rules: produces[rule.lhs].update(rule.rhs)
 		unreachable = self.symbols - foundation.transitive_closure(self.start, produces.get)
 		if unreachable:  # NB: Bogons are not among self.symbols.
-			self.fault_handler.unreachable_symbols(unreachable)
-	
-	def assert_no_rename_loops(self):
+			fault_handler.unreachable_symbols(unreachable)
+			
+	def assert_no_rename_loops(self, fault_handler:FaultHandler):
 		""" If a symbol may be replaced by itself (possibly indirectly) then it is diseased. """
 		renames = collections.defaultdict(set)
 		for rule in self.rules:
 			if len(rule.rhs) == 1:
 				if rule.lhs == rule.rhs[0]:
-					self.fault_handler.self_recursive_loop(rule.lhs)
+					fault_handler.self_recursive_loop(rule.lhs)
 				else:
 					renames[rule.lhs].add(rule.rhs[0])
 		for component in foundation.strongly_connected_components_hashable(renames):
-			if len(component) > 1: self.fault_handler.mutual_recursive_loop(component)
+			if len(component) > 1: fault_handler.mutual_recursive_loop(component)
 	
-	def assert_no_epsilon_loops(self):
+	def assert_no_epsilon_loops(self, fault_handler:FaultHandler):
 		""" Epsilon Left-Self-Recursion is OK. All other recursive-epsilon-loops are pathological. """
 		epsilon = self.find_epsilon()
 		reaches = collections.defaultdict(set)
@@ -398,47 +425,32 @@ class ContextFreeGrammar:
 			if epsilon_prefix[0] == rule.lhs: epsilon_prefix.pop(0)
 			if rule.lhs in epsilon_prefix:
 				# Somehow this case seems qualitatively different.
-				self.fault_handler.epsilon_right_recursion(rule)
+				fault_handler.epsilon_right_recursion(rule)
 			reaches[rule.lhs].update(epsilon_prefix)
 		for component in foundation.strongly_connected_components_hashable(reaches):
 			if len(component) > 1:
-				self.fault_handler.epsilon_mutual_recursion(component)
+				fault_handler.epsilon_mutual_recursion(component)
 	
-	def validate(self):
-		"""
-		This raises an exception (derived from Fault, above) for the first error noticed.
-		It might be nice to get a more complete read-out of problems, but that would mean
-		inventing some sort of document structure to talk about faults in grammars.
-		Then again, maybe that's in the pipeline.
-		"""
-		self.assert_valid_prec_sym()
-		self.assert_no_bogons()
-		self.assert_well_founded()
-		self.assert_no_orphans()
-		self.assert_no_rename_loops()
-		self.assert_no_epsilon_loops()
-
-
-class Rule(NamedTuple):
-	lhs: str  # What non-terminal symbol...
-	rhs: List[str]  # ...produces what string of other symbols?
-	prec_sym: Optional[str]  # If this rule has explicit precedence, what symbol represents its precedence level?
-	action: object  # What to do for attribute synthesis when recognizing this rule?
-	provenance: object  # Where did this rule come from? We need to know for reporting and debugging.
+	def assert_no_duplicate_rules(self, fault_handler:FaultHandler):
+		for symbol, rule_ids in self.symbol_rule_ids.items():
+			inverse = collections.defaultdict(list)
+			for r in rule_ids:
+				inverse[tuple(self.rules[r].rhs)].append(r)
+			for rs in inverse.values():
+				if len(rs) > 1:
+					fault_handler.duplicate_rules([self.rules[r] for r in rs])
 	
-	def is_rename(self):
-		return len(self.rhs) == 1 and self.action == 0
-
-class SemanticAction(NamedTuple):
-	"""
-	designate the semantics for the attribute synthesis portion of the rule specification
-		:param message: and
-		:param places: . If `message` is `None`, then places is expected to be the
-		. Otherwise,
-		`places` should be a list/tuple of indices into the RHS relevant to the given message.
-		Note: At this level we don't interpret messages further.
-	"""
-	message: Hashable
-	places: Sequence[int]
-
+	def validate(self, fault_handler=SimpleFaultHandler(), allow_duplicate_rules=False):
+		"""
+		Calls the fault handler with every identified fault. The default fault handler
+		raises an exception (derived from Fault, above) for the first error noticed.
+		"""
+		self.ops.validate(fault_handler, self.rules)
+		self.assert_well_founded(fault_handler)
+		self.assert_no_orphans(fault_handler)
+		self.assert_no_rename_loops(fault_handler)
+		self.assert_no_epsilon_loops(fault_handler)
+		if not allow_duplicate_rules:
+			self.assert_no_duplicate_rules(fault_handler)
+			
 

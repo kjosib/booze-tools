@@ -12,8 +12,8 @@ import sys, os, argparse, json
 
 from boozetools.macroparse.compiler import compile_string
 from boozetools.macroparse.grammar import DefinitionError
-from boozetools.support import compaction
-from boozetools.parsing import automata
+from boozetools.macroparse import compaction
+from boozetools.parsing.all_methods import PARSE_TABLE_METHODS
 
 def parse_arguments():
 	parser = argparse.ArgumentParser(prog='py -m boozetools', description=__doc__,)
@@ -25,7 +25,7 @@ def parse_arguments():
 	parser.add_argument('--csv', action='store_true', help='Generate CSV versions of uncompressed tables, suitable for inspection.')
 	parser.add_argument('--dev', action='store_true', help='Operate in "development mode" -- which changes from time to time.')
 	parser.add_argument('--dot', action='store_true', help="Create a .dot file for visualizing the parser via the Graphviz package.")
-	parser.add_argument('-m', '--method', choices=automata.PARSE_TABLE_METHODS, default='LR1', type=str.upper, help="Which parser table construction method to use.")
+	parser.add_argument('-m', '--method', choices=PARSE_TABLE_METHODS, default='LR1', type=str.upper, help="Which parser table construction method to use.")
 	parser.add_argument('-v', '--verbose', action='store_true', help="Squawk, mainly about the table compression stats.")
 	# if len(sys.argv) < 2: exit(parser.print_help())
 	return parser.parse_args()

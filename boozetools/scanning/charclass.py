@@ -12,18 +12,20 @@ As an aside: The present scanner table compaction method is probably not too
 sensitive to the order of equivalence classes.
 """
 
+from abc import ABC, abstractmethod
 import bisect
-from ..support import pretty, interfaces
+from .interface import Classifier
+from ..support import pretty
 
 
-class SimpleClassifier(interfaces.Classifier):
+class SimpleClassifier(Classifier):
 	def __init__(self, bounds):
 		self.bounds = tuple(bounds)
 	def cardinality(self): return 1+len(self.bounds)
 	def classify(self, codepoint:int): return bisect.bisect_right(self.bounds, codepoint)
 	def display(self): pretty.print_grid([['-', *self.bounds]])
 
-class MetaClassifier(interfaces.Classifier):
+class MetaClassifier(Classifier):
 	def __init__(self, bounds, classes):
 		self.bounds = tuple(bounds)
 		self.classes = tuple(classes)

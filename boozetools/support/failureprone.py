@@ -1,9 +1,4 @@
 """
-Things Prone to Failure:
-
-1. People.
-2. Machines.
-
 This module is all about easing over the process to display where things go wrong.
 A tool-developer should have easy access to sophisticated error-displays.
 Such should be made both likely and comfortable independent of other tools.
@@ -41,6 +36,8 @@ So how exactly SHOULD you delimit lines? The answer, my friend, is blowin' in th
 """
 
 import bisect, re, sys
+from typing import NamedTuple, Any
+from enum import Enum
 
 LINEBREAK_MODE = {
 	'normal': re.compile(r'\r\n?|\n'),
@@ -50,18 +47,76 @@ LINEBREAK_MODE = {
 	'dos': re.compile(r'\r\n'),
 }
 
-def illustration(single_line:str, start:int, width:int=0, *, prefix='') -> str:
+class Severity(Enum):
+	NOTICE = "Notice"
+	WARNING = "Warning"
+	ERROR = "Error"
+
+class Evidence(NamedTuple):
+	slice:slice
+	caption: str = "here"
+	
+	def width(self): return self.slice.stop - self.slice.start
+
+class Issue(NamedTuple):
+	"""
+	Contain all the information necessary to present elements of an error, warning, notice, or whatever.
+	In theory, it should be possible to organize these for sensible presentation.
+	
+	The notion is that any given issue could result from an interaction of causes
+	in multiple different places. (For example, a mismatched function signature
+	might have declaration and reference in different files.) Thus:
+	
+	phase: tells what portion of the interpretation process found the issue.
+	severity: tells how bad the issue is.
+	description: explains the issue in plain language.
+	evidence: a dictionary:
+		from "key" (as known to an assumed "fetch" function),
+		to lists of ``Evidence`` objects relevant to that corresponding text.
+	"""
+	phase: str
+	severity: Severity
+	description: str
+	evidence: dict[Any, list[Evidence]]
+	
+	def as_text(self, fetch):
+		"""
+		This will generate a not-completely-terrible error report in text-only format.
+		The precise format is subject to change, but basically you should be able to
+		print this on stderr and not cry yourself to sleep.
+		
+		:param: "fetch" must be a function which takes a key (from the evidence dictionary)
+		and returns a corresponding SourceText object.
+		"""
+		lines = ["%s %s: %s"%(self.phase, self.severity, self.description)]
+		for key, evidence in self.evidence.items():
+			source = fetch(key)
+			if source.filename:
+				lines.append("Excerpt from "+source.filename+" :")
+			for e in evidence:
+				row, col = source.find_row_col(e.slice.start)
+				single_line = source.line_of_text(row)
+				lines.append(illustration(single_line, col, e.width(), prefix='% 6d :'%row, caption=e.caption))
+		return "\n".join(lines)
+		
+	def emit(self, fetch):
+		""" Print to standard error the generated error text. """
+		print(self.as_text(fetch), file=sys.stderr)
+
+def illustration(single_line:str, start:int, width:int=0, *, prefix='', caption="near here") -> str:
 	""" Builds up a picture of where something appears in a line of text. Useful for polite error messages. """
 	blanks = ''.join(c if c == '\t' else ' ' for c in prefix + single_line[:start])
-	underline = '^'*(width or 1)+'-- near here'
-	return prefix + single_line.rstrip() + '\n' + blanks + underline
+	underline_width = max(1, min(width, len(single_line)-start))
+	underline = '^'*underline_width
+	return prefix + single_line.rstrip() + '\n' + blanks + underline +" "+caption
 
 class SourceText:
-	""" A wrapper for e.g. a program source text which can print a half-respectable error message with context. """
-	def __init__(self, content:str, line_breaks='normal', filename:str=None):
+	""" Wrapper for (a section of) source text: participates in half-respectable error-display with context. """
+	def __init__(self, content:str, line_breaks='normal', filename:str=None, first_line=1):
 		self.content = content
 		self.filename = filename
 		self.line_breaks = line_breaks
+		self.first_line = first_line
 	
 	def __make_bounds(self):
 		""" Lazily only find line breaks if it turns out to be necessary for a particular text. """
@@ -70,16 +125,14 @@ class SourceText:
 			self.__bounds = [0] + inside + [len(self.content)]
 
 	def find_row_col(self, index:int):
-		""" Zero-Based! This right here is the main point of the class... """
+		""" Based on a character index offset from the start of text. Respects self.first_line. """
 		self.__make_bounds()
 		row = bisect.bisect_right(self.__bounds, index, hi=len(self.__bounds) - 1) - 1
 		col = index - self.__bounds[row]
-		return row, col
+		return row+self.first_line, col
 	
-	def complain(self, index:int, width=1, *, message:str=""):
-		""" Present an informative error message with an illustration of context. """
-		row, col = self.find_row_col(index)
-		line = self.content[self.__bounds[row]:self.__bounds[row + 1]]
-		if self.filename is None: print("At line %d, column %d:"%(row+1, col+1), message, file=sys.stderr)
-		else: print("At line %d, column %d, in %s:"%(row+1, col+1, self.filename), message, file=sys.stderr)
-		print(illustration(line, col, width, prefix=' >>> '), file=sys.stderr)
+	def line_of_text(self, row):
+		""" Argument respects self.first_line. """
+		r = max(0, row - self.first_line)
+		return self.content[self.__bounds[r]:self.__bounds[r + 1]]
+	

@@ -57,19 +57,19 @@ class Pascal(runtime.TypicalApplication):
 		pass
 	def scan_unterminated_comment(self, yy: interfaces.Scanner):
 		self.source.complain(yy.current_position(), message="Unterminated comment begins")
-	def scan_integer(self, yy: interfaces.Scanner): yy.token('integer', int(yy.matched_text()))
-	def scan_decimal(self, yy: interfaces.Scanner): yy.token('real', float(yy.matched_text()))
-	def scan_scientific_notation(self, yy: interfaces.Scanner): yy.token('real', float(yy.matched_text()))
+	def scan_integer(self, yy: interfaces.Scanner): yy.token('integer', int(yy.match()))
+	def scan_decimal(self, yy: interfaces.Scanner): yy.token('real', float(yy.match()))
+	def scan_scientific_notation(self, yy: interfaces.Scanner): yy.token('real', float(yy.match()))
 	def scan_string_constant(self, yy: interfaces.Scanner):
-		yy.token('string_constant', yy.matched_text()[1:-1].replace("''", "'"))
-	def scan_identifier(self, yy: interfaces.Scanner): yy.token('identifier', yy.matched_text())
+		yy.token('string_constant', yy.match()[1:-1].replace("''", "'"))
+	def scan_identifier(self, yy: interfaces.Scanner): yy.token('identifier', yy.match())
 	def scan_word(self, yy: interfaces.Scanner):
 		# Checks a table of reserved words.
-		word = yy.matched_text().upper()
+		word = yy.match().upper()
 		if word in self.reserved: yy.token(word)
 		else: yy.token('identifier', word)
 	def scan_token(self, yy: interfaces.Scanner):
-		text = yy.matched_text()
+		text = yy.match()
 		yy.token(text, text)
 	
 	def parse_first(self, item): return [item]

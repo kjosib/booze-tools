@@ -18,7 +18,8 @@ and provided for later.
 
 import collections, bisect
 from typing import List, Optional, Tuple, Sequence, Set
-from . import foundation, expansion
+from boozetools.support import foundation
+from boozetools.macroparse import expansion
 
 VERBOSE = False
 

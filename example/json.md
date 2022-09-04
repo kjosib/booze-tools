@@ -96,7 +96,7 @@ Following are the rules (pattern:action pairs) that apply outside of string cons
 {signedInteger}                               :integer
 {signedInteger}{fractionalPart}?{exponent}?   :float
 \s+                                           :ignore_whitespace
-[][{}:,]                                      :punctuation
+[\][{}:,]                                     :punctuation
 true|false|null                               :reserved_word
 "                                             :enter_string
 

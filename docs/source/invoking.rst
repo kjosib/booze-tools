@@ -27,7 +27,7 @@ Then later, in Python code, something like:
 .. code-block:: python
 
     import json
-    from boozetools.support import runtime, interfaces
+    from boozetools.macroparse import runtime
 
     tables = json.load('example/pascal.automaton')
 
@@ -36,7 +36,7 @@ Then later, in Python code, something like:
             super().__init__(tables)
 
         def scan_this(self, yy):
-            yy.token('this', yy.matched_text())
+            yy.token('this', yy.match())
 
         def parse_that(self, left, middle, right):
             return That(left, middle, right)
@@ -88,8 +88,8 @@ Error Rules:
 
 On-Error Call-Backs:
     For everything else, there are error call-backs.
-    If you look in ``boozetools/support/runtime.py``
-    (`here <https://github.com/kjosib/booze-tools/blob/master/boozetools/support/runtime.py>`_)
+    If you look in ``boozetools/macroparse/runtime.py``
+    (`here <https://github.com/kjosib/booze-tools/blob/master/boozetools/macroparse/runtime.py>`_)
     you'll find ``class AbstractTypical`` which defines default behavior for
     situations in which (a) the parser's error-rule mechanism was unable to resolve,
     or (b) a stuck scanner.

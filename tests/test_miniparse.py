@@ -1,7 +1,6 @@
 """ A run-down of basic features, I suppose... """
 import unittest
 import operator
-from boozetools.support import interfaces
 from boozetools.parsing import miniparse
 
 

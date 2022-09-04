@@ -32,8 +32,7 @@ an infinite loop).
 """
 
 from typing import Dict
-from ...support import interfaces
-
+from ..interface import HandleFindingAutomaton, ParseError
 
 class GNode:
 	# Nodes in the main portion of a graph-structured stack are simple enough.
@@ -59,7 +58,7 @@ class GNode:
 	
 	def __repr__(self): return "<%d / %s>" % (self.state_id, ",".join(str(e.state_id) for e in self.arcs))
 
-def gss_trial_parse(table: interfaces.HandleFindingAutomaton, sentence, *, language=None):
+def gss_trial_parse(table: HandleFindingAutomaton, sentence, *, language=None):
 	def act_on(node: GNode, step: int):
 		if step == 0: return
 		elif step < 0: primary_reduction(node, -1-step)
@@ -153,11 +152,11 @@ def gss_trial_parse(table: interfaces.HandleFindingAutomaton, sentence, *, langu
 		terminal_id = table.get_translation(symbol)
 		drain_queues()
 		apply_shifts(None)
-		if not shifts: raise interfaces.GeneralizedParseError("Parser died midway at something ungrammatical.")
+		if not shifts: raise ParseError("Parser died midway at something ungrammatical.")
 	# Now deal with the end-of-input:
 	terminal_id = 0
 	drain_queues()
-	if not shifts: raise interfaces.GeneralizedParseError("Parser recognized a viable prefix, but not a complete sentence.")
+	if not shifts: raise ParseError("Parser recognized a viable prefix, but not a complete sentence.")
 	return True
 
 

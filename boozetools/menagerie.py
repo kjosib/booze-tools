@@ -1,4 +1,6 @@
 """
+--- DISCLAIMER: --- This file is not expected to "work", or even necessarily parse. ---
+
 Discarded ideas go here: they may be educational but they are not the current direction of the project.
 
 This module is quite deliberately not maintained.
@@ -6,7 +8,7 @@ This module is quite deliberately not maintained.
 Then again, project direction has changed before.
 """
 from .support import foundation
-from .support.compaction import most_common, is_homogeneous
+from boozetools.macroparse.compaction import most_common, is_homogeneous
 
 def multi_append(table:dict, row:dict):
 	"""
@@ -181,4 +183,101 @@ def compress_action_table(matrix: list) -> dict:
 			metric += 2 + len(row)
 	print("Compact form takes %d cells (%0.2f%%)." % (metric, 100 * metric / raw_size))
 	return delta
+
+class UnitReductionEliminator:
+	def __init__(self, grammar: "ContextFreeGrammar", bft: foundation.BreadthFirstTraversal):
+		self.bft = bft
+		self.unit_rules = {}
+		self.eligible_rhs = set()
+		for rule_id, rule in enumerate(grammar.rules):
+			if rule.is_rename():
+				self.unit_rules[rule_id] = rule.lhs
+				self.eligible_rhs.add(rule.rhs[0])
+
+	def find_shifts(self, step: dict) -> dict:
+		"""
+		A unit-rule is eligible to be elided (optimized-to-nothing) exactly when
+		the state reached by shifting the RHS would have no parse items associated with
+		any other rule. Naively, we'd shift the RHS and then immediately back out and
+		reduce to the LHS. We prefer to avoid pointless dancing about in the final automaton,
+		so we detect the situation and correct for it by redirecting the RHS as if we were
+		shifting the LHS instead, essentially running the reduction at table-generation time
+		before a numbered state ever gets allocated.
+		
+		There are TWO little caveats:
+		
+		The target state, after traversing a unit rule, may or may not contain a reduction
+		for that rule: this creates a slightly un-intuitive situation for the LALR construction.
+		
+		LR(1) and IE-LR(1) need to be able to find "iso-cores", so they must ALSO use this
+		to avoid accidentally trying to find an iso-core that doesn't exist in the corresponding
+		LR(0) automaton they use as an initial step.
+		"""
+		replace = {}
+		for symbol in self.eligible_rhs & step.keys():
+			each_item = iter(step[symbol])
+			rule_id = next(each_item)[0]
+			if rule_id in self.unit_rules and all(item[0] == rule_id for item in each_item):
+				replace[symbol] = self.unit_rules[rule_id]
+		shifts = {}
+		for symbol in step.keys():
+			proxy = symbol
+			while proxy in replace: proxy = replace[proxy]
+			shifts[symbol] = self.bft.lookup(frozenset(step[proxy]), breadcrumb=proxy)
+		return shifts
+
+class HFA:
+	"""
+	These bits used to live on the parsing.automata.HFA class, but then I saw the light:
+	THe HFA is a model. Constructing text about the model is just one possible way to
+	view the model. That is a view's responsibility. So these bits go away.
+	"""
+	def earley_core(self, q:int):
+		""" Maybe we need to know the core-items that a state began from, stripped of look-ahead powers. """
+		return sorted(set((r,p) for r, p, *_ in self.bft.traversal[q]))
+	
+	def display_situation(self, q: int, lookahead: str):
+		"""
+		Used for diagnostic displays:
+			How might I get to state #q, in symbols?
+			What would that parser situation look like?
+		"""
+		head, *tail = self.bft.shortest_path_to(q)
+		print('==============\nIn language %r, consider:' % self.grammar.start[self.initial.index(head)])
+		print('\t' + ' '.join(map(self.bft.breadcrumbs.__getitem__, tail)), pretty.DOT, lookahead)
+
+class DeterministicStyle(ParsingStyle):
+	def report(self, hfa):
+		"""
+		This function was originally intended as a way to visualize the branches of a conflict.
+		In its original form a bunch of context was available; I've gratuitously stripped that away
+		and now I want to break this down to the bits we actually need.
+		
+		BreadthFirstTraversal.traversal[x] was used to grab the core parse items in order to
+		visualize the state reached by shifting the lookahead token if that shift is viable.
+		Such really belongs as a method on the state: soon it will move there.
+		
+		The "options" list contains numeric candidate ACTION instructions which are interpreted
+		in the usual way: This does represent a data-coupling, but one that's unlikely to change,
+		so I'm not too worried about it just now.
+		
+		In conclusion: Let the objects defined in automata.py format parse-states for human consumption.
+		"""
+		for (q, lookahead), rule_ids in sorted(self.conflicts.items()):
+			hfa.display_situation(q, lookahead)
+			if lookahead in hfa.graph[q]:
+				shift = hfa.graph[q][lookahead]
+				print("Do we shift into:")
+				left_parts, right_parts = [], []
+				for r, p in hfa.earley_core(shift):
+					rhs = hfa.grammar.rules[r].rhs
+					left_parts.append(' '.join(rhs[:p]))
+					right_parts.append(' '.join(rhs[p:]))
+				align = max(map(len, left_parts)) + 10
+				for l, r in zip(left_parts, right_parts):
+					print(' ' * (align - len(l)) + l + '  ' + pretty.DOT + '  ' + r)
+			for r in rule_ids:
+				rule = hfa.grammar.rules[r]
+				print("Do we reduce:  %s -> %s" % (rule.lhs, ' '.join(rule.rhs)))
+		if self.strict and self.conflicts: raise PurityError()
 

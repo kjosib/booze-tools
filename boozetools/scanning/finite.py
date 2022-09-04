@@ -6,12 +6,13 @@ follow the maxim "When in doubt, use brute force."
 
 import operator
 from typing import NamedTuple
-from ..support import foundation, pretty, interfaces
+from ..support import foundation, pretty
 from ..scanning import charclass, charset
+from .interface import Classifier, FiniteAutomaton, State, CodePoint, RuleId
 
-class DFA(interfaces.FiniteAutomaton):
-	"""  """
-	def __init__(self, *, alphabet: interfaces.Classifier, initial:dict, final:dict, states:list):
+class DFA(FiniteAutomaton):
+
+	def __init__(self, *, alphabet: Classifier, initial:dict, final:dict, states:list):
 		self.alphabet = alphabet
 		self.width = self.alphabet.cardinality()
 		self.initial = initial
@@ -19,13 +20,15 @@ class DFA(interfaces.FiniteAutomaton):
 		metric = [len(row) for row in states]
 		assert all(m==self.width for m in metric), (self.width, metric)
 		self.states = states
+		
 	def jam_state(self): return -1
+	def condition(self, condition_name) -> tuple: return self.initial[condition_name]
+	def transition(self, state: State, codepoint: CodePoint) -> State: return self.states[state][self.alphabet.classify(codepoint)]
+	def accept(self, state: State) -> RuleId: return self.final.get(state)
+	
 	def append_state(self, row) -> int:
 		assert len(row) == self.width, [len(row), self.width]
 		return foundation.allocate(self.states, row)
-	def get_condition(self, condition_name) -> tuple: return self.initial[condition_name]
-	def get_next_state(self, current_state: int, codepoint: int) -> int: return self.states[current_state][self.alphabet.classify(codepoint)]
-	def get_state_rule_id(self, state_id: int): return self.final.get(state_id)
 	
 	def display(self):
 		print('Finite Automaton:')
@@ -113,7 +116,8 @@ class NFA:
 		epsilons: set
 		rank: int
 	
-	def new_node(self, rank) -> int: return foundation.allocate(self.states, NFA.Node(edges=[], epsilons=set(), rank=rank))
+	def new_node(self, rank) -> int:
+		return foundation.allocate(self.states, NFA.Node(edges=[], epsilons=set(), rank=rank))
 	def condition(self, name):
 		if name not in self.initial: self.initial[name] = (self.new_node(0), self.new_node(0))
 		return self.initial[name]
@@ -172,6 +176,6 @@ class NFA:
 		dfa = DFA(alphabet=charclass.SimpleClassifier(all_bounds[1:]), initial={}, final={}, states=[])
 		bft = foundation.BreadthFirstTraversal()
 		def initial(q:int): return close([q], 0)
-		dfa.initial = {k :(bft.lookup(initial(a)), bft.lookup(initial(b))) for k ,(a ,b) in self.initial.items()}
+		dfa.initial = {k :(bft.lookup(initial(a)), bft.lookup(initial(b))) for k, (a, b) in self.initial.items()}
 		bft.execute(visit)
 		return dfa

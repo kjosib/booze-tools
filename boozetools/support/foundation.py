@@ -1,6 +1,7 @@
 """ Small is beautiful. These algorithms need no introduction. """
 
 from collections.abc import Sequence
+from collections import deque
 import operator
 
 def allocate(a_list:list, item):
@@ -13,24 +14,51 @@ def allocate(a_list:list, item):
 	return idx
 
 def transitive_closure(roots, successors) -> set:
-	""" Transitive closure is a simple unordered graph exploration. """
-	black = set()
-	grey = set(roots)
-	while grey:
-		k = grey.pop()
-		if k not in black:
-			black.add(k)
-			them = successors(k)
-			if them is not None: grey.update(them)
-	return black
+	"""
+	Transitive closure is a simple application of graph search.
+	(This particular implementation is breadth-first.)
+	
+	This function does not expect any particular data structure.
+	Rather, it takes the graph's outbound-edge relation as a callable parameter.
+	It requires:
+		``roots`` is an iterable of nodes;
+		each node is hashable;
+		and ``successors(aNode)`` returns an iterable of nodes.
+	"""
+	closure = set(roots)
+	queue = deque(closure)
+	while queue:
+		more = successors(queue.popleft())
+		if more is not None:
+			for item in more:
+				if item not in closure:
+					closure.add(item)
+					queue.append(item)
+	return closure
 
 class BreadthFirstTraversal:
-	""" This object also accumulates and exposes data about the traversal path. """
+	"""
+	This object supports more general breadth-first graph traversal (and discovery) algorithms.
+	It also accumulates and exposes data about the traversal path, which is usually useful later.
+	
+	Initialize the traversal's roots by calling .lookup(rootKey) as many times as necessary,
+	then perform the traversal by calling .execute(visit). The "visit" parameter must be callable:
+	it will be called once with each key this object encounters in a .lookup(...) call.
+	In the end, the fields will have these meanings:
+	
+	current: the index of whichever key is currently being visited; ``None`` before and after processing.
+	traversal: the list of keys in the order seen by .lookup(...)
+	catalog: the mapping from key to traversal-index
+	earliest_predecessor: reverse links pointing along a shortest/first-encountered path towards the root.
+	breadcrumbs: Assuming edge-labels are provided with .lookup(key, breadcrumb=label), these are those labels.
+	
+	"""
 	def __init__(self):
 		self.current, self.traversal, self.catalog, self.earliest_predecessor, self.breadcrumbs = None, [], {}, [], []
 	def execute(self, visit):
-		""" visit(key, lookup) should call self.lookup(successor_key, breadcrumb), which returns an integer. """
-		for self.current, key in enumerate(self.traversal): visit(key)
+		""" visit(key) should call .lookup(successor_key, breadcrumb), which returns an integer. """
+		for self.current, key in enumerate(self.traversal):
+			visit(key)
 		self.current = None
 	def lookup(self, key, *, breadcrumb=None) -> int:
 		if key not in self.catalog:

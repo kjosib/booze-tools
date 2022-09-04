@@ -1,0 +1,172 @@
+Trees, version two.
+
+Notwithstanding the occasional single-pass application or lexical context-sensitivity,
+most of the job of a parse driver is usually to build a tree structure which later
+code will then walk top-down.
+
+My temptation to start down this path came from reading (TATA):
+	"Tree Automata Techniques and Applications" (http://tata.gforge.inria.fr/)
+
+Many nice prospects fall out of a standard "normal form" for such a tree:
+	1: Smarter parse rules to construct trees directly, eliminating most "parse_foo" actions.
+	2: Denotational tree-semantics rather than implied consequences of host-language features.
+	3: Consistent and modular debug-information tracking with well-defined tree transducers.
+	4: Standard infrastructure for (potentially very sophisticated) tree processing.
+	5: A micro-pass facility for writing tree transducers simply.
+	6: Other benefits it's hard to articulate past midnight.
+
+Pragmatic benefits of a centralized implementation include:
+	1. It decouples the concept (essence) from the implementation language (accident).
+	2. Data-driven construction-time sanity-checks on structure.
+	3. A consistent source-tracking channel for tracing the origin(s) of bogus input.
+	4. The possibility of data-driven transformations on tree structures.
+
+-----
+
+Taking a page from [TATA], I'll define the notion of a ranked-alphabet, but with named positions.
+To make it play smartly with Python, I'll construct a type corresponding to each "letter".
+But in the context of "tree language" I'll say that the "letter" notion works like a "terminal" in a word language.
+To hammer this home:
+
+	|    word-language :: tree-language |
+	|-----------------------------------|
+	|        terminals :: constants     |
+	| production rules :: non-constants |
+	|   non-terminals  :: categories    |
+
+Structuring the concept, I can say that a regular tree language contains semantic-categories populated by symbols,
+the sub-fields of which are constrained to specific semantic categories. This is slightly more restrictive than
+the definition in [TATA], which demands only that a finite automaton recognize the tree.
+
+For the record, I'm not going to demand that categories and symbols obey a strict one-to-many relationship.
+That may be quite normal in practice, but seems overly constraining for a generalized tool.
+
+To make life easier, I'll say fields can either be singular, optional, zero-or-more, or one-or-more.
+An optional field could be None. A multiple field will have a list of elements. By convention,
+elements of earlier provenance ought to come earlier in this list, but it's not a guarantee.
+
+-----
+
+Annotations are not considered *part of* the tree; they are just clusters of
+associated data which may be passed around and disposed of independently.
+This means terms have identity, but may be congruent (or not) with other terms.
+
+A challenging question is how best to associate attributes with terms.
+Terms already have one primary interesting collection: their children.
+Furthermore, elements of any given tree could be subjected to any number of
+independent algorithms: such aspects should be separated as distinct concerns.
+One solution is to use terms as keys in a (default-)dict per aspect.
+Debug-type information may therefore be an application-defined attribute,
+albeit one very commonly used. Some other support module might help there.
+
+-----
+
+As I see it, the "languages" of Andy Keep's nano-pass framework are a manifestation of algebraic data types.
+If you squint just a little bit, his "pass expander" corresponds to a very smart functor.
+This module aims to implement the essential concepts, while keeping trees physically distinct from metadata.
+
+-----
+
+There are two broad categories of compiler passes:
+
+* One type re-writes the tree: generally from one language to another very closely related language with a
+  few minor changes to the available symbols and categories. (We might assert the validity of the re-writing,
+  either at run-time in debug-mode or via static analysis.)
+
+* The other type does not re-write the tree, but visits some fraction of the tree strictly for analysis.
+
+Either sort of pass is expected to also produce some additional information on the side,
+and may need access to various contextual information along the way.
+
+-----
+
+Intended structure of a compiler pass:
+
+Let a compiler-pass be an instance of a Python class. For now, any old class will do. I'll add details as I go.
+
+I want a generic functor to do the grunt work. That means it will need to analyze the input tree
+and decide where to apply analysis or transformation methods. How shall we configure this functor?
+
+	***
+
+The simplest thing that might probably work just fine is to name methods after symbols.
+The signature would be: ``def something(self, something, ...inherited_attributes...) -> translation:``
+Assuming you can also write a simple expression to get a sub-translation of a sub-field, all is well.
+But what about symbols we don't care to translate? We need sensible default behavior.
+
+One sort of default behavior can be to copy the structure, but with the translation applied to the subfields.
+Another would be to complain about an unhandled case. Both behaviors have their place.
+They seem like traits we should be able to add into a pass. Python's inheritance mechanism can provide this.
+
+	***
+
+The other scenario is that you'd like to invoke a method based on some interesting structural pattern-match.
+For example, suppose you've folded constants and are looking for dead code such as "if-false" structures.
+One perfectly-good approach is to check all "if" structures for the criterion having folded to false.
+When it doubt, use brute force. If ever a genuine need for smart tree-search arises, write me. For now, YAGNI.
+
+-----
+
+What about analysis in parallel to translation?
+
+Several approaches suggest themselves:
+
+* Declare that it's heresy: Allow one or the other, but not both, in a pass.
+  This sounds attractive from a theoretical viewpoint, and it's the easiest pat-answer.
+  It's also bound to prove redundant, unpopular, and redundant.
+
+* Multiple returns: a translated node along with whatever else. This can work, but requires care.
+  If there are gaps to be filled through structural copying, then the pass-author must provide an alternate
+  copier that deals generically with unhandled symbols. The design will depend on what you're trying to do.
+  But this raises a point: a nano-pass object should have a "does-not-handle" method that you can override.
+
+* Mutable State: The nano-pass object can have fields that it updates as it goes along.
+  This also requires care, but may often be a better model for what's going on.
+  For example, a code-generation pass might emit opcodes, labels, debug symbols, and constants willy-nilly.
+  You'd probably want those in separate lists that grow as you go.
+
+-----
+
+What sort of API for compiler passes?
+
+How should we invoke a pass, or a sub-section of a pass?
+The object of this game is some sort of double-dispatch: the type of both the pass and the tree-node
+together determine which bit of code to run. By the observation above, the implementation of the
+dispatch routine should probably live on the pass-object -- at least in some manner.
+
+I think the syntax is more natural to treat the compiler-pass as the function, and the tree-node as first argument.
+So that means our compiler-pass type will implement __call__ -- and therefore also host the double-dispatch mechanism.
+The "unhandled-symbol" behavior should be a separate method, because you may want to customize it arbitrarily.
+
+Suppose we say that symbols are constructors for tree-nodes: their arguments are exactly their fields.
+This makes them quite like named-tuples. In fact, we could probably use named-tuples, but for one thing:
+their hash function would quickly become untenable. And I'd like to be able to use their identity as a key
+for looking up annotations. So I'll create a class ``BaseTerm`` and dynamically generate subclasses.
+
+Then there's the matter of sub-field type correctness: are all sub-terms of correct type?
+That means term-subclasses must know their place in the ontology.
+I'm going to use assertions here because (a) I want you to be able to elide the checks (with -O on the command line)
+and (b) pycharm is broken with respect to the __debug__ variable.
+
+-----
+
+What of the "many related languages" issue?
+
+The benefits are less, but not entirely lost, with a single-alphabet design.
+The prototype approach is to assert structural well-formed-ness at the time of constructing a node,
+without knowing which language is in play. Slicker answers require some further work.
+One option is to delegate node-construction to a "sub-language" object.
+That could borrow an underlying vocabulary of symbols, but apply local restrictions on what's allowed.
+If translation-type passes refer to their target language, there's a way to fill the gap.
+
+-----
+
+Performance Considerations:
+
+This module asserts paranoia that runs in time proportional to the number of edges.
+Given the impact of modifications, it's probably best to leave assertions turned on.
+
+It is usually not necessary to walk an entire tree when you're doing a sparse operation,
+because some symbol types cannot possibly contain an interesting descendant.
+However, applying that wisdom requires some up-front analysis between the sparse definition
+and the tree-language it takes as input.

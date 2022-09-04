@@ -10,8 +10,7 @@ store this information. This apparatus tries the compression method for several
 different grammars and reports on compaction efficacy.
 """
 import os, csv
-from boozetools.support import pretty, compaction, foundation
-from collections import *
+from boozetools.macroparse import compaction
 
 
 def example(what):

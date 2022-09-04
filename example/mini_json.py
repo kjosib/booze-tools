@@ -3,7 +3,7 @@ Python has a standard library for JSON, so this is just a worked example. """
 
 from boozetools.parsing import miniparse
 from boozetools.scanning import miniscan
-from boozetools.support.interfaces import Scanner
+from boozetools.scanning.engine import IterableScanner
 
 ###################################################################################
 #  Begin with a scanner definition:
@@ -24,12 +24,12 @@ lexemes.let('exponent', r'[Ee][-+]?\d+')
 # This is  convenient if significant computation determines which token
 # (or indeed, how many tokens) to emit.
 @lexemes.on('{signedInteger}')
-def match_integer(yy:Scanner):
+def match_integer(yy:IterableScanner):
 	# It's sort of assumed you'll be connecting a mini-scanner up to a mini-parser.
 	# The parser module expects to get (token, value, start, end) quads, but the
 	# scanner handles the start and end. You just call the `.token(...)` method
 	# on the parameter, which is a scanning context.
-	yy.token('number', int(yy.matched_text()))
+	yy.token('number', int(yy.match()))
 
 # The above pattern is fairly common: take the matched text and
 # the semantic value is some function of the matched text, while the token kind
@@ -37,20 +37,20 @@ def match_integer(yy:Scanner):
 lexemes.token_map('number', '{signedInteger}{fractionalPart}?{exponent}?', float)
 
 # It's easy to ignore whitespace:
-lexemes.ignore('\s+')
+lexemes.ignore(r'\s+')
 
 # Punctuation will appear as such in the production rules.
-@lexemes.on(r'[][{}:,]')
+@lexemes.on(r'[\][{}:,]')
 def punctuation(yy):
 	# Note that `None` is the default semantic value for a token
 	# if all you supply is a token kind.
-	yy.token(yy.matched_text())
+	yy.token(yy.match())
 
 # You can dynamically generate your pattern...
 reserved_words = {'true': True, 'false': False, 'null': None}
 @lexemes.on('|'.join(reserved_words.keys()))
 def match_reserved_word(yy):
-	word = yy.matched_text()
+	word = yy.match()
 	yy.token(word, reserved_words[word])
 
 # You can make alternate scan conditions just by asking for them:
@@ -120,5 +120,5 @@ def more_text(the_list, a_substring):
 ###################################################################################
 #  And finally, tie it up in a nice neat bow:
 ###################################################################################
-
+lexemes.get_dfa()
 def parse(text): return grammar.parse(lexemes.scan(text))

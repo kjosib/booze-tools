@@ -1,11 +1,12 @@
 import unittest
 
-from boozetools.support import interfaces
-from boozetools.scanning import finite, regular, recognition
+from boozetools.scanning import finite, regular
+from boozetools.scanning.engine import IterableScanner
+from boozetools.scanning.interface import Bindings, RuleId
 
-def mock_scan_act(yy, rule_id): yy.token(rule_id, yy.matched_text())
-
-mock_scan_error_listener = interfaces.ScanErrorListener()
+class mock_bindings(Bindings):
+	def on_match(self, yy, rule_id:RuleId):
+		yy.token(rule_id, yy.match())
 
 class TestNFA(unittest.TestCase):
 	def test_00_new_node(self):
@@ -34,7 +35,7 @@ class TestNFA(unittest.TestCase):
 		nfa.link(q0, qf, [65, 91, 97, 123])
 		nfa.link_epsilon(q1, q0)
 		def assertion():
-			tokens = list(recognition.IterableScanner(text='j', automaton=dfa, act=mock_scan_act, start=None, on_error=mock_scan_error_listener))
+			tokens = list(IterableScanner('j', dfa, mock_bindings(), start=None))
 			self.assertEqual([(1,'j')], tokens)
 		dfa = nfa.subset_construction()
 		assertion()
@@ -47,24 +48,31 @@ class TestAST(unittest.TestCase):
 		Explains the nature of computing the a-priori length of a regular expression.
 		This gets used in working out the details for trailing-context expressions.
 		"""
-		rcl = regular.VOCAB['Codepoint'].leaf
-		rbl = regular.VOCAB['Bound'].leaf
-		one = regular.VOCAB['CharRange'].from_args(rcl(32), rcl(127), ) # The ascii printing characters :)
-		two = regular.VOCAB['Sequence'].from_args(one, one) # Two of them in a row
-		sizer = regular.Sizer({})
+		rcl = regular.VOCAB['literal']
+		space = rcl()
+		del_ = rcl()
+		number = regular.VOCAB['number']
+		rng = regular.VOCAB['range'](space, del_) # The ascii printing characters :)
+		char = regular.VOCAB["cls"](rng)
+		pair = regular.VOCAB['sequence'](char, char) # Two of them in a row
+		three = number()
+		four = number()
+		numbers = {three:3, four:4, space:32, del_:127}
+		rc = regular.RemoveCounts(numbers)
+		sizer = regular.RuleAnalyzer({})
 		for regex, expected_size in [
-			(one, 1),
-			(two, 2),
-			(regular.VOCAB['Alternation'].from_args(one, one), 1),
-			(regular.VOCAB['Alternation'].from_args(two, two), 2),
-			(regular.VOCAB['Alternation'].from_args(one, two), None),
-			(regular.VOCAB['Hook'].from_args(one), None),
-			(regular.VOCAB['Star'].from_args(one), None),
-			(regular.VOCAB['Plus'].from_args(one), None),
-			(regular.VOCAB['n_times'].from_args(one, rbl(4)), 4),
-			(regular.VOCAB['n_times'].from_args(two, rbl(4)), 8),
-			(regular.VOCAB['n_to_m'].from_args(two, rbl(3), rbl(4)), None),
-		]: self.assertEqual(regex.tour(sizer), expected_size)
+			(char, 1),
+			(pair, 2),
+			(regular.VOCAB['alternation'](char, char), 1),
+			(regular.VOCAB['alternation'](pair, pair), 2),
+			(regular.VOCAB['alternation'](char, pair), None),
+			(regular.VOCAB['hook'](char), None),
+			(regular.VOCAB['star'](char), None),
+			(regular.VOCAB['plus'](char), None),
+			(regular.VOCAB['n_times'](char, four), 4),
+			(regular.VOCAB['n_times'](pair, four), 8),
+			(regular.VOCAB['n_to_m'](pair, three, four), None),
+		]:
+			with self.subTest(regex=regex):
+				self.assertEqual(sizer(rc(regex)), expected_size)
 
-	def test_01_ontology_is_sane(self):
-		regular.VOCAB.check_sanity()

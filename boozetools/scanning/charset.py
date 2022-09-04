@@ -37,15 +37,15 @@ of Smart Unicode Mode. There are certain -- challenges.
 
 """
 import bisect, operator
+from ..support.symtab import NameSpace
 
 # How to tell if a character (by codepoint) is a member of the class:
-def in_class(cls:list, codepoint:int) -> bool: return bisect.bisect_right(cls, codepoint) % 2
+def in_class(cls:list, codepoint:int) -> bool: return bool(bisect.bisect_right(cls, codepoint) % 2)
 
 
 # Character class construction and set-operations:
 EMPTY = []
 UNIVERSAL = [0]
-EOF = [-1, 0]
 
 def singleton(codepoint:int) -> list: return [codepoint, codepoint + 1]
 def range_class(first, last) -> list: return [first, last+1] if first <= last else [last, first+1]
@@ -72,14 +72,19 @@ def union(a:list, b:list) -> list: return combine(operator.or_, a, b)
 def intersect(a:list, b:list) -> list: return combine(operator.and_, a, b)
 def subtract(a:list, b:list) -> list: return intersect(a, complement(b))
 
+VERTICAL = range_class(10,13)
+EOF = singleton(-1)
+EOL = union(EOF, VERTICAL) # If any of these chars are next, you're at end-of-line (or file)
+DOT = complement(VERTICAL)
+
 # POSIX classes for the ASCII range:
 # (See https://www.regular-expressions.info/posixbrackets.html)
 
-POSIX = {}
+POSIX = NameSpace(place="POSIX built-in character-classes", parent=None)
 POSIX['ascii'] = range_class(0, 127)
 POSIX['cntrl'] = union(range_class(0, 31), singleton(127))
 POSIX['blank'] = union(singleton(9), singleton(32))
-POSIX['space'] = union(range_class(9, 13), singleton(32))
+POSIX['space'] = union(VERTICAL, POSIX['blank'])
 POSIX['digit'] = range_class(ord('0'), ord('9'))
 POSIX['upper'] = range_class(ord('A'), ord('Z'))
 POSIX['lower'] = range_class(ord('a'), ord('z'))
@@ -91,31 +96,36 @@ POSIX['print'] = subtract(POSIX['ascii'], POSIX['cntrl'])
 POSIX['graph'] = subtract(POSIX['print'], POSIX['space'])
 POSIX['punct'] = subtract(POSIX['graph'], POSIX['alnum'])
 
-assert all(cls == sorted(cls) for cls in POSIX.values())
-
+assert all(cls == sorted(cls) for cls in POSIX.local.values())
 
 # To the POSIX classes I add a number of additional definitions:
-mode_ascii = dict(POSIX)
+mode_ascii = POSIX.new_child("ASCII named characters")
+mode_normal = mode_ascii.new_child("Short-Hand and other named character classes")
+
 def _init_():
 	low_ASCII_names = 'NUL SOH STX ETX EOT ENQ ACK BEL BS TAB LF VT FF CR SO SI DLE DC1 DC2 DC3 DC4 NAK SYN ETB CAN EM SUB ESC FS GS RS US SP'.split()
-	mode_ascii.update((char, singleton(codepoint)) for codepoint, char in [
-		(0, '0'), (27, 'e'), (127, 'DEL'),
-		*enumerate('abtnvfr', 7),
-		*enumerate(low_ASCII_names),
-	])
-	mode_ascii['ANY'] = UNIVERSAL
-	mode_ascii['vertical'] = range_class(10, 13)
-	mode_ascii['DOT'] = complement(mode_ascii['vertical'])
-	mode_ascii['horizontal'] = union(range_class(8, 9), singleton(32))
-	for shorthand, longhand in [
+	for codepoint, char_name in enumerate(low_ASCII_names):
+		mode_ascii[char_name] = singleton(codepoint)
+	mode_ascii['DEL'] = singleton(127)
+	
+	mode_normal['0'] = singleton(0)
+	mode_normal['e'] = singleton(27)
+	for codepoint, shorthand in enumerate('abtnvfr', 7):
+		mode_ascii[shorthand] = singleton(codepoint)
+	
+	mode_normal['ANY'] = UNIVERSAL
+	mode_normal['vertical'] = VERTICAL
+	mode_normal['DOT'] = DOT
+	mode_normal['horizontal'] = union(range_class(8, 9), singleton(32))
+	
+	for char, longhand in [
 		('d', 'digit'),
 		('l', 'alpha'),
 		('w', 'word'),
 		('s', 'space'),
 		('h', 'horizontal'),
 	]:
-		mode_ascii[shorthand] = mode_ascii[longhand]
-		mode_ascii[shorthand.upper()] = subtract(mode_ascii['DOT'], mode_ascii[longhand])
-
+		mode_normal[char] = mode_normal[longhand]
+		mode_normal[char.upper()] = subtract(mode_normal['DOT'], mode_normal[longhand])
 
 _init_()

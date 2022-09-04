@@ -20,11 +20,11 @@ Anyway, the new idea keeps the two parts of the message separate: `constructor_i
 Bracketing rules are encoded with a negative `constructor_id`, and the combiner is responsible
 for positive `constructor_id` numbers.
 """
+from typing import Optional
+from .interface import HandleFindingAutomaton, END_OF_TOKENS, ERROR_SYMBOL, ParseErrorListener
 
-from ..support import interfaces
 
-
-def trial_parse(table: interfaces.HandleFindingAutomaton, sentence, *, language=None):
+def trial_parse(table: HandleFindingAutomaton, sentence, *, language=None):
 	"""
 	This quick-and-dirty trial parser will tell you if a sentence is a member of the language by throwing
 	an exception otherwise. It leaves out everything to do with semantic values or parse trees.
@@ -37,7 +37,7 @@ def trial_parse(table: interfaces.HandleFindingAutomaton, sentence, *, language=
 			if step > 0: return step  # Shift Action
 			elif step == 0:  # Error Action
 				stack_symbols = [table.get_breadcrumb(q) for q in stack[1:]]
-				raise ValueError(stack_symbols, symbol if terminal_id else interfaces.END_OF_TOKENS, None)
+				raise ValueError(stack_symbols, symbol if terminal_id else END_OF_TOKENS, None)
 			else:  # Reduce Action
 				nonterminal_id, length, constructor_id, view = table.get_rule(-1 - step)
 				if length: # Python hiccup: don't let epsilon rules delete the whole stack.
@@ -46,7 +46,7 @@ def trial_parse(table: interfaces.HandleFindingAutomaton, sentence, *, language=
 	
 	stack = [table.get_initial(language)]
 	for symbol in sentence: stack.append(prepare_to_shift(table.get_translation(symbol)))
-	prepare_to_shift(table.get_translation(interfaces.END_OF_TOKENS))
+	prepare_to_shift(table.get_translation(END_OF_TOKENS))
 	assert len(stack) == 2
 
 class PushDownState:
@@ -145,7 +145,7 @@ class Hypothetical:
 	"hypothetical parse" facility. This object latches on to an existing PDS
 	and acts like a hypothetical branch of that PDS strictly for testing hypothesis.
 	"""
-	def __init__(self, table:interfaces.HandleFindingAutomaton, pds:PushDownState, initial_depth):
+	def __init__(self, table:HandleFindingAutomaton, pds:PushDownState, initial_depth):
 		self.table = table
 		self.host = pds
 		self.initial_depth = self.watermark = initial_depth
@@ -173,8 +173,9 @@ class Hypothetical:
 				self.shift(step)
 				return step
 
+_default_pel = ParseErrorListener()
 
-def parse(table: interfaces.HandleFindingAutomaton, combine, token_stream, *, language=None, on_error:interfaces.ParseErrorListener):
+def parse(table: HandleFindingAutomaton, combine, token_stream, *, language=None, on_error:Optional[ParseErrorListener]):
 	"""
 		:param table: Satisfy the HandleFindingAutomaton interface however you like.
 			By reference to the "look-ahead" (terminal) symbol and the current
@@ -195,10 +196,9 @@ def parse(table: interfaces.HandleFindingAutomaton, combine, token_stream, *, la
 			if parsing succeeds: the correct semantic value of the input.
 			if error recovery succeeds: the error-ridden semantic value.
 			if the error channel propagates an exception: exceptionally.
-			otherwise: by `raise interfaces.ParseError(...)`
+			otherwise: by `raise ParseError(...)`
 		
-		:param on_error: Once I get error recovery implemented, this
-			will be how you direct the parser to report error events.
+		:param on_error: This is how you direct the parser to report error events.
 	"""
 	
 	def basic_machine_cycle():
@@ -218,14 +218,14 @@ def parse(table: interfaces.HandleFindingAutomaton, combine, token_stream, *, la
 				perform_immediate_reductions()
 			else:
 				on_error.unexpected_token(symbol, semantic, pds)
-				if not handle_error(token_id, semantic): return
+				handle_error(token_id, semantic)
 		# After the last real symbol, the parser needs to prepare as if
 		# about to shift a notional "end-of-text" symbol -- but don't
 		# actually perform that shift: instead that's the signal of
 		# an accepted sentence in the language.
 		if not find_shift(sentinel_end):
 			on_error.unexpected_eof(pds)
-			if not handle_error(sentinel_end, None): return
+			handle_error(sentinel_end, None)
 		return pds.succeed()
 	
 	def find_shift(terminal_id):
@@ -288,7 +288,7 @@ def parse(table: interfaces.HandleFindingAutomaton, combine, token_stream, *, la
 		For a full exposition of the intended strategy, please see the document at:
 		https://github.com/kjosib/booze-tools/blob/master/docs/Context%20Free%20Error%20Recovery.md
 		
-		:return True if the parser is able to resynchronize.
+		:return nothing, but throw an exception if the parser is unable to resynchronize.
 		"""
 		avenues = paths_to_recovery()
 		if not avenues:
@@ -355,9 +355,9 @@ def parse(table: interfaces.HandleFindingAutomaton, combine, token_stream, *, la
 			yield proposal
 			proposal.pop(0)
 		
-	
-	sentinel_end = table.get_translation(interfaces.END_OF_TOKENS)
-	error_token_id = table.get_translation(interfaces.ERROR_SYMBOL)
+	if on_error is None: on_error = _default_pel
+	sentinel_end = table.get_translation(END_OF_TOKENS)
+	error_token_id = table.get_translation(ERROR_SYMBOL)
 	pds = PushDownState(table.get_initial(language))
 	token_iterator = iter(token_stream)
 	return basic_machine_cycle()

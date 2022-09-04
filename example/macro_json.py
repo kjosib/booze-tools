@@ -11,7 +11,7 @@ then the same object can provide a sensible context and driver for both scanning
 greatly facilitates any sort of context-dependent ad-hockery that your subject language might demand.
 """
 
-from boozetools.support import interfaces
+from boozetools.scanning.engine import IterableScanner
 
 
 class ExampleJSON:
@@ -38,21 +38,21 @@ class ExampleJSON:
 	RESERVED = {'true': True, 'false':False, 'null':None}
 	ESCAPES = {'b': 8, 't': 9, 'n': 10, 'f': 12, 'r': 13, }
 	
-	def scan_ignore_whitespace(self, yy: interfaces.Scanner): pass
-	def scan_punctuation(self, yy: interfaces.Scanner): yy.token(yy.matched_text())
-	def scan_integer(self, yy: interfaces.Scanner): yy.token('number', int(yy.matched_text()))
-	def scan_float(self, yy: interfaces.Scanner): yy.token('number', float(yy.matched_text()))
-	def scan_reserved_word(self, yy: interfaces.Scanner): yy.token(yy.matched_text(), self.RESERVED[yy.matched_text()])
-	def scan_enter_string(self, yy: interfaces.Scanner):
+	def scan_ignore_whitespace(self, yy: IterableScanner): pass
+	def scan_punctuation(self, yy: IterableScanner): yy.token(yy.match())
+	def scan_integer(self, yy: IterableScanner): yy.token('number', int(yy.match()))
+	def scan_float(self, yy: IterableScanner): yy.token('number', float(yy.match()))
+	def scan_reserved_word(self, yy: IterableScanner): yy.token(yy.match(), self.RESERVED[yy.match()])
+	def scan_enter_string(self, yy: IterableScanner):
 		yy.enter('in_string')
-		yy.token(yy.matched_text())
-	def scan_stringy_bit(self, yy: interfaces.Scanner): yy.token('character', yy.matched_text())
-	def scan_escaped_literal(self, yy: interfaces.Scanner): yy.token('character', yy.matched_text()[1])
-	def scan_shorthand_escape(self, yy: interfaces.Scanner): yy.token('character', chr(self.ESCAPES[yy.matched_text()[1]]))
-	def scan_unicode_escape(self, yy: interfaces.Scanner): yy.token('character', chr(int(yy.matched_text()[2:],16)))
-	def scan_leave_string(self, yy: interfaces.Scanner):
+		yy.token(yy.match())
+	def scan_stringy_bit(self, yy: IterableScanner): yy.token('character', yy.match())
+	def scan_escaped_literal(self, yy: IterableScanner): yy.token('character', yy.match()[1])
+	def scan_shorthand_escape(self, yy: IterableScanner): yy.token('character', chr(self.ESCAPES[yy.match()[1]]))
+	def scan_unicode_escape(self, yy: IterableScanner): yy.token('character', chr(int(yy.match()[2:],16)))
+	def scan_leave_string(self, yy: IterableScanner):
 		yy.enter('INITIAL')
-		yy.token(yy.matched_text())
+		yy.token(yy.match())
 	
 	def parse_empty(self): return []
 	def parse_first(self, item): return [item]

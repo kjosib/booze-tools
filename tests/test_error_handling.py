@@ -1,6 +1,8 @@
 import unittest
 from boozetools.macroparse.compiler import compile_string
-from boozetools.support import runtime, interfaces
+from boozetools.macroparse import runtime
+from boozetools.parsing.interface import END_OF_TOKENS
+from boozetools.scanning.engine import IterableScanner
 
 SAMPLE_GRAMMAR = """
 ## Productions start
@@ -26,14 +28,14 @@ class Parser(runtime.TypicalApplication):
 		super().__init__(COMPACT_FORM)
 		self.unexpected = None
 	
-	def scan_word(self, yy:interfaces.Scanner):
-		yy.token('word', yy.matched_text())
+	def scan_word(self, yy:IterableScanner):
+		yy.token('word', yy.match())
 		
-	def scan_ignore(self, yy:interfaces.Scanner):
+	def scan_ignore(self, yy:IterableScanner):
 		pass
 	
-	def scan_other(self, yy:interfaces.Scanner):
-		yy.token('other', yy.matched_text())
+	def scan_other(self, yy:IterableScanner):
+		yy.token('other', yy.match())
 		
 	def parse_error(self, *args):
 		return "ERROR"
@@ -48,7 +50,7 @@ class Test_MacroParse_Errors(unittest.TestCase):
 	
 	def test_empty(self):
 		self.assertEqual("ERROR", self.parser.parse(""))
-		self.assertEqual(interfaces.END_OF_TOKENS, self.parser.unexpected)
+		self.assertEqual(END_OF_TOKENS, self.parser.unexpected)
 
 	def test_unexpected(self):
 		self.assertEqual("ERROR", self.parser.parse("+"))

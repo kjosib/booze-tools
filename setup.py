@@ -2,11 +2,10 @@ import setuptools
 
 setuptools.setup(
 	name='booze-tools',
-	version='0.5.2',
+	version='0.6.0',
 	packages=[
 		'boozetools',
 		'boozetools.macroparse',
-		'boozetools.arborist',
 		'boozetools.parsing',
 		'boozetools.parsing.general',
 		'boozetools.scanning',
@@ -21,7 +20,7 @@ setuptools.setup(
 		"License :: OSI Approved :: MIT License",
 		"Operating System :: OS Independent",
 		"Topic :: Software Development :: Compilers",
-		"Development Status :: 4 - Beta",
+		"Development Status :: 3 - Alpha",
     ],
 	author="Ian Kjos",
 	author_email="kjosib@gmail.com"

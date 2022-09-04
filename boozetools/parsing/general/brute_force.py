@@ -1,11 +1,14 @@
-from ...support import interfaces
+"""
+There is an old adage in software development: when in doubt, use brute force. Accordingly,
+the first implementation will be simple, easy to code, slow, and vulnerable to exponential
+behavior. However, it will also provide a fine basis of comparison for other approaches.
+"""
 
-class BruteForceAndIgnorance(interfaces.AbstractGeneralizedParser):
+from ..interface import AbstractParser, ParseError
+
+
+class BruteForceAndIgnorance(AbstractParser):
 	"""
-	There is an old adage in software development: when in doubt, use brute force. Accordingly,
-	the first implementation will be simple, easy to code, slow, and vulnerable to exponential
-	behavior. However, it will also provide a fine basis of comparison for other approaches.
-	
 	This is the "inverse tree" approach: each node is a state, a predecessor, and a semantic
 	value for the reaching-symbol -- except for the sink, which is special. The top-of-stack
 	is just a list of currently-viable sub-stacks. This is usually sufficient for cases that
@@ -31,7 +34,7 @@ class BruteForceAndIgnorance(interfaces.AbstractGeneralizedParser):
 	
 	def consume(self, terminal, semantic):
 		self.__consume(self._table.get_translation(terminal), semantic)
-		if not self.__tos: raise interfaces.GeneralizedParseError("Parser died midway at something ungrammatical.")
+		if not self.__tos: raise ParseError("Parser died midway at something ungrammatical.")
 
 	def __consume(self, terminal_id, semantic):
 		self.__next = []
@@ -47,7 +50,7 @@ class BruteForceAndIgnorance(interfaces.AbstractGeneralizedParser):
 		"""
 		self.__consume(0, None)
 		if self.__tos: return [top[self.NODE_PRIOR][self.NODE_SEMANTIC] for top in self.__tos]
-		else: raise interfaces.GeneralizedParseError("Parser recognized a viable prefix, but not a complete sentence.")
+		else: raise ParseError("Parser recognized a viable prefix, but not a complete sentence.")
 	
 	def __act(self, action, top, semantic):
 		""" There are four kinds of action: die, shift, reduce-and-shift, or split into parallel alternatives. """

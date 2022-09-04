@@ -1,32 +1,10 @@
 import unittest
-from boozetools.support import interfaces
-from boozetools.scanning import regular, miniscan, charset
-
-M = miniscan.META
-P = miniscan.PRELOAD['ASCII']
-
-class TestBootstrap(unittest.TestCase):
-	def test_00_smoke_test(self):
-		self.assertEqual([], list(M.scan('')))
-		self.assertEqual(1, len(list(M.scan("a"))))
-		M.get_dfa().stats()
-	
-	def test_01_confusing_charclass(self):
-		ce = regular.ClassEncoder(P)
-		for spec, inside, outside in [
-			(r'[-x]', '-x', 'Aa'), # contains minus
-			(r'[^]^abc]', 'xX\n', '^]abc'), # negates; contains close-bracket
-			(r'[^-]^abc]', 'xX\n', '-]^abc'), # contains both tricky characters
-		]:
-			with self.subTest(spec=spec):
-				tokens = list(M.scan(spec))
-				k = miniscan.rex.parse(tokens, language='Regular').tour(ce)
-				for c in inside: assert charset.in_class(k, ord(c))
-				for c in outside: assert not charset.in_class(k, ord(c))
+from boozetools.scanning.miniscan import Definition
+from boozetools.parsing.interface import UnexpectedTokenError
 
 class TestMiniScan(unittest.TestCase):
 	def test_01_simple_tokens_with_rank_feature(self):
-		s = miniscan.Definition()
+		s = Definition()
 		s.ignore('\s+') # Ignore spaces except inasmuch as they separate tokens.
 		s.token('word', '\w+') # The digits are included in the \w shorthand,
 		s.token_map('number', '\d+', int, rank=1) # but the higher rank (than default zero) makes numbers stand out.
@@ -51,7 +29,7 @@ class TestMiniScan(unittest.TestCase):
 		self.assertEqual(bytes_expect, bytes_found)
 
 	def test_03_begin_anchor(self):
-		s = miniscan.Definition()
+		s = Definition()
 		s.token('word', '^\w+') # Yield only those words found at the beginning of lines.
 		s.ignore('[\s\S]') # Skip all other characters, one character at a time.
 		expect = ['apple', 'animal']
@@ -60,14 +38,14 @@ class TestMiniScan(unittest.TestCase):
 		self.semantics(expect, s, 'apple banana orange\r\nanimal vegetable mineral') # Dos-style
 	
 	def test_04_non_begin_anchor(self):
-		s = miniscan.Definition()
+		s = Definition()
 		s.token('word', '^^\w+') # Yield only those words found NOT at the beginning of lines.
 		s.ignore('\s+') # Skip spaces
 		s.ignore('\S+') # Skip other sequences of non-spaces.
 		self.semantics(['banana', 'orange', 'vegetable', 'mineral'], s, 'apple banana orange\nanimal vegetable mineral')
 	
 	def test_05_eol_anchor(self):
-		s = miniscan.Definition()
+		s = Definition()
 		s.token('work', '\w+$') # Yield only those words found at the ends of lines.
 		# Note that the end-of-text also counts as an end-of-line zone; this is NOT strictly looking for \n.
 		s.ignore('\s+') # Skip spaces
@@ -78,7 +56,7 @@ class TestMiniScan(unittest.TestCase):
 		self.semantics(expect, s, 'apple banana orange\r\nanimal vegetable mineral') # Dos-style
 		
 	def test_06_simple_trailing_context(self):
-		s = miniscan.Definition()
+		s = Definition()
 		s.token('stem', '\w+/ing') # Yield the stems of gerunds. Sort of. "Thing" is not a gerund.
 		s.ignore('\w+') # Skip words not matched above
 		s.ignore('\s+') # Skip spaces
@@ -86,21 +64,21 @@ class TestMiniScan(unittest.TestCase):
 		self.semantics(['eat', 'drink'], s, 'There was eating, drinking, and merriment all around.')
 	
 	def test_07_variable_trail_on_fixed_stem(self):
-		s = miniscan.Definition()
+		s = Definition()
 		s.token('stem', 'eat/ing|en|s') # Yield the stems of eat-forms
 		s.ignore('\s+') # Skip spaces
 		s.ignore('\S') # Skip non-spaces, one at a time.
 		self.semantics(['eat', ], s, 'There was eating, drinking, and merriment all around, but the man did not eat.')
 	
 	def test_08_trailing_context_gets_put_back(self):
-		s = miniscan.Definition()
+		s = Definition()
 		s.token('stem', r'\d/\d')
 		s.ignore(r'.')
 		expect = list('12')
 		self.semantics(expect, s, '123')
 	
 	def test_09_forgotten_action(self):
-		s = miniscan.Definition()
+		s = Definition()
 		s.token('ernie', 'ernie$') # match ernie, but only at the end.
 		s.on(r'bert/\s+and') # match bert, but only if " and" follows. However, forget to provide an action,
 		with self.assertRaises(AssertionError):
@@ -108,7 +86,7 @@ class TestMiniScan(unittest.TestCase):
 
 	def test_10_charclass_intersection(self):
 		""" Exercise the canonical "consonants" example. """
-		s = miniscan.Definition()
+		s = Definition()
 		s.let('vowel', r'[AEIOUaeiou]')
 		s.let('consonant', r'[{alpha}&&^{vowel}]')
 		s.token('consonant', '{consonant}+')
@@ -120,7 +98,7 @@ class TestMiniScan(unittest.TestCase):
 	
 	def test_11_escape_in_charclass(self):
 		""" char-class should allow hex escapes. """
-		s = miniscan.Definition()
+		s = Definition()
 		s.token('upper', r'[\x41-\x5a]')
 		s.ignore(r'.')
 		original_text = 'The Quick Brown Fox'
@@ -128,3 +106,8 @@ class TestMiniScan(unittest.TestCase):
 		expect = 'T-Q-B-F'
 		self.assertEqual(expect, result)
 	
+	def test_12_counted(self):
+		s = Definition()
+		s.token("xs", r"x{0,3}")
+		dfa = s.get_dfa()
+		

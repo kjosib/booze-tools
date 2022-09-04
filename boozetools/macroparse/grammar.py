@@ -13,10 +13,12 @@ the extensions over BNF work properly.
 """
 
 from typing import List
-
-from ..support import failureprone, interfaces
+from ..parsing.interface import ERROR_SYMBOL
+from ..support import failureprone
 from ..scanning import miniscan
+from ..scanning.interface import ScannerBlocked
 from ..parsing import context_free, miniparse
+from ..parsing.interface import ParseError
 
 NONDET = object()
 VOID = object()
@@ -63,7 +65,13 @@ class InlineRenaming(Element):
 		symbol = "[%s]"%("|".join(alts))
 		if ebnf.implementing(symbol):
 			for a in alts:
-				ebnf.plain_cfg.rule(symbol, [a], None, 0, None)
+				ebnf.plain_cfg.add_rule(context_free.Rule(
+					lhs = symbol,
+					rhs = (a,),
+					prec_sym=None,
+					action=0,
+					provenance=None,
+				))
 		return symbol
 	
 	def is_void_for(self, ebnf: "EBNF_Definition", head: str) -> bool:
@@ -123,7 +131,9 @@ class Rewrite:
 			action = args[0] if len(args) == 1 else context_free.SemanticAction(None, args)
 		else:
 			action = context_free.SemanticAction(self.message.name, args)
-		ebnf.plain_cfg.rule(head, raw_bnf, self.precsym, action, ebnf.error_help.current_line_nr)
+		ebnf.plain_cfg.add_rule(context_free.Rule(
+			head, tuple(raw_bnf), self.precsym, action, ebnf.error_help.current_line_nr
+		))
 
 def prefix_capture(args:List[int], size: int):
 	# This is returning offsets from the size of the stack as seen
@@ -181,7 +191,7 @@ def _capture_(positional_element:Element) -> Element:
 
 METAGRAMMAR.renaming('positional_element', 'actual_parameter')
 METAGRAMMAR.rule('positional_element', 'message')(Action)
-METAGRAMMAR.rule('positional_element', 'err_token')(lambda x:Symbol(interfaces.ERROR_SYMBOL))
+METAGRAMMAR.rule('positional_element', 'err_token')(lambda x:Symbol(ERROR_SYMBOL))
 
 METAGRAMMAR.renaming('actual_parameter', 'symbol') # alternation brackets should not nest directly...
 METAGRAMMAR.rule('actual_parameter', '[ ' + one_or_more('symbol') + ' ]')(InlineRenaming)
@@ -194,7 +204,7 @@ METAGRAMMAR.rule('symbol', 'name ( ' + list_of('actual_parameter', ',') + ' )')(
 # Sub-language: For specifying precedence and associativity rules:
 NAMES = one_or_more('name')
 METAGRAMMAR.rule('precedence', 'associativity '+one_or_more('terminal'))(None)
-METAGRAMMAR.rule('precedence', 'pragma_nondeterministic '+NAMES)(lambda x:(NONDET, x))
+METAGRAMMAR.rule('precedence', 'pragma_nondeterministic')(lambda : (NONDET, ()))
 
 METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x: context_free.LEFT)
 METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x: context_free.RIGHT)
@@ -214,10 +224,10 @@ LEX.token('err_token', r'\$error\$') # the error token is a bit special: it can'
 LEX.token('topic', r'_/\W') # Bare underline means "the current production rule head".
 LEX.token_map('message', r':\l\w*', lambda tx:tx[1:]) # Strip out the colon for message names
 @LEX.on(r'%\l+') # Build pragma token types from the text.
-def pragma(yy): yy.token('pragma_'+yy.matched_text()[1:])
+def pragma(yy): yy.token('pragma_'+yy.match()[1:])
 LEX.token('capture', r'[.]/\S') # a dot prefixes a captured element, so it needs to be followed by something.
-@LEX.on(r'[][(),|]') # Punctuation is represented directly, with null semantic value.
-def punctuate(yy): yy.token(yy.matched_text())
+@LEX.on(r'[\][(),|]') # Punctuation is represented directly, with null semantic value.
+def punctuate(yy): yy.token(yy.match())
 LEX.token_map('literal', r"'\S+'", lambda text:text[1:-1]) # Literals are allowed two ways, so you can
 LEX.token_map('literal', r'"\S+"', lambda text:text[1:-1]) # easily contain whichever kind of quote.
 LEX.token('arrow', r'[-=>:<]+') # Arrows in grammar definitions tend to look all different ways. This is flexible.
@@ -236,11 +246,12 @@ class ErrorHelper:
 		self.current_line_nr = line_nr
 		metascan = LEX.scan(line)
 		try: return METAGRAMMAR.parse(metascan, language=language)
-		except interfaces.ScannerBlocked as e: self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
-		except interfaces.ParseError as e:
+		except ScannerBlocked as e:
+			self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
+		except ParseError:
 			self.gripe_about(
-				line, metascan.current_position(),
-				'The MacroParse MetaParser got confused about:\n\t'+e.condition()
+				line, metascan.left,
+				'The MacroParse MetaParser got confused about:\n\t'+metascan.match()
 			)
 
 
@@ -266,19 +277,19 @@ def illustrate_position(line:str, column:int): return line[:column]+'<<_here_>>'
 
 class EBNF_Definition:
 	def __init__(self, error_help:ErrorHelper):
-		self.plain_cfg = context_free.ContextFreeGrammar(context_free.SimpleFaultHandler())
+		self.plain_cfg = context_free.ContextFreeGrammar()
 		self.current_head = None # This bit of state facilitates the feature of beginning a line with an alternation symbol.
 		self.inferential_start = None # Use this to infer a start symbol if necessary.
 		self.macro_definitions = {} # name -> MacroDefinition
 		self.implementations = {} # canonical symbol -> line number of first elaboration
 		self.must_elaborate = []
 		self.error_help = error_help
-		self.nondeterministic_symbols = set()
+		self.is_nondeterministic = False
 		self.void_symbols = set()
 	
 	def read_precedence_line(self, line:str, line_nr:int):
 		direction, symbols = self.error_help.parse(line, line_nr, 'precedence')
-		if direction is NONDET: self.nondeterministic_symbols.update(symbols)
+		if direction is NONDET: self.is_nondeterministic = True
 		elif direction is VOID: self.void_symbols.update(symbols)
 		else: self.plain_cfg.assoc(direction, symbols)
 
@@ -337,7 +348,13 @@ class EBNF_Definition:
 	def internal_action(self, placeholder:str, capture:tuple):
 		""" These are implemented internally much like an epsilon rule, but able to capture certain left-context. """
 		if self.implementing(placeholder):
-			self.plain_cfg.rule(placeholder, [], None, placeholder, capture, self.error_help.current_line_nr)
+			self.plain_cfg.add_rule(context_free.Rule(
+				lhs = placeholder,
+				rhs = (),
+				prec_sym = None,
+				action = context_free.SemanticAction(placeholder, capture),
+				provenance = self.error_help.current_line_nr,
+			))
 		else:
 			self.error_help.gripe(
 				'Internal action %s was first elaborated on line %d; reuse is not (presently) supported.' %
