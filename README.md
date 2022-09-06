@@ -8,6 +8,7 @@ I'd like to try to discover the most ideal formulations of classic approaches.
 * The project moves back to alpha stage for the time being.
 
 * Scanners stop being iterable. They find tokens and *maybe* dispatch actions. That is all.
+  *Edit: Iterable scanners remain an option for now.* 
 
 * The interface to parsing must become push-mode.
 
