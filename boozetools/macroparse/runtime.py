@@ -133,7 +133,7 @@ def _upgrade_table_0_0_2(tables):
 	action = tables['scanner']['action']
 	action['right_context'] = action.pop("trail")
 	message = [[m] for m in action['message']]
-	for m,a in zip(message, action.pop['argument']):
+	for m,a in zip(message, action.pop('argument')):
 		if a is not None:
 			m.append(a)
 	action['message'] = message
