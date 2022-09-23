@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
 	name='booze-tools',
-	version='0.6.0',
+	version='0.6.0.1',
 	packages=[
 		'boozetools',
 		'boozetools.macroparse',
