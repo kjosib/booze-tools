@@ -146,7 +146,11 @@ In JSON, various punctuation marks fall into this "void symbol" category:
 
 ```
 %void ',' ':' '"' '{' '}' '[' ']'
+%method LALR
 ```
+And by the way, the default parse-table generation method is a minimal-LR(1) construction,
+but LALR is quicker to generate and often good enough. Also, if you set for nondeterministic,
+that also sets the method to LALR because it's generally better-suited to generalized parsing than even minimal-LR(1).
 
 ## Productions: value
 Last but not least appears the context-free portion of the grammar for JSON syntax.

@@ -25,7 +25,6 @@ def parse_arguments():
 	parser.add_argument('--csv', action='store_true', help='Generate CSV versions of uncompressed tables, suitable for inspection.')
 	parser.add_argument('--dev', action='store_true', help='Operate in "development mode" -- which changes from time to time.')
 	parser.add_argument('--dot', action='store_true', help="Create a .dot file for visualizing the parser via the Graphviz package.")
-	parser.add_argument('-m', '--method', choices=PARSE_TABLE_METHODS, default='LR1', type=str.upper, help="Which parser table construction method to use.")
 	parser.add_argument('-v', '--verbose', action='store_true', help="Squawk, mainly about the table compression stats.")
 	# if len(sys.argv) < 2: exit(parser.print_help())
 	return parser.parse_args()
@@ -46,9 +45,9 @@ def main(args):
 		print(e.args[0], file=sys.stderr)
 		exit(1)
 	else:
-		compact = textbook_form.as_compact_form(filename=os.path.basename(args.source_path))
 		if args.pretty: textbook_form.pretty_print()
 		if args.csv: textbook_form.make_csv(target_path)
+		compact = textbook_form.as_compact_form(filename=os.path.basename(args.source_path))
 		if args.dev:
 			compact_goto = compact['parser']['goto']
 			for listname in ['row_index', 'col_index', 'quotient']:

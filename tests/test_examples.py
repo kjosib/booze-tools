@@ -3,7 +3,7 @@ import os
 import json as standard_json
 import importlib
 
-import example.mini_json, example.macro_json, example.calculator
+import example.mini_json, example.macro_json
 
 from boozetools.macroparse import compiler, expansion
 from boozetools.parsing import shift_reduce
@@ -57,9 +57,9 @@ def parse_tester(self:unittest.TestCase, parse):
 		self.assertEqual('Standard Generalized Markup Language', entry['GlossTerm'])
 		self.assertEqual(["GML", "XML"], entry['GlossDef']['GlossSeeAlso'])
 
-def compile_example(which, method, verbose=False):
+def compile_example(which, verbose=False):
 	""" Returns a set of tables; good smoke test overall for sample grammars. """
-	return compiler.compile_file(os.path.join(example_folder, which+'.md'), method=method, verbose=verbose)
+	return compiler.compile_file(os.path.join(example_folder, which+'.md'), verbose=verbose)
 
 class TestMiniJson(unittest.TestCase):
 	
@@ -70,7 +70,7 @@ class TestMiniJson(unittest.TestCase):
 class TestMacroJson(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
-		tables = compile_example('json', 'LALR')
+		tables = compile_example('json')
 		# The transition into and back out of JSON should be non-destructive, but it's worth being sure.
 		serialized = standard_json.dumps(tables)
 		cls.tables = standard_json.loads(serialized)
@@ -97,6 +97,7 @@ class TestMacroJson(unittest.TestCase):
 
 class TestCalculator(unittest.TestCase):
 	def test_00_simple_operations(self):
+		import example.calculator
 		for text, expect in [
 			('12.5', 12.5),
 			('-12.5', -12.5),
@@ -131,7 +132,7 @@ PALINDROMES = ['', 'a', 'aa', 'aba', 'abba', 'ababa', 'abbbba', 'abbbbba', 'abba
 class TestPalindrome(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.automaton = compile_example('nondeterministic/palindrome', 'LR1', verbose=True)
+		cls.automaton = compile_example('nondeterministic/palindrome', verbose=True)
 		parse_table = cls.automaton['parser']
 		assert parse_table['splits']
 		cls.hfa = expansion.CompactHFA(parse_table)
@@ -168,7 +169,7 @@ class TestPalindrome(unittest.TestCase):
 class TestHiddenRecursion(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.automaton = compile_example('nondeterministic/hidden_recursion', 'LR1')
+		cls.automaton = compile_example('nondeterministic/hidden_recursion')
 		cls.hfa = expansion.CompactHFA(cls.automaton['parser'])
 	
 	
@@ -197,7 +198,7 @@ class TestSampleLanguages(unittest.TestCase):
 	def test_they_should_build(self):
 		for identity in 'decaf', 'pascal':
 			with self.subTest(identity):
-				compile_example(identity, 'LR1')
+				compile_example(identity)
 	
 	def test_pascal(self):
 		importlib.import_module("example.pascal")

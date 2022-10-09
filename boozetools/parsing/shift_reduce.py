@@ -255,10 +255,7 @@ def parse(table: HandleFindingAutomaton, combine, token_stream, *, language=None
 		#    which the combiner is responsible to consult.
 		else:
 			args = pds.semantic_view(view)
-			try: semantic = combine(constructor_id, args)
-			except Exception as e:
-				message = table.get_constructor(constructor_id)
-				semantic = on_error.exception_parsing(e, message, args)
+			semantic = combine(constructor_id, args)
 		pds.pop_phrase(length)
 		pds.shift(table.get_goto(pds.state, nonterminal_id), semantic)
 

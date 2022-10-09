@@ -86,25 +86,25 @@ class IntermediateForm(NamedTuple):
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
-def compile_string(document:str, *, method="LR1") -> IntermediateForm:
+def compile_string(document:str) -> IntermediateForm:
 	text = failureprone.SourceText(document)
-	return _compile_text(text, method=method)
+	return _compile_text(text)
 
-def compile_file(pathname, *, method, verbose=False) -> dict:
-	filename = os.path.basename(pathname)
-	with(open(pathname)) as fh: text = failureprone.SourceText(fh.read(), filename=filename)
-	intermediate_form = _compile_text(text, method=method)
+def compile_file(pathname, *, verbose=False) -> dict:
+	with(open(pathname)) as fh:
+		text = failureprone.SourceText(fh.read(), filename=pathname)
+	intermediate_form = _compile_text(text)
 	textbook_form = intermediate_form.determinize()
 	if verbose:
 		print("\n  -- ", pathname, " --")
 		textbook_form.pretty_print()
-	return textbook_form.as_compact_form(filename=filename)
+	return textbook_form.as_compact_form(filename=os.path.basename(pathname))
 
 STRERROR = {
 	regular.VariableTrailingContextError: "Variable size for both stem and trailing context is not currently supported.",
 }
 
-def _compile_text(document:failureprone.SourceText, *, method) -> IntermediateForm:
+def _compile_text(document:failureprone.SourceText) -> IntermediateForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
@@ -201,7 +201,7 @@ def _compile_text(document:failureprone.SourceText, *, method) -> IntermediateFo
 		return None
 
 	# The context-free portion of the definition:
-	error_help = grammar.ErrorHelper()
+	error_help = grammar.ErrorHelper(document.filename)
 	ebnf = grammar.EBNF_Definition(error_help)
 	
 	# The regular (finite-state) portion of the definition:
@@ -246,13 +246,12 @@ def _compile_text(document:failureprone.SourceText, *, method) -> IntermediateFo
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
 	if condition_definitions: tie_conditions()
 	cfg = ebnf.sugarless_form()
-	hfa = PARSE_TABLE_METHODS[method](cfg)
-	if ebnf.is_nondeterministic:
-		style = GeneralizedStyle(len(hfa.graph))
-	else:
-		style = DeterministicStyle(False)
+	hfa = ebnf.method(cfg)
+	style = GeneralizedStyle(len(hfa.graph)) if ebnf.is_nondeterministic else DeterministicStyle(False)
 	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=hfa, cfg=cfg, parse_style=style,)
 
 def encode_parse_rules(rules:list, constructors:list, origins:list) -> dict:
 	assert isinstance(rules, list), type(rules)
 	return {'rules': rules, 'line_number': origins, 'constructor': constructors, }
+
+

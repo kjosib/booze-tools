@@ -11,7 +11,7 @@ from typing import Iterable, Any
 from ..support import failureprone
 from . import expansion
 from ..parsing import shift_reduce
-from ..parsing.interface import HandleFindingAutomaton, END_OF_TOKENS, ParseErrorListener, UnexpectedTokenError
+from ..parsing.interface import HandleFindingAutomaton, END_OF_TOKENS, ParseErrorListener, UnexpectedTokenError, SemanticError
 from ..scanning.interface import FiniteAutomaton, INITIAL, Bindings, RuleId, ScannerBlocked
 from ..scanning.engine import IterableScanner
 from .interface import ScanAction
@@ -65,7 +65,11 @@ def parse_action_bindings(driver, each_constructor:Iterable[tuple[Any, set[int]]
 	def combine(cid:int, args):
 		message = dispatch[cid]
 		if message is None: return tuple(args) # The null check is like one bytecode and very fast.
-		return message(*args)
+		try: return message(*args)
+		except SemanticError as ex:
+			raise ex from None
+		except Exception as ex:
+			driver.exception_parsing(ex, cid, args)
 	return combine
 
 
@@ -114,8 +118,9 @@ class AbstractTypical(ParseErrorListener):
 		print("Could not recover.", file=sys.stderr)
 		raise self.exception
 	
-	def exception_parsing(self, ex: Exception, message, args):
-		self.source.complain(self.yy.slice(), message="During " + repr(message))
+	def exception_parsing(self, ex: Exception, constructor_id:int, args):
+		message = self.__hfa.get_constructor(constructor_id)
+		self.source.complain(self.yy.slice(), message="Exception during " + repr(message))
 		raise ex from None
 	
 	def on_stuck(self, yy: IterableScanner):
@@ -170,4 +175,16 @@ class TypicalApplication(AbstractTypical):
 	
 	def bind_parse_actions(self, each_constructor:Iterable[tuple[Any, set[int]]]):
 		return parse_action_bindings(self, each_constructor)
-	
+
+def make_tables(source_path, target_path=None):
+	import json, os.path
+	stem, extension = os.path.splitext(source_path)
+	target_path = target_path or stem+'.automaton'
+	if os.path.exists(source_path):
+		if (not os.path.exists(target_path)) or (os.stat(target_path).st_mtime < os.stat(source_path).st_mtime):
+			from .compiler import compile_file
+			tables = compile_file(source_path)
+			with open(target_path, 'w') as ofh:
+				json.dump(tables, ofh, separators=(',', ':'), sort_keys=True)
+	with open(target_path, "r") as fh:
+		return json.load(fh)

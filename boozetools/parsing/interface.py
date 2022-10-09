@@ -7,8 +7,11 @@ ERROR_SYMBOL = '$error$' # An agreed "error" symbol.
 # Note that the scanner should NEVER emit either of the above two symbols.
 # However, the error symbol may appear in the right-hand side of a production rule.
 
+class SemanticError(Exception):
+	""" Base class of exceptions that parsing machinery should not consider as a bug, but simply pass through. """
+
 class ParseError(ValueError):
-	pass
+	""" Base class of exceptions that arise out of the parsing machinery itself when unable to parse. """
 	
 class UnexpectedTokenError(ParseError):
 	def __init__(self, kind, semantic, pds):
@@ -67,19 +70,6 @@ class ParseErrorListener:
 		"""
 		return self.did_not_recover()
 	
-	def exception_parsing(self, ex:Exception, message, args):
-		"""
-		Q: If a combining function raises an exception, what should happen?
-		A: It depends.
-		
-		Maybe the exception should not happen: some extra context might help
-		you reproduce and debug the problem. Log the context and re-raise.
-		
-		Maybe certain exceptions represent non-fatal conditions, but you'd
-		rather separate policy from mechanism. Deal with it and return the
-		semantic value that should replace the aborted attribute-synthesis.
-		"""
-		raise ex from None # Hide the catch-and-rethrow from the traceback.
 
 class HandleFindingAutomaton:
 	"""
@@ -97,7 +87,7 @@ class HandleFindingAutomaton:
 
 	# The next few are involved in reducing handles. (Yes, this interface is therefore overgrown.)
 	def get_rule(self, rule_id:int) -> tuple: raise NotImplementedError(type(self), 'return a (nonterminal_id, length, constructor_id, view) quad.')
-	def get_constructor(self, constructor_id) -> object: raise NotImplementedError(type(self), 'return whatever will make sense to the corresponding combiner.')
+	def get_constructor(self, constructor_id) -> object: raise NotImplementedError(type(self), 'return something to aid the corresponding combiner in assigning blame for exceptions.')
 	def each_constructor(self) : raise NotImplementedError(type(self), "Involved in binding parser tables to drivers. Yield pairs of <constructor, set of mentions>.")
 	
 	# These next two methods are in support of GLR parsing:

@@ -11,19 +11,21 @@ file begins with definitions of some semantic objects. Next come a grammar and s
 class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
-
+import sys
 from typing import List
-from ..parsing.interface import ERROR_SYMBOL
-from ..support import failureprone
+from ..parsing.interface import ERROR_SYMBOL, SemanticError
 from ..scanning import miniscan
 from ..scanning.interface import ScannerBlocked
 from ..parsing import context_free, miniparse
 from ..parsing.interface import ParseError
+from ..parsing.all_methods import PARSE_TABLE_METHODS
+from ..support.failureprone import illustration
 
 NONDET = object()
+METHOD = object()
 VOID = object()
 
-class DefinitionError(Exception): pass
+class DefinitionError(SemanticError): pass
 
 ### Semantic categories for the breakdown of rewrite rules:
 class Action:
@@ -122,7 +124,7 @@ class Rewrite:
 			if isinstance(elt, Action):
 				placeholder = ':'+elt.name
 				raw_bnf.append(placeholder)
-				ebnf.internal_action(placeholder, prefix_capture(args, i))
+				ebnf.internal_action(placeholder, prefix_capture(args, i), self.line_nr)
 			else:
 				assert isinstance(elt, Element)
 				raw_bnf.append(elt.implement(ebnf, head, bindings))
@@ -205,12 +207,19 @@ METAGRAMMAR.rule('symbol', 'name ( ' + list_of('actual_parameter', ',') + ' )')(
 NAMES = one_or_more('name')
 METAGRAMMAR.rule('precedence', 'associativity '+one_or_more('terminal'))(None)
 METAGRAMMAR.rule('precedence', 'pragma_nondeterministic')(lambda : (NONDET, ()))
+@METAGRAMMAR.rule('precedence', 'pragma_method name')
+def parse_method(_, method):
+	try:
+		return METHOD, PARSE_TABLE_METHODS[method]
+	except KeyError:
+		error_message = "Unrecognized parse method %r. Options are %r." % (method, list(PARSE_TABLE_METHODS))
+		raise DefinitionError(error_message)
 
-METAGRAMMAR.rule('associativity', 'pragma_left')(lambda x: context_free.LEFT)
-METAGRAMMAR.rule('associativity', 'pragma_right')(lambda x: context_free.RIGHT)
-METAGRAMMAR.rule('associativity', 'pragma_nonassoc')(lambda x: context_free.NONASSOC)
-METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda x: context_free.BOGUS)
-METAGRAMMAR.rule('associativity', 'pragma_void')(lambda x: VOID)
+METAGRAMMAR.rule('associativity', 'pragma_left')(lambda _: context_free.LEFT)
+METAGRAMMAR.rule('associativity', 'pragma_right')(lambda _: context_free.RIGHT)
+METAGRAMMAR.rule('associativity', 'pragma_nonassoc')(lambda _: context_free.NONASSOC)
+METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda _: context_free.BOGUS)
+METAGRAMMAR.rule('associativity', 'pragma_void')(lambda _: VOID)
 
 # Sub-language: For specifying the connections between scan conditions:
 METAGRAMMAR.rule('condition', 'name')(lambda x:(x,[]))
@@ -237,9 +246,13 @@ class ErrorHelper:
 	Right now I'm not sure what else to call this. Naming things is hard, after all.
 	The concept is to get the error reporting strategy defined once and accessible throughout.
 	"""
-	def __init__(self): self.current_line_nr = 0
-	def gripe(self, message): raise DefinitionError('At line %d: %s.'%(self.current_line_nr, message))
-	def gripe_about(self, line:str, column:int, message): self.gripe(message +"\n" + failureprone.illustration(line, column, prefix='\t'))
+	def __init__(self, filename:str):
+		self.current_line_nr = 0
+		self.filename = filename
+	def gripe_about(self, line:str, column:int, message):
+		print("%s:%d column %d: %s"%(self.filename, self.current_line_nr, column+1, message), file=sys.stderr)
+		print(illustration(line, column, prefix='\t'), file=sys.stderr)
+		raise
 	def parse(self, line:str, line_nr:int, language:str):
 		""" Factoring out the commonalities of half-decent error reporting... """
 		assert isinstance(line_nr, int), type(line_nr)
@@ -248,6 +261,8 @@ class ErrorHelper:
 		try: return METAGRAMMAR.parse(metascan, language=language)
 		except ScannerBlocked as e:
 			self.gripe_about(line, e.args[0], "The MacroParse MetaScanner got confused by %r" % e.args[1])
+		except DefinitionError as e:
+			self.gripe_about(line, metascan.left, e.args[0])
 		except ParseError:
 			self.gripe_about(
 				line, metascan.left,
@@ -286,33 +301,33 @@ class EBNF_Definition:
 		self.error_help = error_help
 		self.is_nondeterministic = False
 		self.void_symbols = set()
+		self.method = PARSE_TABLE_METHODS["LR1"]
 	
 	def read_precedence_line(self, line:str, line_nr:int):
 		direction, symbols = self.error_help.parse(line, line_nr, 'precedence')
-		if direction is NONDET: self.is_nondeterministic = True
+		if direction is NONDET:
+			self.is_nondeterministic = True
+			self.method = PARSE_TABLE_METHODS["LALR"]
+		elif direction is METHOD: self.method = symbols
 		elif direction is VOID: self.void_symbols.update(symbols)
 		else: self.plain_cfg.assoc(direction, symbols)
 
 	def read_production_line(self, line:str, line_nr:int):
 		""" This is the main interface to defining grammars. Call this repeatedly for each line of the grammar. """
-		production = self.error_help.parse(line, line_nr, 'production')
-		if production is None:
-			self.error_help.gripe("Yeah, I'm not sure what happened there but it gave me indigestion.")
-			return
-		head, rewrites = production
+		head, rewrites = self.error_help.parse(line, line_nr, 'production')
 		for R in rewrites: R.line_nr = line_nr
 		# Set the current head field, or use it unchanged if not specified on this line:
 		if head is None:
 			if self.current_head is None:
-				self.error_help.gripe('Confused about what the current head nonterminal is')
+				self.error_help.gripe_about(line, 1, 'Confused about what the current head nonterminal is')
 			head = self.current_head
 		else:
 			if isinstance(head, tuple): # Do we need to enter a macro declaration?
 				name, formals = head
 				if name in self.macro_definitions: # Prevent re-declarations.
-					self.error_help.gripe("Cannot re-declare macro %r, which was orginally declared on line %d."%(name, self.macro_definitions[name].line_nr))
+					self.error_help.gripe_about(line, 1, "Cannot re-declare macro %r, which was orginally declared on line %d."%(name, self.macro_definitions[name].line_nr))
 				elif len(set(formals)|{name}) <= len(formals):
-					self.error_help.gripe("All the names used in a macro head declaration must be distinct.")
+					self.error_help.gripe_about(line, 1, "All the names used in a macro head declaration must be distinct.")
 				else:
 					head = self.macro_definitions[name] = MacroDefinition(name, formals)
 			self.current_head = head
@@ -345,7 +360,7 @@ class EBNF_Definition:
 			self.validate()
 			return self.plain_cfg
 	
-	def internal_action(self, placeholder:str, capture:tuple):
+	def internal_action(self, placeholder:str, capture:tuple, line_nr):
 		""" These are implemented internally much like an epsilon rule, but able to capture certain left-context. """
 		if self.implementing(placeholder):
 			self.plain_cfg.add_rule(context_free.Rule(
@@ -353,13 +368,11 @@ class EBNF_Definition:
 				rhs = (),
 				prec_sym = None,
 				action = context_free.SemanticAction(placeholder, capture),
-				provenance = self.error_help.current_line_nr,
+				provenance = line_nr,
 			))
 		else:
-			self.error_help.gripe(
-				'Internal action %s was first elaborated on line %d; reuse is not (presently) supported.' %
-				(placeholder, self.implementations[placeholder])
-			)
+			error_message = 'Internal action %s was first elaborated on line %d; reuse is not supported.' % (placeholder, self.implementations[placeholder])
+			raise DefinitionError(error_message)
 
 	def implementing(self, symbol) -> bool:
 		""" Tells if the current instantiation of a macro-rule is the first; notes the line number where it happened. """

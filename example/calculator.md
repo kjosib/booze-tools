@@ -27,6 +27,13 @@ You can also use `%nonassoc` in the usual way, but this example does not require
 The larger [Decaf Example](decaf.md) uses it to prevent things like `a > b < c`, which
 admittedly *can* be made sense of, but they aren't part of the Decaf language specification.
 
+And finally, this grammar is LALR and does not need the full LR-1 treatment,
+so we can do this:
+
+```
+%method LALR
+```
+
 # Productions START
 The productions for this are pretty normal. Unlike the JSON example,
 it doesn't bother with `%void` symbol declarations and just uses the `.` to

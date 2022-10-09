@@ -140,6 +140,6 @@ class SourceText:
 		left, right = a_slice.start, a_slice.stop
 		row, col = self.find_row_col(left)
 		line = self.line_of_text(row)
-		if self.filename is None: print("At line %d, column %d:" % (row + 1, col + 1), message, file=sys.stderr)
-		else: print("At line %d, column %d, in %s:" % (row + 1, col + 1, self.filename), message, file=sys.stderr)
+		if self.filename is None: print("At line %d, column %d:" % (row, col + 1), message, file=sys.stderr)
+		else: print("%s:%d column %d: " % (self.filename, row, col + 1), message, file=sys.stderr)
 		print(illustration(line, col, right-left, prefix=' >>> '), file=sys.stderr)

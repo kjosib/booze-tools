@@ -1,8 +1,10 @@
 """ No frills. Plenty useful. """
 
 import inspect
+import sys
+
 from . import automata, shift_reduce
-from .interface import ParseErrorListener
+from .interface import ParseErrorListener, SemanticError
 from .context_free import Rule, SemanticAction, ContextFreeGrammar, LEFT, RIGHT, NONASSOC
 from .all_methods import PARSE_TABLE_METHODS
 
@@ -86,11 +88,24 @@ class MiniParse(ParseErrorListener):
 			self.__hfa = automata.tabulate(PARSE_TABLE_METHODS[self.__method](self.__grammar), self.__grammar,
 										   style=automata.DeterministicStyle(self.__strict))
 			constructors = self.__hfa.constructors
-			self.__combine = lambda cid,args:constructors[cid](*args)
+			def combine(constructor_id, args):
+				try: return constructors[constructor_id](*args)
+				except SemanticError as ex: raise ex from None
+				except Exception as ex:
+					message = self.__hfa.get_constructor(constructor_id)
+					file_path = inspect.getfile(message)
+					line_number = 1+inspect.findsource(message)[1]
+					return self.exception_parsing(ex, file_path, line_number, args)
+			self.__combine = combine
 		return self.__hfa, self.__combine
 
 	def parse(self, each_token, *, language=None):
 		hfa, combine = self.get_hfa_and_combine()
 		return shift_reduce.parse(hfa, combine, each_token, language=language, on_error=self)
+	
+	@staticmethod
+	def exception_parsing(ex:Exception, file_path, line_number, args):
+		print("\n---\nWhile trying to call %s:%d"%(file_path, line_number), file=sys.stderr)
+		raise ex
 	
 def _collect_tuple(*items): return items

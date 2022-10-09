@@ -17,7 +17,7 @@ from boozetools.scanning.engine import IterableScanner
 from boozetools.macroparse.runtime import TypicalApplication
 from boozetools.macroparse import compiler
 
-tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'), method='LALR')
+tables = compiler.compile_file(os.path.join(os.path.dirname(__file__), 'calculator.md'))
 
 class Calculator(TypicalApplication):
 	"""
@@ -31,7 +31,6 @@ class Calculator(TypicalApplication):
 		self.parse_divide = operator.truediv
 		self.parse_power = operator.pow
 		self.parse_negate = operator.neg
-		self.parse_lookup = self.memory.__getitem__
 		# Subtlety: call the superclass initializer last because of dynamically added parse methods...
 		super().__init__(tables)
 	
@@ -41,6 +40,11 @@ class Calculator(TypicalApplication):
 	def scan_imaginary(self, yy: IterableScanner): yy.token('number', float(yy.match()[:-1]) * 1j)
 	def scan_variable(self, yy: IterableScanner): yy.token('variable', yy.match())
 	
+	def parse_lookup(self, name):
+		try: return self.memory[name]
+		except KeyError:
+			self.source.complain(*self.yy.slice(), message="-- OCH! No such variable %r. --"%name)
+			return 0
 	def parse_evaluate(self, value):
 		print(" -->",value)
 		return value
@@ -54,18 +58,11 @@ class Calculator(TypicalApplication):
 		
 	def parse_complete_garbage(self, _):
 		print("-- Not quite sure what that means. Sorry. --")
+		
 	def parse_broken_parenthetical(self, _):
 		print("-- The error seems confined to the parentheses. I'll just use a zero... --")
 		return 0
 
-	def exception_parsing(self, ex: Exception, message, args):
-		""" For this application there is one non-fatal parse exception... """
-		if message == 'lookup' and isinstance(ex, KeyError):
-			self.source.complain(*self.yy.slice(), message="-- OCH! No such variable %r. --"%ex.args)
-			return 0
-		else:
-			return super().exception_parsing(ex, message, args)
-	
 calculator = Calculator()
 
 def main():

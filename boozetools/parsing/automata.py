@@ -18,7 +18,7 @@ for persisting ambiguous parse tables.
 """
 import collections, sys
 from pprint import pprint
-from typing import Iterable, TypeVar, Generic
+from typing import Iterable, TypeVar, Generic, Any
 from typing import NamedTuple
 from ..support import foundation, pretty
 from .interface import HandleFindingAutomaton, END_OF_TOKENS, ERROR_SYMBOL, ParseError
@@ -319,7 +319,7 @@ class DragonBookTable(HandleFindingAutomaton):
 		assert split_id>0
 		return self.splits[split_id]
 
-	def get_constructor(self, constructor_id) -> object: return self.constructors[constructor_id]
+	def get_constructor(self, constructor_id) -> Any: return self.constructors[constructor_id]
 	
 	def each_constructor(self):
 		mentions = [set() for _ in self.constructors]
@@ -381,14 +381,15 @@ class DeterministicStyle(ParsingStyle):
 		
 		In conclusion: Let the objects defined in automata.py format parse-states for human consumption.
 		"""
-		if self.strict and self.conflicts:
-			raise PurityError()
-		elif self.conflicts:
+		if not self.conflicts:
+			# print("Grammar specification is fully deterministic.")
+			pass
+		elif self.strict:
+			raise PurityError(self.conflicts)
+		else:
 			print("Grammar specification contains conflicts.")
 			print("Conflict reporting is presently undergoing an overhaul, but here's some diagnostic data:")
 			pprint(self.conflicts)
-		# else:
-		# 	print("Grammar specification is fully deterministic.")
 
 class GeneralizedStyle(ParsingStyle):
 	
