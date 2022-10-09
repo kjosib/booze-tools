@@ -105,9 +105,9 @@ signature -> PROCEDURE identifier formal_parameters
 signature -> FUNCTION identifier formal_parameters ':' identifier
 
 formal_parameters -> :empty | '(' .ssl(formal_group) ')'
-formal_group -> .names ':' .identifier    :normal_args
-	| FUNCTION .names ':' .identifier :func_args
-	| PROCEDURE .names                :proc_args
+formal_group -> .names ':' .identifier    :normal_params
+	| FUNCTION .names ':' .identifier :func_params
+	| PROCEDURE .names                :proc_params
 ```
 Pascal is imperative. These are its statements and control structures:
 ```
@@ -157,7 +157,7 @@ factor -> string_contant
 	| .identifier '(' .csl(expr) ')' :parametric_function_call
 	| '(' .expr ')'
 	| NOT .factor                    :logical_inverse
-	| '[' ']'                        :emmpty_set
+	| '[' ']'                        :empty_set
 	| '[' .csl(set_member) ']'       :full_set
 
 set_member -> expr
@@ -202,7 +202,7 @@ field_list -> struct           :simple_record
 	| .struct CASE .identifier ':' .identifier OF .tags   :tagged_union
 	| .struct CASE .identifier OF .tags                   :untagged_union
 
-struct -> :emtpy | ssl(v_decl)
+struct -> :empty | ssl(v_decl)
 tags -> :empty | ssl(tag_group)
 tag_group -> .csl(constant) ':' '(' .field_list ')'
 

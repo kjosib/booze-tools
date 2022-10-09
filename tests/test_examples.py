@@ -1,7 +1,7 @@
 import unittest
 import os
 import json as standard_json
-from pprint import pprint
+import importlib
 
 import example.mini_json, example.macro_json, example.calculator
 
@@ -78,7 +78,8 @@ class TestMacroJson(unittest.TestCase):
 	def macroscan_json(self, text):
 		scanner_table = self.tables['scanner']
 		dfa = expansion.CompactDFA(dfa=scanner_table['dfa'], alphabet=scanner_table['alphabet'])
-		bindings = runtime.MacroScanBindings(each_action=expansion.scan_actions(scanner_table['action']), driver=example.macro_json.ExampleJSON())
+		driver = example.macro_json.ExampleJSON()
+		bindings = runtime.MacroScanBindings(driver, expansion.scan_actions(scanner_table['action']))
 		return IterableScanner(text, dfa, bindings=bindings, start='INITIAL')
 	
 	def test_00_macroparse_compiled_scanner(self):
@@ -197,4 +198,6 @@ class TestSampleLanguages(unittest.TestCase):
 		for identity in 'decaf', 'pascal':
 			with self.subTest(identity):
 				compile_example(identity, 'LR1')
-		
+	
+	def test_pascal(self):
+		importlib.import_module("example.pascal")

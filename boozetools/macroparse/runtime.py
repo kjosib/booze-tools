@@ -6,13 +6,13 @@ This module may still be doing too many different things. I'll probably break it
 """
 
 import functools, sys
-from typing import Iterable
+from typing import Iterable, Any
 
 from ..support import failureprone
 from . import expansion
 from ..parsing import shift_reduce
-from ..parsing.interface import HandleFindingAutomaton, END_OF_TOKENS, ParseErrorListener
-from ..scanning.interface import FiniteAutomaton, INITIAL, Bindings, RuleId
+from ..parsing.interface import HandleFindingAutomaton, END_OF_TOKENS, ParseErrorListener, UnexpectedTokenError
+from ..scanning.interface import FiniteAutomaton, INITIAL, Bindings, RuleId, ScannerBlocked
 from ..scanning.engine import IterableScanner
 from .interface import ScanAction
 
@@ -20,7 +20,7 @@ class MissingMethodError(TypeError):
 	pass
 
 class MacroScanBindings(Bindings):
-	def __init__(self, each_action:Iterable[ScanAction], driver):
+	def __init__(self, driver, each_action:Iterable[ScanAction]):
 		def bind(act:ScanAction):
 			message_name, *args = act.message
 			method_name = 'scan_' + message_name
@@ -45,12 +45,12 @@ class MacroScanBindings(Bindings):
 		return self.__on_stuck(yy)
 
 
-def parse_action_bindings(driver, each_constructor):
+def parse_action_bindings(driver, each_constructor:Iterable[tuple[Any, set[int]]]):
 	"""
 	Build a reduction function (combiner) for the parse engine out of an arbitrary Python object.
 	Because this checks the message catalog it can be sure the method lookup will never fail.
 	"""
-	def bind(constructor, mentions):
+	def bind(constructor, mentions:set[int]):
 		if constructor is None: return None
 		is_mid_rule_action = constructor.startswith(':')
 		kind, constructor = ('mid_rule', constructor[1:]) if is_mid_rule_action else ('parse', constructor)
@@ -99,10 +99,10 @@ class AbstractTypical(ParseErrorListener):
 		return shift_reduce.parse(self.__hfa, self.__combine, self.yy, language=language, on_error=self)
 	
 	def unexpected_token(self, kind, semantic, pds):
-		self.source.complain(*self.yy.slice(), message="Unexpected token %r" % kind)
-		# stack_symbols = list(map(self.table.get_breadcrumb, pds.path_from_root()))[1:]
-		# self.exception = ParseError(stack_symbols, kind, semantic)
-		# print("Parsing condition was:\n", self.exception.condition(), file=sys.stderr)
+		self.source.complain(self.yy.slice(), message="Unexpected token %r" % kind)
+		stack_symbols = list(map(self.__hfa.get_breadcrumb, pds.path_from_root()))[1:]
+		self.exception = UnexpectedTokenError(kind, semantic, pds)
+		print("Parsing condition was:\n", stack_symbols, file=sys.stderr)
 	
 	def unexpected_eof(self, pds):
 		self.unexpected_token(END_OF_TOKENS, None, pds)
@@ -112,16 +112,18 @@ class AbstractTypical(ParseErrorListener):
 		
 	def did_not_recover(self):
 		print("Could not recover.", file=sys.stderr)
+		raise self.exception
 	
 	def exception_parsing(self, ex: Exception, message, args):
-		self.source.complain(*self.yy.slice(), message="During " + repr(message))
+		self.source.complain(self.yy.slice(), message="During " + repr(message))
 		raise ex from None
 	
-	def unexpected_character(self, yy: IterableScanner):
-		self.source.complain(yy.current_position(), message="Lexical scan got stuck.")
+	def on_stuck(self, yy: IterableScanner):
+		self.source.complain(yy.slice(), message="Lexical scan got stuck in condition %r."%yy.condition)
+		raise ScannerBlocked(yy.left, yy.condition)
 	
 	def exception_scanning(self, yy:IterableScanner, rule_id:int, ex:Exception):
-		self.source.complain(*yy.slice())
+		self.source.complain(yy.slice(), "Recognizing")
 		raise ex from None
 
 def _upgrade_table_0_0_1(tables):
@@ -139,7 +141,6 @@ def _upgrade_table_0_0_2(tables):
 	action['message'] = message
 	tables['version'] = (0,0,3)
 
-
 class TypicalApplication(AbstractTypical):
 	"""
 	This class specializes for the case of compiled tables such as from MacroParse,
@@ -156,11 +157,17 @@ class TypicalApplication(AbstractTypical):
 		scanner_table = tables['scanner']
 		each_action = expansion.scan_actions(scanner_table['action'])
 		dfa = expansion.CompactDFA(dfa=scanner_table['dfa'], alphabet=scanner_table['alphabet'])
-		bindings = MacroScanBindings(each_action, driver=self)
+		bindings = self.bind_scan_actions(each_action)
 		
 		parser_table = tables['parser']
 		hfa = expansion.CompactHFA(parser_table)
-		combine = parse_action_bindings(self, hfa.each_constructor())
+		combine = self.bind_parse_actions(hfa.each_constructor())
 		
 		super().__init__(dfa=dfa, bindings=bindings, hfa=hfa, combine=combine)
 
+	def bind_scan_actions(self, each_action:Iterable[ScanAction]):
+		return MacroScanBindings(self, each_action)
+	
+	def bind_parse_actions(self, each_constructor:Iterable[tuple[Any, set[int]]]):
+		return parse_action_bindings(self, each_constructor)
+	

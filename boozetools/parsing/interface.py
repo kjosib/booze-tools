@@ -7,9 +7,18 @@ ERROR_SYMBOL = '$error$' # An agreed "error" symbol.
 # Note that the scanner should NEVER emit either of the above two symbols.
 # However, the error symbol may appear in the right-hand side of a production rule.
 
-class ParseError(ValueError): pass
-class UnexpectedTokenError(ParseError): pass
-class UnexpectedEndOfTextError(ParseError): pass
+class ParseError(ValueError):
+	pass
+	
+class UnexpectedTokenError(ParseError):
+	def __init__(self, kind, semantic, pds):
+		self.kind = kind
+		self.semantic = semantic
+		self.pds = pds
+	
+class UnexpectedEndOfTextError(ParseError):
+	def __init__(self, pds):
+		self.pds = pds
 
 class ParseErrorListener:
 	"""
@@ -47,6 +56,7 @@ class ParseErrorListener:
 		The parser ran out of tokens while in error-recovery mode, and was
 		unable to recover.
 		"""
+		raise ParseError()
 	
 	def cannot_recover(self):
 		"""

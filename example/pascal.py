@@ -22,8 +22,10 @@ the result will be linked against a convenient runtime library for your platform
 """
 
 import os
-from boozetools.support import runtime, interfaces
-from boozetools.macroparse import compiler
+from boozetools.scanning.engine import IterableScanner
+from boozetools.scanning.interface import ScannerBlocked
+from boozetools.macroparse import compiler, runtime
+from boozetools.parsing.interface import ParseError
 
 # Similar to what's done in the calculator example, this reads and compiles the grammar every time.
 definition_path = os.path.join(os.path.dirname(__file__), 'pascal.md')
@@ -49,26 +51,27 @@ class Pascal(runtime.TypicalApplication):
 	def __init__(self):
 		super().__init__(tables)
 		
-	def scan_ignore(self, yy: interfaces.Scanner, what_to_ignore):
+	def scan_ignore(self, yy: IterableScanner, what_to_ignore):
 		"""
 		The language definition file (pascal.md) provides an argument (comment or whitespace) to the
 		"ignore" scan action, so this function has to consume that argument -- at least for now.
 		"""
 		pass
-	def scan_unterminated_comment(self, yy: interfaces.Scanner):
-		self.source.complain(yy.current_position(), message="Unterminated comment begins")
-	def scan_integer(self, yy: interfaces.Scanner): yy.token('integer', int(yy.match()))
-	def scan_decimal(self, yy: interfaces.Scanner): yy.token('real', float(yy.match()))
-	def scan_scientific_notation(self, yy: interfaces.Scanner): yy.token('real', float(yy.match()))
-	def scan_string_constant(self, yy: interfaces.Scanner):
+	def scan_unterminated_comment(self, yy: IterableScanner):
+		self.source.complain(slice(yy.left, yy.left), message="Unterminated comment begins")
+		raise ScannerBlocked(yy.left, yy.condition)
+	def scan_integer(self, yy: IterableScanner): yy.token('integer', int(yy.match()))
+	def scan_decimal(self, yy: IterableScanner): yy.token('real', float(yy.match()))
+	def scan_scientific_notation(self, yy: IterableScanner): yy.token('real', float(yy.match()))
+	def scan_string_constant(self, yy: IterableScanner):
 		yy.token('string_constant', yy.match()[1:-1].replace("''", "'"))
-	def scan_identifier(self, yy: interfaces.Scanner): yy.token('identifier', yy.match())
-	def scan_word(self, yy: interfaces.Scanner):
+	def scan_identifier(self, yy: IterableScanner): yy.token('identifier', yy.match())
+	def scan_word(self, yy: IterableScanner):
 		# Checks a table of reserved words.
 		word = yy.match().upper()
 		if word in self.reserved: yy.token(word)
 		else: yy.token('identifier', word)
-	def scan_token(self, yy: interfaces.Scanner):
+	def scan_token(self, yy: IterableScanner):
 		text = yy.match()
 		yy.token(text, text)
 	
@@ -94,14 +97,41 @@ class Pascal(runtime.TypicalApplication):
 	def parse_relational_test(self, lhs, relop, rhs): return ('.test.', lhs, relop, rhs)
 	def parse_if_then(self, test, if_true): return ('.if.', test, if_true)
 	def parse_if_then_else(self, test, if_true, if_false): return ('.ifelse.', test, if_true, if_false)
-	def parse_normal_args(self, names, type_id): return ('.args.', names, type_id)
+	def parse_case_selection(self): pass
+	def parse_repeat_loop(self): pass
+	def parse_for_loop(self): pass
+	def parse_with_scope(self): pass
+	def parse_goto_label(self): pass
+	def parse_set_membership(self): pass
+	def parse_logical_inverse(self): pass
+	def parse_empty_set(self): pass
+	def parse_full_set(self): pass
+	def parse_range(self): pass
+	def parse_field(self): pass
+	def parse_dereference(self): pass
+	def parse_named_constant(self): pass
+	def parse_negate_named_constant(self): pass
+	def parse_negate_numeric(self): pass
+	def parse_reference_type(self): pass
+	def parse_packed(self): pass
+	def parse_file_type(self): pass
+	def parse_set_type(self): pass
+	def parse_simple_record(self): pass
+	def parse_tagged_union(self): pass
+	def parse_untagged_union(self): pass
+
+	# Formal parameters in Pascal come in groups.
+	def parse_normal_params(self, names, type_id): return ('.params.', names, type_id)
+	
+	# Formal parameters can themselves be functions or procedures. This has special grammar.
+	def parse_func_params(self, names, type_id): return ('.func_params.', names, type_id)
+	def parse_proc_params(self, names, type_id): return ('.proc_params.', names, type_id)
+	
 	def parse_sequence(self, sequence): return ('.seq.', *sequence)
 	def parse_while_loop(self, test, stmt): return ('.while.', test, stmt)
 	def parse_negate(self, item):
 		if isinstance(item, (int, float)): return 0-item
 		else: return ('.neg.', item)
-
-
 
 print("=====================")
 with open(os.path.join(os.path.dirname(__file__), 'pascal.pas')) as fh:
@@ -109,8 +139,18 @@ with open(os.path.join(os.path.dirname(__file__), 'pascal.pas')) as fh:
 for text in samples:
 	text = text.strip()
 	if text:
-		syntax_tree = Pascal().parse(text, filename=text.splitlines()[0])
-		if syntax_tree: print(syntax_tree[0])
-		else: print("failed; moving on...")
+		first_line = text.splitlines()[0]
+		try:
+			syntax_tree = Pascal().parse(text, filename=first_line)
+		except ScannerBlocked:
+			assert "arrayTest" in first_line
+			print(first_line)
+		except ParseError:
+			assert "arrayRefTest" in first_line
+			print(first_line)
+		else:
+			assert "array" not in first_line
+			print(syntax_tree[0])
+		
 print("=====================")
-print("Everything parsed OK.")
+print("Everything parsed as expected.")

@@ -4,7 +4,7 @@ prepared using the algorithms in .compaction.py. If you were to build
 a runtime system for another host language, you'd have to port these.
 """
 
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Any
 from .interface import ScanAction
 from boozetools.scanning.interface import FiniteAutomaton
 from boozetools.scanning import charclass
@@ -160,7 +160,7 @@ class CompactHFA(HandleFindingAutomaton):
 	def get_rule(self, rule_id: int) -> tuple: return self.__rule[rule_id]
 	def get_constructor(self, constructor_id) -> object: return self.__constructor[constructor_id]
 	
-	def each_constructor(self):
+	def each_constructor(self) -> Iterable[tuple[Any, set[int]]]:
 		mentions = [set() for _ in self.__constructor]
 		for line_number, (ntid, size, cid, places) in zip(self.__line_number, self.__rule):
 			if cid >= 0:

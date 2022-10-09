@@ -315,6 +315,7 @@ def parse(table: HandleFindingAutomaton, combine, token_stream, *, language=None
 			except ValueError: continue
 			if recovery_state not in avenues: avenues[recovery_state] = depth
 		return tuple(avenues.items())
+	
 	def try_proposal(avenues, proposal):
 		ts, vs = zip(*proposal)
 		for recovery_state, depth in avenues:
@@ -341,7 +342,6 @@ def parse(table: HandleFindingAutomaton, combine, token_stream, *, language=None
 			pds.shift(find_shift(token_id), semantic)
 		if token_id == sentinel_end: pds.pop_phrase(1)
 		
-	
 	def generate_proposals(terminal_id, semantic, length):
 		# This generates overlapping rolling runs of tokens.
 		proposal = [(terminal_id, semantic)]

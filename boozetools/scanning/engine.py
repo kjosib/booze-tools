@@ -68,10 +68,12 @@ class Scanner:
 	def enter(self, condition):
 		""" Change to a different start-condition. """
 		self.condition = condition
+	
 	def push(self, condition):
 		""" Push the current start-condition onto a stack and change to the one specified. """
 		self.__stack.append(self.condition)
 		self.enter(condition)
+	
 	def pop(self):
 		""" Jump back to a start-condition pulled from the condition stack. """
 		self.enter(self.__stack.pop())
@@ -95,6 +97,7 @@ class Scanner:
 		"""
 		if nr_chars is not None:
 			self.right = (self.right if nr_chars < 0 else self.left) + nr_chars
+	
 	def seek(self, position):
 		""" Scanning will next resume at the position given. """
 		self.right = position
