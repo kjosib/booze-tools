@@ -97,6 +97,20 @@ class Pascal(runtime.TypicalApplication):
 	def parse_relational_test(self, lhs, relop, rhs): return ('.test.', lhs, relop, rhs)
 	def parse_if_then(self, test, if_true): return ('.if.', test, if_true)
 	def parse_if_then_else(self, test, if_true, if_false): return ('.ifelse.', test, if_true, if_false)
+	def parse_sequence(self, sequence): return ('.seq.', *sequence)
+	def parse_while_loop(self, test, stmt): return ('.while.', test, stmt)
+	def parse_negate(self, item):
+		if isinstance(item, (int, float)): return 0-item
+		else: return ('.neg.', item)
+
+	# Formal parameters in Pascal come in groups.
+	def parse_normal_params(self, names, type_id): return ('.params.', names, type_id)
+	
+	# Formal parameters can themselves be functions or procedures. This has special grammar.
+	def parse_func_params(self, names, type_id): return ('.func_params.', names, type_id)
+	def parse_proc_params(self, names, type_id): return ('.proc_params.', names, type_id)
+	
+	# I got tired and stubbed out the rest:
 	def parse_case_selection(self): pass
 	def parse_repeat_loop(self): pass
 	def parse_for_loop(self): pass
@@ -119,19 +133,6 @@ class Pascal(runtime.TypicalApplication):
 	def parse_simple_record(self): pass
 	def parse_tagged_union(self): pass
 	def parse_untagged_union(self): pass
-
-	# Formal parameters in Pascal come in groups.
-	def parse_normal_params(self, names, type_id): return ('.params.', names, type_id)
-	
-	# Formal parameters can themselves be functions or procedures. This has special grammar.
-	def parse_func_params(self, names, type_id): return ('.func_params.', names, type_id)
-	def parse_proc_params(self, names, type_id): return ('.proc_params.', names, type_id)
-	
-	def parse_sequence(self, sequence): return ('.seq.', *sequence)
-	def parse_while_loop(self, test, stmt): return ('.while.', test, stmt)
-	def parse_negate(self, item):
-		if isinstance(item, (int, float)): return 0-item
-		else: return ('.neg.', item)
 
 print("=====================")
 with open(os.path.join(os.path.dirname(__file__), 'pascal.pas')) as fh:
