@@ -13,7 +13,6 @@ import sys, os, argparse, json
 from boozetools.macroparse.compiler import compile_string
 from boozetools.macroparse.grammar import DefinitionError
 from boozetools.macroparse import compaction
-from boozetools.parsing.all_methods import PARSE_TABLE_METHODS
 
 def parse_arguments():
 	parser = argparse.ArgumentParser(prog='py -m boozetools', description=__doc__,)
@@ -38,7 +37,7 @@ def main(args):
 		exit(1)
 	with(open(args.source_path)) as fh:document = fh.read()
 	try:
-		intermediate_form = compile_string(document, method=args.method)
+		intermediate_form = compile_string(document)
 		if args.dot: intermediate_form.make_dot_file(target_path+'.dot')
 		textbook_form = intermediate_form.determinize()
 	except DefinitionError as e:

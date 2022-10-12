@@ -27,6 +27,16 @@ You can also use `%nonassoc` in the usual way, but this example does not require
 The larger [Decaf Example](decaf.md) uses it to prevent things like `a > b < c`, which
 admittedly *can* be made sense of, but they aren't part of the Decaf language specification.
 
+In this grammar, punctuation has no semantic content independent of selecting which rules apply.
+Rather than listing each possible mark (as was done in the JSON example)
+there are a few handy shortcuts. This is one:
+```
+%void_set punct
+```
+
+You can also use `%void upper` or `%void lower` to indicate that symbols written in all-upper
+or all-lower case (respectively) should be considered as void.
+
 And finally, this grammar is LALR and does not need the full LR-1 treatment,
 so we can do this:
 
@@ -40,24 +50,24 @@ it doesn't bother with `%void` symbol declarations and just uses the `.` to
 express which places in the right-hand-side are significant to the
 parse-action functions.
 ```
-START -> .E                :evaluate
-      | .variable '=' .E   :assign
+START -> E                :evaluate
+      | variable '=' E   :assign
       | '?'                :help
 
-E -> '(' .E ')'
-  | .E '+' .E   :add
-  | .E '-' .E   :subtract
-  | .E '*' .E   :multiply
-  | .E '/' .E   :divide
-  | .E '^' .E   :power
-  | '-' .E      :negate  %prec UMINUS
+E -> '(' E ')'
+  | E '+' E   :add
+  | E '-' E   :subtract
+  | E '*' E   :multiply
+  | E '/' E   :divide
+  | E '^' E   :power
+  | '-' E      :negate  %prec UMINUS
   | variable    :lookup
   | number
 ```
 But lo, the users will make mistakes. Some error productions are a fabulous help.
 ```
 START -> $error$      :complete_garbage
-E -> '(' .$error$ ')' :broken_parenthetical
+E -> '(' $error$ ')' :broken_parenthetical
 ```
 
 ## Definitions

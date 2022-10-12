@@ -11,6 +11,7 @@ file begins with definitions of some semantic objects. Next come a grammar and s
 class definition for a grammar object which supplies the necessary bits to make
 the extensions over BNF work properly.
 """
+import string
 import sys
 from typing import List
 from ..parsing.interface import ERROR_SYMBOL, SemanticError
@@ -24,6 +25,13 @@ from ..support.failureprone import illustration
 NONDET = object()
 METHOD = object()
 VOID = object()
+VOID_SET = object()
+
+SET_PATTERNS = {
+	"upper" : lambda x: x.isalpha() and x.isupper(),
+	"lower" : lambda x: x.isalpha() and x.islower(),
+	"punct" : lambda x: all(c in string.punctuation for c in x),
+}
 
 class DefinitionError(SemanticError): pass
 
@@ -54,7 +62,7 @@ class Symbol(Element):
 	
 	def is_void_for(self, ebnf: "EBNF_Definition", head: str) -> bool:
 		key = head if self.name == '_' else self.name
-		return key in ebnf.void_symbols
+		return ebnf.is_symbol_void(key)
 
 
 class InlineRenaming(Element):
@@ -84,7 +92,6 @@ class MacroCall(Element):
 		self.name, self.actual_parameters = name, tuple(actual_parameters)
 		assert isinstance(self.name, str)
 		for a in self.actual_parameters: assert isinstance(a, Element), type(a)
-	def canonical_symbol(self, bindings:dict) -> str: return
 	
 	def implement(self, ebnf: "EBNF_Definition", head: str, bindings: dict) -> str:
 		args = [a.implement(ebnf, head, bindings) for a in self.actual_parameters]
@@ -93,7 +100,7 @@ class MacroCall(Element):
 		return symbol
 	
 	def is_void_for(self, ebnf: "EBNF_Definition", head: str) -> bool:
-		return self.name in ebnf.void_symbols
+		return ebnf.is_symbol_void(self.name)
 
 
 class Rewrite:
@@ -220,6 +227,7 @@ METAGRAMMAR.rule('associativity', 'pragma_right')(lambda _: context_free.RIGHT)
 METAGRAMMAR.rule('associativity', 'pragma_nonassoc')(lambda _: context_free.NONASSOC)
 METAGRAMMAR.rule('associativity', 'pragma_bogus')(lambda _: context_free.BOGUS)
 METAGRAMMAR.rule('associativity', 'pragma_void')(lambda _: VOID)
+METAGRAMMAR.rule('associativity', 'pragma_void_set')(lambda _: VOID_SET)
 
 # Sub-language: For specifying the connections between scan conditions:
 METAGRAMMAR.rule('condition', 'name')(lambda x:(x,[]))
@@ -232,7 +240,7 @@ LEX.token('name', r'\l\w*') # Identifiers as token type "name".
 LEX.token('err_token', r'\$error\$') # the error token is a bit special: it can't be an LHS or have precedence.
 LEX.token('topic', r'_/\W') # Bare underline means "the current production rule head".
 LEX.token_map('message', r':\l\w*', lambda tx:tx[1:]) # Strip out the colon for message names
-@LEX.on(r'%\l+') # Build pragma token types from the text.
+@LEX.on(r'%\l[\l_]*') # Build pragma token types from the text.
 def pragma(yy): yy.token('pragma_'+yy.match()[1:])
 LEX.token('capture', r'[.]/\S') # a dot prefixes a captured element, so it needs to be followed by something.
 @LEX.on(r'[\][(),|]') # Punctuation is represented directly, with null semantic value.
@@ -250,7 +258,7 @@ class ErrorHelper:
 		self.current_line_nr = 0
 		self.filename = filename
 	def gripe_about(self, line:str, column:int, message):
-		print("%s:%d column %d: %s"%(self.filename, self.current_line_nr, column+1, message), file=sys.stderr)
+		print("%s -- line %d column %d: %s"%(self.filename, self.current_line_nr, column+1, message), file=sys.stderr)
 		print(illustration(line, column, prefix='\t'), file=sys.stderr)
 		raise
 	def parse(self, line:str, line_nr:int, language:str):
@@ -288,8 +296,6 @@ class MacroDefinition:
 # Please note: The format of an action entry shall be the tuple <message_name, tuple-of-offsets, line_number>.
 # These are a pass-through into the ContextFreeGrammar and eventually the parse tables themselves.
 
-def illustrate_position(line:str, column:int): return line[:column]+'<<_here_>>'+line[column:]
-
 class EBNF_Definition:
 	def __init__(self, error_help:ErrorHelper):
 		self.plain_cfg = context_free.ContextFreeGrammar()
@@ -300,8 +306,13 @@ class EBNF_Definition:
 		self.must_elaborate = []
 		self.error_help = error_help
 		self.is_nondeterministic = False
-		self.void_symbols = set()
+		self.__void_symbols = set()
+		self.__void_sets = {self.__void_symbols.__contains__}
 		self.method = PARSE_TABLE_METHODS["LR1"]
+		self.__schedule = []
+	
+	def is_symbol_void(self, symbol:str):
+		return any(predicate(symbol) for predicate in self.__void_sets)
 	
 	def read_precedence_line(self, line:str, line_nr:int):
 		direction, symbols = self.error_help.parse(line, line_nr, 'precedence')
@@ -309,7 +320,10 @@ class EBNF_Definition:
 			self.is_nondeterministic = True
 			self.method = PARSE_TABLE_METHODS["LALR"]
 		elif direction is METHOD: self.method = symbols
-		elif direction is VOID: self.void_symbols.update(symbols)
+		elif direction is VOID: self.__void_symbols.update(symbols)
+		elif direction is VOID_SET:
+			try: self.__void_sets.update(SET_PATTERNS[k.lower()] for k in symbols)
+			except KeyError: self.error_help.gripe_about(line, 10, "The only valid void_set patterns are %r"%(list(SET_PATTERNS)))
 		else: self.plain_cfg.assoc(direction, symbols)
 
 	def read_production_line(self, line:str, line_nr:int):
@@ -338,10 +352,10 @@ class EBNF_Definition:
 			assert isinstance(head, str)
 			if self.inferential_start is None: self.inferential_start = head
 			for R in rewrites:
-				R.install(self, head, {})
+				self.__schedule.append((head, R))
 		pass
 	
-	def validate(self):
+	def __validate(self):
 		unused_macros = sorted(name+' at line '+str(definition.rewrites[0].line_nr) for name, definition in self.macro_definitions.items() if not definition.actually_used)
 		if unused_macros: raise DefinitionError('The following macro(s) were defined but never used:\n\t'+'\n\t'.join(unused_macros))
 		if not self.inferential_start: raise DefinitionError("No production rules have been given, so how am I to compile a grammar? (You could give a trivial one...)")
@@ -352,12 +366,16 @@ class EBNF_Definition:
 	
 	def sugarless_form(self) -> context_free.ContextFreeGrammar:
 		if self.inferential_start: # In other words, if any rules were ever given...
+			for head,rewrite in self.__schedule:
+				rewrite.install(self, head, {})
+				
 			while self.must_elaborate:
 				(symbol, name, args) = self.must_elaborate.pop()
 				try: definition = self.macro_definitions[name]
 				except KeyError: raise DefinitionError("At line %d macro \"%s\" is called but never defined."%(self.implementations[symbol], name))
 				else: definition.elaborate(self, symbol, args)
-			self.validate()
+				
+			self.__validate()
 			return self.plain_cfg
 	
 	def internal_action(self, placeholder:str, capture:tuple, line_nr):
