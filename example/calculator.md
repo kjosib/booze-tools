@@ -51,8 +51,8 @@ express which places in the right-hand-side are significant to the
 parse-action functions.
 ```
 START -> E                :evaluate
-      | variable '=' E   :assign
-      | '?'                :help
+      | variable '=' E    :assign
+      | '?'               :help
 
 E -> '(' E ')'
   | E '+' E   :add
@@ -60,8 +60,8 @@ E -> '(' E ')'
   | E '*' E   :multiply
   | E '/' E   :divide
   | E '^' E   :power
-  | '-' E      :negate  %prec UMINUS
-  | variable    :lookup
+  | '-' E     :negate  %prec UMINUS
+  | variable  :lookup
   | number
 ```
 But lo, the users will make mistakes. Some error productions are a fabulous help.
