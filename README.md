@@ -1,16 +1,52 @@
 # What is this?
 
-At the moment, this is undirected exploration in the space of language recognition and translation.
-I'd like to try to discover the most ideal formulations of classic approaches.
+Parser/Scanner generator and run-time, all in Python. Plus various other handy btis and bobs.
+
+# Why is it cool?
+
+* Literate form: Definitions are embedded in MarkDown documents as code blocks.
+* Macros eliminate most of the tedium typical of a context-free grammar.
+* Productions are separate from action code, so you can see both the trees *and* the forest.
+* Grammar and Scanner in a single definition file.
+* JSON for tables means *in principle* other-language run-times should be straightforward.
+* Full LR(1) deterministic, and also generalized / non-deterministic modes supported.
+
+# Getting Started:
+
+## Install
+```
+D:\>  pip install booze-tools
+```
+
+## Learn
+Look in the [examples](https://github.com/kjosib/booze-tools/tree/master/example/)
+for documentation by example.
+
+* Gentle Introduction with `json.md` and `macro_json.py`.
+  These have the best introductory commentary to walk you through getting started.
+* For a complete working example, check out `calculator.md` and `calculator.py`.
+* Then check out the other examples as they interest you.
+
+Full documentation is moving from [the wiki page](https://github.com/kjosib/booze-tools/wiki)
+over to [ReadTheDocs](https://boozetools.readthedocs.io/en/latest/).
+But it's been a very slow process.
+
+## Run
+
+Translate a definition; generate `.automaton` file:
+```
+D:\> py -m boozetools my_grammar.md
+```
+Get a full run-down of the command-line options:
+```
+D:\> py -m boozetools -h
+```
 
 # What's New?
 
+* Certain files are re-organized for the 0.6.x series.
 * The project moves back to alpha stage for the time being.
-
-* Scanners stop being iterable. They find tokens and *maybe* dispatch actions. That is all.
-  *Edit: Iterable scanners remain an option for now.* 
-
-* The interface to parsing must become push-mode.
+* The 
 
 # What's Here?
 
@@ -47,24 +83,18 @@ respects precedence and associativity declarations in the usual way. It is stron
 by the IELR(1) algorithm, but it is NOT exactly that algorithm. As far as I can tell it is a
 new contribution. As such, I would appreciate feedback respecting your results with it.
 
-Full documentation is moving from [the wiki page](https://github.com/kjosib/booze-tools/wiki)
-over to [ReadTheDocs](https://boozetools.readthedocs.io/en/latest/).
-Worked examples may be found at [/example/](https://github.com/kjosib/booze-tools/tree/master/example/).
 
 # Priorities?
 * These operate within a Python environment.
 * They have some features not found in other such tools.
-* Performance is accordingly NOT a top priority, but:
+* Performance is accordingly not the top priority, but:
     * the profiler has been used to solve one or two problems,
     * if someone wants to play with the profiler they are welcome, and
     * contributions in that vein will be accepted as long as they are consistent with the higher priorities.
 
 # What Else?
-There are several complete worked example scanners and parsers in the `example` folder. Start with the JSON ones: they have the best introductory commentary to walk you through getting started.
 
 There are unit tests. They're not vast and imposing, but they exercise the interface both directly and via the example code.
-
-There is a wiki linked above. It has background and more detail about what this is and how to use it.
 
 # Oh by the way..
 I'm NOT a [crack-pot](https://github.com/kjosib/booze-tools/blob/master/docs/P%20vs%20NP.md). Really I'm not.
