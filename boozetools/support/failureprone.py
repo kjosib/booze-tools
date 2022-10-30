@@ -88,7 +88,7 @@ class Issue(NamedTuple):
 		:param: "fetch" must be a function which takes a key (from the evidence dictionary)
 		and returns a corresponding SourceText object.
 		"""
-		lines = ["%s %s: %s"%(self.phase, self.severity, self.description)]
+		lines = ["%s while %s: %s"%(self.severity.name, self.phase, self.description)]
 		for key, evidence in self.evidence.items():
 			source = fetch(key)
 			if source.filename:

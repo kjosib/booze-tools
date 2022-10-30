@@ -104,9 +104,11 @@ class AbstractTypical(ParseErrorListener):
 	
 	def unexpected_token(self, kind, semantic, pds):
 		self.source.complain(self.yy.slice(), message="Unexpected token %r" % kind)
-		stack_symbols = list(map(self.__hfa.get_breadcrumb, pds.path_from_root()))[1:]
 		self.exception = UnexpectedTokenError(kind, semantic, pds)
-		print("Parsing condition was:\n", stack_symbols, file=sys.stderr)
+		print("Parsing condition was:\n", self.stack_symbols(pds), file=sys.stderr)
+	
+	def stack_symbols(self, pds) -> list[str]:
+		return list(map(self.__hfa.get_breadcrumb, pds.path_from_root()))[1:]
 	
 	def unexpected_eof(self, pds):
 		self.unexpected_token(END_OF_TOKENS, None, pds)
