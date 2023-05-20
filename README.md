@@ -96,5 +96,11 @@ new contribution. As such, I would appreciate feedback respecting your results w
 
 There are unit tests. They're not vast and imposing, but they exercise the interface both directly and via the example code.
 
+# Bibliography:
+
+* https://dl.acm.org/doi/pdf/10.1145/1780.1802
+
+I'll add links as I track them down.
+
 # Oh by the way..
 I'm NOT a [crack-pot](https://github.com/kjosib/booze-tools/blob/master/docs/P%20vs%20NP.md). Really I'm not.
