@@ -348,24 +348,30 @@ class ParsingStyle:
 		""" Return nothing, or a list of splits for use in non-deterministic parsing algorithms. """
 		raise NotImplementedError(type(self))
 
-	def report(self, hfa):
+	def report(self, hfa, rules):
 		""" Give user-feedback about any observed challenges. """
 		raise NotImplementedError(type(self))
 
 class DeterministicStyle(ParsingStyle):
 	
 	def __init__(self, strict:bool):
-		self.conflicts = collections.defaultdict(list)
-		self.strict = strict
+		self._conflict_rules = {}
+		self._conflict_shift = set()
+		self._strict = strict
 	
 	def decide_inadequacy(self, q:int, look_ahead: str, shift: int, rule_ids: Iterable, rules:list) -> int:
-		self.conflicts[q, look_ahead].extend(rule_ids)
-		return shift or encode_reduce(min(rule_ids))
+		key = (q, look_ahead)
+		self._conflict_rules[key] = rule_ids
+		if shift:
+			self._conflict_shift.add(key)
+			return shift
+		else:
+			return encode_reduce(min(rule_ids))
 	
 	def any_splits(self):
 		pass
 	
-	def report(self, hfa):
+	def report(self, hfa, rules):
 		"""
 		This function was originally intended as a way to visualize the branches of a conflict.
 		In its original form a bunch of context was available; I've gratuitously stripped that away
@@ -381,15 +387,28 @@ class DeterministicStyle(ParsingStyle):
 		
 		In conclusion: Let the objects defined in automata.py format parse-states for human consumption.
 		"""
-		if not self.conflicts:
+		if not self._conflict_rules:
 			# print("Grammar specification is fully deterministic.")
 			pass
-		elif self.strict:
-			raise PurityError(self.conflicts)
+		elif self._strict:
+			raise PurityError(self._conflict_rules)
 		else:
-			print("Grammar specification contains conflicts.")
-			print("Conflict reporting is presently undergoing an overhaul, but here's some diagnostic data:")
-			pprint(self.conflicts)
+			print(("  "+pretty.DOT)*20)
+			print(
+				"Grammar entails %d shift/reduce conflicts and %d reduce/reduce conflicts."%
+				(len(self._conflict_shift), len(self._conflict_rules) - len(self._conflict_shift)),
+			)
+			bft = hfa.bft
+			for key, rule_ids in sorted(self._conflict_rules.items()):
+				print()
+				(q, look_ahead) = key
+				print(' '.join(bft.breadcrumbs[k] for k in bft.shortest_path_to(q)[1:]), pretty.DOT, look_ahead)
+				if key in self._conflict_shift:
+					print("<shift>")
+				for rule_id in rule_ids:
+					print("\t\t\t",rules[rule_id])
+			print()
+			print(("  "+pretty.DOT)*20)
 
 class GeneralizedStyle(ParsingStyle):
 	
@@ -406,7 +425,7 @@ class GeneralizedStyle(ParsingStyle):
 	def any_splits(self):
 		return self.splits
 	
-	def report(self, hfa):
+	def report(self, hfa, rules):
 		print(len(self.splits), "non-deterministic situation(s) encountered.")
 
 
@@ -453,7 +472,7 @@ def tabulate(hfa: HFA[LookAheadState], grammar:ContextFreeGrammar, *, style:Pars
 		action.append(action_row)
 	for q, t in nonassoc_errors: action[q][t] = 0
 	for q in hfa.accept: action[q][0] = q
-	style.report(hfa)
+	style.report(hfa, grammar.rules)
 	return DragonBookTable(
 		initial=dict(zip(grammar.start, hfa.initial)),
 		action=action,
