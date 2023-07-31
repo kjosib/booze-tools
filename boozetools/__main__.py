@@ -36,8 +36,9 @@ def main(args):
 		print('Target file already exists and --force command-line argument was not given.', file=sys.stderr)
 		exit(1)
 	with(open(args.source_path)) as fh:document = fh.read()
+	strict = not (args.pretty or args.csv or args.dot or args.dev)
 	try:
-		intermediate_form = compile_string(document)
+		intermediate_form = compile_string(document, strict)
 		if args.dot: intermediate_form.make_dot_file(target_path+'.dot')
 		textbook_form = intermediate_form.determinize()
 	except DefinitionError as e:

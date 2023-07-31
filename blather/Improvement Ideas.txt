@@ -1,0 +1,80 @@
+Parser generator improvement ideas:
+
+========================
+
+0. Both of the tricks below rely on:
+
+	A list of adequate LR(0) reduction states.
+	A reverse graph
+	A way to compare the error-function (ERF) of two states
+
+========================
+
+1. Deal with unit-reductions.
+
+Now suppose we have a unit-rule: It has length-one and no semantic action.
+
+For non-terminal productions:
+
+if:
+	GOTO[B, N] = Q
+	Q is adequate for A -> N
+	GOTO[B, A] = R
+	ERF(Q) = ERF(R)
+then:
+	for any symbol that shifts from B to Q,
+	whether via ACTION or GOTO:
+		replace the Q with R in the instruction
+
+For terminal productions:	
+
+if:
+	ACTION[B, t] = SHIFT Q
+	Q is adequate for A -> t
+	GOTO[B, A] = R
+	ERF(Q) = ERF(R)
+then:
+	set ACTION[B,t] := SHIFT R
+
+
+
+Actually, if we do this in topological order from root to leaves, then we need not loop.
+So it's useful to have 
+
+========================
+
+1. Implement combined shift-reduce.
+
+
+
+Consider a state Q, reached by way of a terminal-shift,
+and from which the only non-error ACTION is to reduce by rule X.
+That step populates the follow-set of that state. Call this set RED(Q).
+
+Every state has a shift at the FIRST-set of its GOTO symbols.
+So the only possible GOTO from Q is if Q reduces an epsilon-rule.
+
+Take the length of the rule. Look that many steps back in the parse stack.
+Call this state B. B is guaranteed have a GOTO for the head of rule X.
+
+	That's somewhat glib. It's fine if B is unique.
+	But recall that the LR(0) graph may contain cycles or confluences.
+	A reverse-graph of the SHIFT and GOTO (taken together) yields a robust solution:
+	Search on this graph to find a set of possible B states.
+
+Follow that GOTO to the "after" state R.
+
+Q != R because their equality would mean an infinity of epsilon reductions,
+which is not allowed. (There's a validation step earlier in the system.)
+
+Certainly no terminal in RED(Q) can be an error in R.
+Suppose that state R had actions for terminals other than those in RED(Q).
+In that case, state Q would be necessary for correct error checking.
+But if states Q and R have the identical error-function,
+then any shift into Q may be replaced by a shift-reduce following rule X.
+
+	Once again, to clarify: The requirement for equivalent error-function
+	must be true of ALL candidate R states (i.e. GOTO from candidate B states)
+	for this transform to be valid.
+
+Some set of 

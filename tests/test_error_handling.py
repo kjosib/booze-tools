@@ -19,7 +19,7 @@ exp -> word
 .  :other
 ```
 """
-TEXTBOOK_FORM = compile_string(SAMPLE_GRAMMAR).determinize()
+TEXTBOOK_FORM = compile_string(SAMPLE_GRAMMAR, True).determinize()
 # TEXTBOOK_FORM.pretty_print()  # Uncomment when confused...
 COMPACT_FORM = TEXTBOOK_FORM.as_compact_form(filename=None)
 

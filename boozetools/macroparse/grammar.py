@@ -23,6 +23,7 @@ from ..parsing.all_methods import PARSE_TABLE_METHODS
 from ..support.failureprone import illustration
 
 NONDET = object()
+NONSTRICT = object()
 METHOD = object()
 VOID = object()
 VOID_SET = object()
@@ -214,6 +215,7 @@ METAGRAMMAR.rule('symbol', 'name ( ' + list_of('actual_parameter', ',') + ' )')(
 NAMES = one_or_more('name')
 METAGRAMMAR.rule('precedence', 'associativity '+one_or_more('terminal'))(None)
 METAGRAMMAR.rule('precedence', 'pragma_nondeterministic')(lambda : (NONDET, ()))
+METAGRAMMAR.rule('precedence', 'pragma_nonstrict')(lambda : (NONSTRICT, ()))
 @METAGRAMMAR.rule('precedence', 'pragma_method name')
 def parse_method(_, method):
 	try:
@@ -297,7 +299,7 @@ class MacroDefinition:
 # These are a pass-through into the ContextFreeGrammar and eventually the parse tables themselves.
 
 class EBNF_Definition:
-	def __init__(self, error_help:ErrorHelper):
+	def __init__(self, error_help:ErrorHelper, strict:bool):
 		self.plain_cfg = context_free.ContextFreeGrammar()
 		self.current_head = None # This bit of state facilitates the feature of beginning a line with an alternation symbol.
 		self.inferential_start = None # Use this to infer a start symbol if necessary.
@@ -306,6 +308,7 @@ class EBNF_Definition:
 		self.must_elaborate = []
 		self.error_help = error_help
 		self.is_nondeterministic = False
+		self.is_strict = strict
 		self.__void_symbols = set()
 		self.__void_sets = {self.__void_symbols.__contains__}
 		self.method = PARSE_TABLE_METHODS["LR1"]
@@ -319,6 +322,7 @@ class EBNF_Definition:
 		if direction is NONDET:
 			self.is_nondeterministic = True
 			self.method = PARSE_TABLE_METHODS["LALR"]
+		elif direction is NONSTRICT: self.is_strict = False
 		elif direction is METHOD: self.method = symbols
 		elif direction is VOID: self.__void_symbols.update(symbols)
 		elif direction is VOID_SET:

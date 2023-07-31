@@ -17,7 +17,6 @@ from typing import NamedTuple, List
 from ..support import foundation, failureprone
 from ..parsing.context_free import ContextFreeGrammar
 from ..parsing.automata import DragonBookTable, ParsingStyle, GeneralizedStyle, DeterministicStyle, HFA, tabulate
-from ..parsing.all_methods import PARSE_TABLE_METHODS
 from ..scanning import finite, regular, charset
 from ..scanning.interface import INITIAL
 from . import grammar, compaction
@@ -82,18 +81,19 @@ class IntermediateForm(NamedTuple):
 	parse_style:ParsingStyle
 	def determinize(self) -> TextBookForm:
 		dfa = self.nfa.subset_construction().minimize_states().minimize_alphabet() if self.nfa.states else None
-		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=tabulate(self.hfa, self.cfg, style=self.parse_style))
+		parse_table = tabulate(self.hfa, self.cfg, style=self.parse_style)
+		return TextBookForm(dfa=dfa, scan_actions=self.scan_actions, parse_table=parse_table)
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
-def compile_string(document:str) -> IntermediateForm:
+def compile_string(document:str, strict:bool) -> IntermediateForm:
 	text = failureprone.SourceText(document)
-	return _compile_text(text)
+	return _compile_text(text, strict)
 
-def compile_file(pathname, *, verbose=False) -> dict:
+def compile_file(pathname, *, verbose=False, strict=True) -> dict:
 	with(open(pathname)) as fh:
 		text = failureprone.SourceText(fh.read(), filename=pathname)
-	intermediate_form = _compile_text(text)
+	intermediate_form = _compile_text(text, strict)
 	textbook_form = intermediate_form.determinize()
 	if verbose:
 		print("\n  -- ", pathname, " --")
@@ -104,7 +104,7 @@ STRERROR = {
 	regular.VariableTrailingContextError: "Variable size for both stem and trailing context is not currently supported.",
 }
 
-def _compile_text(document:failureprone.SourceText) -> IntermediateForm:
+def _compile_text(document:failureprone.SourceText, strict:bool) -> IntermediateForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
@@ -202,7 +202,7 @@ def _compile_text(document:failureprone.SourceText) -> IntermediateForm:
 
 	# The context-free portion of the definition:
 	error_help = grammar.ErrorHelper(document.filename)
-	ebnf = grammar.EBNF_Definition(error_help)
+	ebnf = grammar.EBNF_Definition(error_help, strict)
 	
 	# The regular (finite-state) portion of the definition:
 	env = charset.mode_normal.new_child(document.filename or "text")
@@ -247,7 +247,7 @@ def _compile_text(document:failureprone.SourceText) -> IntermediateForm:
 	if condition_definitions: tie_conditions()
 	cfg = ebnf.sugarless_form()
 	hfa = ebnf.method(cfg)
-	style = GeneralizedStyle(len(hfa.graph)) if ebnf.is_nondeterministic else DeterministicStyle(False)
+	style = GeneralizedStyle(len(hfa.graph)) if ebnf.is_nondeterministic else DeterministicStyle(ebnf.is_strict)
 	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=hfa, cfg=cfg, parse_style=style,)
 
 def encode_parse_rules(rules:list, constructors:list, origins:list) -> dict:

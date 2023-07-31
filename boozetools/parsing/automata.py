@@ -390,8 +390,6 @@ class DeterministicStyle(ParsingStyle):
 		if not self._conflict_rules:
 			# print("Grammar specification is fully deterministic.")
 			pass
-		elif self._strict:
-			raise PurityError(self._conflict_rules)
 		else:
 			print(("  "+pretty.DOT)*20)
 			print(
@@ -409,6 +407,8 @@ class DeterministicStyle(ParsingStyle):
 					print("\t\t\t",rules[rule_id])
 			print()
 			print(("  "+pretty.DOT)*20)
+			if self._strict:
+				raise PurityError(self._conflict_rules)
 
 class GeneralizedStyle(ParsingStyle):
 	
@@ -452,13 +452,12 @@ def tabulate(hfa: HFA[LookAheadState], grammar:ContextFreeGrammar, *, style:Pars
 	terminals = [END_OF_TOKENS] + sorted(grammar.apparent_terminals())
 	translate = {t:i for i,t in enumerate(terminals)}
 	nonterminals = sorted(grammar.symbol_rule_ids.keys())
+	
 	##### Tabulate the states into dense matrices ACTION and GOTO:
 	action, goto, nonassoc_errors = [], [], set()
-	conflict = collections.defaultdict(set)
 	for q, state in enumerate(hfa.graph):
 		goto.append([state.shift.get(s, 0) for s in nonterminals])
 		action_row = [state.shift.get(s, 0) for s in terminals]
-		conflict.clear()
 		for symbol, rule_ids in state.reduce.items():
 			idx = translate[symbol]
 			shift = action_row[idx]
@@ -470,6 +469,7 @@ def tabulate(hfa: HFA[LookAheadState], grammar:ContextFreeGrammar, *, style:Pars
 				action_row[idx] = encode_reduce(rule_ids[0])
 			else: action_row[idx] = style.decide_inadequacy(q, symbol, shift, rule_ids, grammar.rules)
 		action.append(action_row)
+	
 	for q, t in nonassoc_errors: action[q][t] = 0
 	for q in hfa.accept: action[q][0] = q
 	style.report(hfa, grammar.rules)
