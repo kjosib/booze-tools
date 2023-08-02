@@ -78,11 +78,18 @@ For now there are four major components. Eventually there will be more. These ar
     * Breadth First Traversal
     * Various small array hacks
 
-The "minimal-LR(1)" algorithm used here is -- I believe -- provably minimal, even while it
-respects precedence and associativity declarations in the usual way. It is strongly inspired
-by the IELR(1) algorithm, but it is NOT exactly that algorithm. As far as I can tell it is a
-new contribution. As such, I would appreciate feedback respecting your results with it.
+The "minimal-LR(1)" algorithm used here is meant to create a *constructively minimal* number of
+parser states while respecting precedence and associativity declarations in the usual way.
+That means it can split states but does not (yet) attempt to merge them again afterwards.
+It is strongly inspired by the IELR(1) algorithm, but it is NOT exactly that algorithm.
+As far as I can tell it is a new contribution.
+As such, I would appreciate feedback respecting your results with it.
 
+* Caveat: See the status of issue 45 before using that mode.
+  Someone found a bug that sometimes yields LALR-like behavior.
+  I think the idea is probably sound but the execution is flawed.
+  Meanwhile, `%method CLR` in the *precedence* section will yield a full Knuth-style LR(1) table
+  which is guaranteed to be correct, even if probably larger than necessary.
 
 # Priorities?
 * These operate within a Python environment.
