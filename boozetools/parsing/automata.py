@@ -125,6 +125,12 @@ class HFA(Generic[T]):
 				alive.append(reduce(stack, rule_id))
 		raise ParseError("Parser recognized a viable prefix, but not a complete sentence.")
 
+	def has_shift_reduce_conflict(self):
+		return any(state.has_shift_reduce_conflict() for state in self.graph)
+
+	def has_reduce_reduce_conflict(self):
+		return any(state.has_reduce_reduce_conflict() for state in self.graph)
+
 
 class LR0_State(NamedTuple):
 	"""
@@ -139,6 +145,12 @@ class LR0_State(NamedTuple):
 		""" Did I mention LR(0) doesn't worry about look-ahead? """
 		return self.reduce
 
+	def has_shift_reduce_conflict(self):
+		return bool(self.shift and self.reduce)
+	
+	def has_reduce_reduce_conflict(self):
+		return len(self.reduce)>1
+
 
 class LookAheadState(NamedTuple):
 	"""
@@ -152,7 +164,11 @@ class LookAheadState(NamedTuple):
 	def reductions_before(self, lexeme):
 		return self.reduce.get(lexeme, ())
 
-
+	def has_shift_reduce_conflict(self):
+		return bool(self.shift.keys() & self.reduce.keys())
+	
+	def has_reduce_reduce_conflict(self):
+		return any(len(r)>1 for r in self.reduce.values())
 
 def reachable(step: dict, reduce: dict, grammar:ContextFreeGrammar) -> dict:
 	"""

@@ -27,8 +27,7 @@ class MyTestCase(unittest.TestCase):
 	
 	def test_lalr_is_quite_lalr(self):
 		hfa = lalr_construction(lalr_complete())
-		for q, state in enumerate(hfa.graph):
-			assert not (state.shift.keys() & state.reduce.keys()), q
+		assert not hfa.has_shift_reduce_conflict()
 
 
 if __name__ == '__main__':
