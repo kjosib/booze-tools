@@ -36,9 +36,27 @@ def harder_case() -> ContextFreeGrammar:
 	cfg.validate()
 	return cfg
 
+def related_case() -> ContextFreeGrammar:
+	""" Slightly modified version of the grammar from issue #45 with no unit-rules """
+	cfg = ContextFreeGrammar()
+	cfg.start.append("S")
+	for lhs, rhs in [
+		("S", "a X a"),
+		("S", "b X b"),
+		("S", "a Y b"),
+		("S", "b Y a"),
+		("X", "c XP"),
+		("Y", "c YP"),
+		("XP", "d e"),
+		("YP", "d e"),
+	]: cfg.add_rule(Rule(lhs, tuple(rhs.split()), None, 0, None))
+	cfg.validate()
+	return cfg
+
 CASES = [
 	("simpler_case", simpler_case()),
 	("harder_case", harder_case()),
+	("related_case", related_case()),
 ]
 
 class MyTestCase(unittest.TestCase):
@@ -49,13 +67,13 @@ class MyTestCase(unittest.TestCase):
 				assert not hfa.has_shift_reduce_conflict()
 				assert outcome == hfa.has_reduce_reduce_conflict()
 
-	def test_lalr_gets_both_wrong(self):
+	def test_lalr_gets_them_wrong(self):
 		self._attempt(lalr_construction, True)
 
-	def test_canonical_lr1_gets_both_right(self):
+	def test_canonical_lr1_gets_them_right(self):
 		self._attempt(canonical_lr1, False)
 
-	def test_minimal_lr1_gets_both_right(self):
+	def test_minimal_lr1_gets_them_right(self):
 		self._attempt(minimal_lr1, False)
 
 if __name__ == '__main__':
