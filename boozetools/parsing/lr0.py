@@ -63,6 +63,8 @@ def lr0_construction(pim:ParseItemMap) -> HFA[LR0_State]:
 	a compact table generated very quickly, but with somewhat limited power.
 	In practical systems, LR(0) is normally just a first step, but some few
 	grammars are deterministic in LR(0).
+	
+	Note that the core-item sets may be found at hfa.bft.traversal.
 	"""
 	
 	def build_state(core_item_set: frozenset):
