@@ -16,7 +16,7 @@ and illustrates one method to perform a parallel-parse, but it does not bother t
 parse tree or semantic value. Such things could be added, but preferably atop good means
 for persisting ambiguous parse tables.
 """
-import collections, sys
+import sys
 from pprint import pprint
 from typing import Iterable, TypeVar, Generic, Any
 from typing import NamedTuple
@@ -108,29 +108,30 @@ class HFA(Generic[T]):
 			for i in range(len(rule.rhs)): stack = stack[1]
 			return self.graph[stack[0]].shift[rule.lhs], stack
 		
-		root = (initial, None)
-		alive = [root]
-		for lexeme in sentence:
-			next = []
+		def lock_step_parallel():
+			root = (initial, None)
+			alive = [root]
+			for lexeme in sentence:
+				subsequent = []
+				for stack in alive:
+					state = self.graph[stack[0]]
+					if lexeme in state.shift: subsequent.append((state.shift[lexeme], stack))
+					for rule_id in state.reductions_before(lexeme): alive.append(reduce(stack, rule_id))
+				alive = subsequent
+				if not alive: raise ParseError("Parser died midway at something ungrammatical.")
 			for stack in alive:
-				state = self.graph[stack[0]]
-				if lexeme in state.shift: next.append((state.shift[lexeme], stack))
-				for rule_id in state.reductions_before(lexeme): alive.append(reduce(stack, rule_id))
-			alive = next
-			if not alive: raise ParseError("Parser died midway at something ungrammatical.")
-		for stack in alive:
-			q = stack[0]
-			if q == accept: return True
-			for rule_id in self.graph[q].reductions_before(END_OF_TOKENS):
-				alive.append(reduce(stack, rule_id))
-		raise ParseError("Parser recognized a viable prefix, but not a complete sentence.")
+				q = stack[0]
+				if q == accept: return True
+				for rule_id in self.graph[q].reductions_before(END_OF_TOKENS):
+					alive.append(reduce(stack, rule_id))
+			raise ParseError("Parser recognized a viable prefix, but not a complete sentence.")
+		return lock_step_parallel()
 
 	def has_shift_reduce_conflict(self):
 		return any(state.has_shift_reduce_conflict() for state in self.graph)
 
 	def has_reduce_reduce_conflict(self):
 		return any(state.has_reduce_reduce_conflict() for state in self.graph)
-
 
 class LR0_State(NamedTuple):
 	"""
@@ -150,6 +151,9 @@ class LR0_State(NamedTuple):
 	
 	def has_reduce_reduce_conflict(self):
 		return len(self.reduce)>1
+	
+	def has_conflict(self):
+		return self.has_shift_reduce_conflict() or self.has_reduce_reduce_conflict()
 
 
 class LookAheadState(NamedTuple):
@@ -169,7 +173,10 @@ class LookAheadState(NamedTuple):
 	
 	def has_reduce_reduce_conflict(self):
 		return any(len(r)>1 for r in self.reduce.values())
-
+	
+	def has_conflict(self):
+		return self.has_shift_reduce_conflict() or self.has_reduce_reduce_conflict()
+	
 def reachable(step: dict, reduce: dict, grammar:ContextFreeGrammar) -> dict:
 	"""
 	This function exists so that parse-table construction algorithms can respect operator
@@ -300,12 +307,13 @@ class DragonBookTable(HandleFindingAutomaton):
 	def get_breadcrumb(self, state_id) -> str: return self.breadcrumbs[state_id]
 	
 	def display(self):
+		mask = lambda xs:[x or "" for x in xs]
 		size = len(self.action_matrix)
 		print('Action and Goto: (%d states)' % size)
 		head = ['', ''] + self.terminals + [''] + self.nonterminals
 		body = []
 		for i, (b, a, g) in enumerate(zip(self.breadcrumbs, self.action_matrix, self.goto_matrix)):
-			body.append([i, b, *a, '', *g])
+			body.append([i, b, *mask(a), '', *mask(g)])
 		pretty.print_grid([head] + body)
 		if self.splits:
 			print("Splits:")
