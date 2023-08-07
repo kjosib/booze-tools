@@ -8,5 +8,5 @@ YP -> c
 ```
 ### Precedence
 ```
-%method CLR	
+%method LR1
 ```

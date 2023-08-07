@@ -169,8 +169,8 @@ class TestPalindrome(unittest.TestCase):
 class TestHiddenRecursion(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.automaton = compile_example('nondeterministic/hidden_recursion')
-		cls.hfa = expansion.CompactHFA(cls.automaton['parser'])
+		automaton = compile_example('nondeterministic/hidden_recursion')
+		cls.hfa = expansion.CompactHFA(automaton['parser'])
 	
 	
 	def test_gss_hidden_right(self):

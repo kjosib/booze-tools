@@ -3,12 +3,19 @@ Of all the LR-style parsing methods, LR(0) is the least sophisticated and the ea
 It's also the functional foundation for all the rest, so it makes sense to start reading here.
 """
 
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 from collections import defaultdict
 
 from ..support.foundation import transitive_closure, BreadthFirstTraversal
 from .context_free import ContextFreeGrammar
 from .automata import HFA, LR0_State
+
+class ParseItem(NamedTuple):
+	""" It's quite handy to be able to work symbolically with parse-items. """
+	
+	next_symbol : Optional[str]  # None means end-of-rule.
+	rule_id : Optional[int]  # None means it's a pseudo-rule for the augmented grammar
+	offset : int
 
 class ParseItemMap(NamedTuple):
 	"""
@@ -24,31 +31,30 @@ class ParseItemMap(NamedTuple):
 	This structure is an interesting representation of all the rules in a context-free grammar.
 	With it, the fact that parse-items are also just numbers is ALMOST completely hidden.
 	"""
-	symbol_at : list[str]
-	rule_found : dict[int, int]
+	parse_items : list[ParseItem]
 	symbol_front : dict[str: list[int]]
 	language_front : list[int]
-	nr_rules : int
 	
 	@staticmethod
 	def from_grammar(grammar: ContextFreeGrammar):
-		
-		symbol_at, rule_found, language_front = [], {}, []
-		symbol_front = {N: [] for N in grammar.symbol_rule_ids}
+		parse_item = []
+		language_front = []
+		symbol_front = {nonterminal: [] for nonterminal in grammar.symbol_rule_ids}
 		
 		def plonk(where, rhs):
-			where.append(len(symbol_at))
-			symbol_at.extend(rhs)
-			rule_found[len(symbol_at)] = len(rule_found)
-			symbol_at.append(None)
+			where.append(len(parse_item))
+			for offset, symbol in enumerate(rhs):
+				parse_item.append(ParseItem(symbol, rule_id, offset))
+			parse_item.append(ParseItem(None, rule_id, len(rhs)))
 		
-		for rule in grammar.rules:
+		for rule_id, rule in enumerate(grammar.rules):
 			plonk(symbol_front[rule.lhs], rule.rhs)
 		
-		for symbol in grammar.start:
-			plonk(language_front, [symbol])
+		rule_id = None
+		for language in grammar.start:
+			plonk(language_front, [language])
 		
-		return ParseItemMap(symbol_at, rule_found, symbol_front, language_front, len(grammar.rules))
+		return ParseItemMap(parse_item, symbol_front, language_front)
 
 
 def lr0_construction(pim:ParseItemMap) -> HFA[LR0_State]:
@@ -68,31 +74,30 @@ def lr0_construction(pim:ParseItemMap) -> HFA[LR0_State]:
 	"""
 	
 	def build_state(core_item_set: frozenset):
-		def visit_parse_item(item):
-			next_symbol = symbol_at[item]
-			if next_symbol is None:
-				rule_id = rule_found[item]
-				if rule_id < nr_rules:
-					reduce.append(rule_id)
+		def visit_parse_item(i):
+			pi = parse_items[i]
+			if pi.next_symbol is None:
+				if pi.rule_id is not None:
+					reduce.append(pi.rule_id)
 			else:
-				shifted_cores[next_symbol].append(item + 1)
-				return symbol_front.get(next_symbol)
+				shifted_cores[pi.next_symbol].append(i + 1)
+				return symbol_front.get(pi.next_symbol)
 		
 		shifted_cores, reduce = defaultdict(list), []
-		transitive_closure(core_item_set, visit_parse_item)
+		closure = transitive_closure(core_item_set, visit_parse_item)
 		
 		shift = {
 			symbol: bft.lookup(frozenset(item_set), breadcrumb=symbol)
 			for symbol, item_set in shifted_cores.items()
 		}
-		graph.append(LR0_State(shift=shift, reduce=reduce))
+		graph.append(LR0_State(shift=shift, reduce=reduce, closure=closure))
 
-	symbol_at, rule_found, symbol_front, language_front, nr_rules = pim
+	parse_items, symbol_front, language_front = pim
 	
 	bft = BreadthFirstTraversal()
-	initial = [bft.lookup(frozenset([item])) for item in language_front]
+	initial = [bft.lookup(frozenset([item_index])) for item_index in language_front]
 	graph = []
 	bft.execute(build_state)
-	accept = [graph[qi].shift[symbol_at[item]] for item, qi in zip(language_front, initial)]
+	accept = [graph[qi].shift[parse_items[i].next_symbol] for i, qi in zip(language_front, initial)]
 	return HFA(graph=graph, initial=initial, accept=accept, bft=bft)
 

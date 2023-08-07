@@ -28,7 +28,6 @@ Bibliography:
 ================================================================================
 """
 
-from typing import NamedTuple
 from ..support.foundation import allocate, strongly_connected_components_by_tarjan
 from .interface import END_OF_TOKENS
 from .context_free import ContextFreeGrammar
@@ -108,10 +107,10 @@ def find_lalr_sets(lr0:HFA[LR0_State], grammar:ContextFreeGrammar) -> tuple[list
 	terminals = grammar.apparent_terminals()
 	
 	# Prepare to find first-sets:
-	epsilon = grammar.find_epsilon()
+	nullable = grammar.find_nullable()
 	terminal_sets = [terminals.intersection(node.shift) for node in graph]
 	for q in lr0.accept:terminal_sets[q].add(END_OF_TOKENS)
-	inbound = [[dst for symbol, dst in node.shift.items() if symbol in epsilon] for node in graph]
+	inbound = [[dst for symbol, dst in node.shift.items() if symbol in nullable] for node in graph]
 	
 	# Now do something about follow-sets and reduce-sets.
 	
@@ -132,7 +131,7 @@ def find_lalr_sets(lr0:HFA[LR0_State], grammar:ContextFreeGrammar) -> tuple[list
 				inbound.append([q_dst])
 	
 	# And, there is some kind of inclusion relation between them.
-	prefix, suffix = prepare_rule_affixes(grammar.rules, epsilon, nonterminals)
+	prefix, suffix = prepare_rule_affixes(grammar.rules, nullable, nonterminals)
 	for (q_src, lhs), src_fs_id in follow_set_id.items():
 		for rule_id in grammar.symbol_rule_ids[lhs]:
 			# A prefix of the RHS symbols does not "see" this follow-set:

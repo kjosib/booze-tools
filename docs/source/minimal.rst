@@ -19,6 +19,18 @@ Then in 2010 someone published the IELR(1) algorithm, which made it practical to
 augmented with the same precedence and associativity declarations.
 There's only one problem: IELR is downright painful to try to understand.
 
+What "Minimal" even means
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Smallest feasible number of states consistent with reasonable generator performance.
+
+I seem to recall reading somewhere that optimizing LR parse tables is hard,
+in the sense that it's difficult to prove there's not some alternative table
+with fewer states that recognizes the same language.
+
+Therefore, we shall have to be content with an argument that,
+if such a thing does indeed exist, then it is infeasible to find.
+
 My General Concept
 ~~~~~~~~~~~~~~~~~~~
 
@@ -52,8 +64,6 @@ It has the following LR(0) automaton:
 .. note::
     Booze-Tools does not currently support symbols named like ``X'`` or ``Y'`` but this
     is how the example came to me, graphics and all. So this is what I'll run with.
-
-Have a look at state 13: 
 
 A Tainted Approach
 ~~~~~~~~~~~~~~~~~~~~
@@ -263,6 +273,20 @@ Then we can trivially "shift" an entire set of parse-items in one constant-time 
 I'm assuming you can pass sets around by reference, and that sets have a pre-calculated hashcode
 rather than re-computing it every time. (If not, then intern the distinct sets.)
 
+Renaming Rules
+-----------------
+
+Rules of the form ``A -> B`` merit special consideration.
+In principle you can treat them the same as any other rule,
+but they do contribute space and time to a parser in that case.
+If there is no associated semantic action, then it is usually
+possible to rejigger the parse table to bypass some pointless work.
+In the process, corresponding parts of the table become unreachable.
+
+Details of this particular optimization are elsewhere.
+However, it's separate issue from the minimal-LR(1) algorithm.
+You can apply it regardless of table-generation method.
+
 Tying Up Loose Ends
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -274,15 +298,17 @@ CLAIM:
     necessary and sufficient to make this monstrosity work.
 
 Trivially, you could taint everything and you'd get canonical LR(1).
-Somewhere there's a line. I'm willing to take "necessary" on faith for now,
-because a miss here still yield a correct parse table, even if a big one.
-The "sufficient" part is rather more challenging. I'd need to prove
-rather that the untainted items have some reason why it's fine.
+Somewhere there's a line. I'll take "necessary" on faith for a couple paragraphs,
+because a miss there still yields a correct parse table, even if a larger one.
+The "sufficient" part is more interesting.
+I approach the proof by proving the converse:
+untainted items have some valid reason why they're fine.
 
 I clarify this below, but mainly:
 
-1. If a parse-item's end-state is adequate, there are no problems.
+1. If a parse-item's end-state is LR(0)-adequate, there are no problems.
 2. If a parse-item's end-state is not adequate, then its head-item is created with proper relevant look-ahead tokens.
+3. If the head-item has a set of look-ahead tokens, these carry through to the item's LR(1) end-state.
 
 
 CLAIM:
@@ -320,4 +346,69 @@ And now the look-ahead is sort of a circular buffer that you alternately examine
 We don't want giant enormous wide parse tables just because there are ``n^k`` possible k-token look-aheads.
 Most likely you'd do a prefix tree.
 
+An Actual Algorithm
+~~~~~~~~~~~~~~~~~~~~~
 
+The algorithm overall has three high-level phases:
+
+1. Compute the LR(0) graph, and also keep the item-sets (both core and closure) for each LR(0) state.
+2. Perform the tainting step.
+3. Build the final automaton using the careful mix of LR(0) and LR(1) items as explained.
+
+That tainting step in the middle is a bit tricky.
+So I propose a multi-step process for it:
+
+a. Associate each LR(0) state with each of its predecessors, thus to save a lot of time later.
+b. Starting from the reducing parse-items in each LR(0)-inadequate state, propagate the taint.
+c. Treat the propagation step as a transitive-closure problem.
+
+It will be handy to have a quick way to tell which rule (or its left-hand side) is associated
+with any given parse-item, and the offset from a parse-item to the beginning of its rule.
+
+For any further detail than this, see the actual code.
+
+Results and Next Steps
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+I have implemented the algorithm above instrumented my parser generator to compare the size of
+parse tables generated with LALR, Canonical LR(1), and this "Minimal" LR(1).
+Current results are that this algorithm produces *significantly* fewer states than Canonical,
+but often a good number more than LALR even for grammars that are LALR-compatible::
+
+    Decaf:
+        Canonical: 550 States
+        This Thing: 360 States
+        LALR: 197 States
+    
+    Pascal:
+        Canonical: 1485 States
+        This Thing: 702 States
+        LALR: 275 States
+
+I see two major approaches to improving on these results.
+Both try to be more precise about where canonical parse items are necessary.
+
+Propagate follow-sets more precisely.
+    Right now if a head parse-item is tainted, effectively its entire body is tainted.
+    But the *taint contagion* thing can afflict a parse-item in its middle,
+    which perhaps might mean carrying follow-sets into portions of the automaton
+    where it is not strictly needed.
+
+    There is a one-off hack specific to LR(0)-adequate reducing states,
+    but some of their predecessors might be splitting needlessly in the present scheme.
+
+Taint fewer items: Perhaps only those where LALR shows a potential conflict.
+    Presently any LR(0) parse conflict results in a taint.
+    If there is no LALR conflict on any particular token,
+    then such a state need not be considered tainted.
+    The difference is how the parser behaves in the event of error.
+
+    A LALR table table can sometimes reduce a few rules before discovering that it
+    really cannot shift the next token after all. In other words, it lacks the
+    property of detecting errors *immediately.* This may not be that big a deal,
+    but it's something to think about if you want to handle errors nicely.
+
+Finally, there are techniques like unit-rule elimination and shift-reduce instructions.
+These optimizations can apply regardless of how you construct your table,
+so I don't consider them specially in this document.
+They have *not* been applied in the statistics above.

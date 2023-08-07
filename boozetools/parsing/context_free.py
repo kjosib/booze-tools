@@ -80,8 +80,8 @@ class FaultHandler(Protocol):
 	def rule_produces_bogon(self, rule, symbol):
 		raise Fault("Rule at %r produces bogus terminal(s) %r." % (rule.provenance, symbol))
 	
-	def epsilon_right_recursion(self, rule):
-		raise Fault("Rule at %r produces epsilon right-recursion."%rule.provenance)
+	def nullable_right_recursion(self, rule):
+		raise Fault("Rule at %r produces nullable right-recursion."%rule.provenance)
 	
 	def nonterminal_given_precedence(self, symbol):
 		raise Fault("Nonterminal %r included in precedence declaration."%symbol)
@@ -109,9 +109,9 @@ class FaultHandler(Protocol):
 		# FIXME: convey the locations of the problematic rules?
 		raise Fault("Symbols %r may be replaced by one another in a mutually-recursive loop."%symbols)
 
-	def epsilon_mutual_recursion(self, symbols):
+	def mutual_nullable_recursion(self, symbols):
 		# FIXME: convey the locations of the problematic rules?
-		raise Fault("Symbols %r form a mutually-recursive epsilon loop."%symbols)
+		raise Fault("Symbols %r form a mutually-recursive nullable loop."%symbols)
 
 class SimpleFaultHandler(FaultHandler):
 	""" Protocols cannot be instantiated, so here's a simple way to get "raise for everything" behavior. """
@@ -314,9 +314,9 @@ class ContextFreeGrammar:
 		# FIXME: This could be a pluggable strategy, and MAY be misplaced. Validation and table generation need to know.
 		return self.symbols - self.symbol_rule_ids.keys()
 	
-	def bipartite_closure(self, root_symbols) -> set:
+	def _bipartite_closure(self, root_symbols) -> set:
 		"""
-		The algorithm to find epsilon symbols and well-founded symbols is basically the same,
+		The algorithm to find nullable symbols and well-founded symbols is basically the same,
 		with different initial conditions. It's a bipartite propagation, alternating between
 		disjuncts (symbols) and conjuncts (rules). By factoring this out and focusing on the
 		graph structure of the problem (and also getting some sleep) a decent solution arose.
@@ -334,9 +334,9 @@ class ContextFreeGrammar:
 		remain = [len(rule.rhs) for rule in self.rules]
 		return foundation.transitive_closure(root_symbols, successors)
 	
-	def find_epsilon(self) -> set:
+	def find_nullable(self) -> set:
 		""" Which symbols may produce the empty string? """
-		return self.bipartite_closure(rule.lhs for rule in self.rules if not rule.rhs)
+		return self._bipartite_closure(rule.lhs for rule in self.rules if not rule.rhs)
 	
 	def find_first(self):
 		"""
@@ -345,8 +345,8 @@ class ContextFreeGrammar:
 		what terminal symbols could it possibly start with?
 		
 		The FIRST set of a nonterminal is the union of the FIRST sets of each right-hand side.
-		Without epsilon symbols, the FIRST set of a right-hand side is that of its first symbol.
-		With them, you need to include all symbols up to the first non-epsilon symbol.
+		Without nullable symbols, the FIRST set of a right-hand side is that of its first symbol.
+		With them, you need to include all symbols up to the first non-nullable symbol.
 		
 		Anyway, this is a job for a strongly_connected_components,
 		in part because it also produces a topological sort which
@@ -355,11 +355,11 @@ class ContextFreeGrammar:
 		
 		# Structure the problem as a graph, called ``first``
 		first = collections.defaultdict(set)
-		epsilon = self.find_epsilon()
+		nullable = self.find_nullable()
 		for rule in self.rules:
 			for symbol in rule.rhs:
 				first[rule.lhs].add(symbol)
-				if symbol not in epsilon: break
+				if symbol not in nullable: break
 		
 		# Gather up the answer in topological order:
 		for component in foundation.strongly_connected_components_hashable(first):
@@ -380,14 +380,14 @@ class ContextFreeGrammar:
 			S -> x S   -- This is ill-founded because there's always one more S.
 			A -> B y;  B -> A x     -- Similar, but with mutual recursion.
 
-		A terminal symbol is well-founded. So is an epsilon symbol, since zero is finite.
+		A terminal symbol is well-founded. So is a nullable symbol, since zero is finite.
 		A rule with only well-founded symbols in the right-hand side is well-founded.
 		A non-terminal symbol with at least one well-founded rule is well-founded.
 		Induction applies. That induction happens to be called ``bipartite_closure``.
 
 		A grammar with only well-founded symbols is well-founded.
 		"""
-		well_founded = self.bipartite_closure(self.apparent_terminals() | self.find_epsilon())
+		well_founded = self._bipartite_closure(self.apparent_terminals() | self.find_nullable())
 		ill_founded = self.symbol_rule_ids.keys() - well_founded
 		if ill_founded:
 			fault_handler.ill_founded_symbols(ill_founded)
@@ -415,21 +415,21 @@ class ContextFreeGrammar:
 		for component in foundation.strongly_connected_components_hashable(renames):
 			if len(component) > 1: fault_handler.mutual_recursive_loop(component)
 	
-	def assert_no_epsilon_loops(self, fault_handler:FaultHandler):
-		""" Epsilon Left-Self-Recursion is OK. All other recursive-epsilon-loops are pathological. """
-		epsilon = self.find_epsilon()
+	def assert_no_nullable_loops(self, fault_handler:FaultHandler):
+		""" Nullable Left-Self-Recursion is OK. All other recursive-nullable-loops are pathological. """
+		nullable = self.find_nullable()
 		reaches = collections.defaultdict(set)
 		for rule in self.rules:
-			epsilon_prefix = list(itertools.takewhile(epsilon.__contains__, rule.rhs))
-			if not epsilon_prefix: continue
-			if epsilon_prefix[0] == rule.lhs: epsilon_prefix.pop(0)
-			if rule.lhs in epsilon_prefix:
+			nullable_prefix = list(itertools.takewhile(nullable.__contains__, rule.rhs))
+			if not nullable_prefix: continue
+			if nullable_prefix[0] == rule.lhs: nullable_prefix.pop(0)
+			if rule.lhs in nullable_prefix:
 				# Somehow this case seems qualitatively different.
-				fault_handler.epsilon_right_recursion(rule)
-			reaches[rule.lhs].update(epsilon_prefix)
+				fault_handler.nullable_right_recursion(rule)
+			reaches[rule.lhs].update(nullable_prefix)
 		for component in foundation.strongly_connected_components_hashable(reaches):
 			if len(component) > 1:
-				fault_handler.epsilon_mutual_recursion(component)
+				fault_handler.mutual_nullable_recursion(component)
 	
 	def assert_no_duplicate_rules(self, fault_handler:FaultHandler):
 		for symbol, rule_ids in self.symbol_rule_ids.items():
@@ -449,7 +449,7 @@ class ContextFreeGrammar:
 		self.assert_well_founded(fault_handler)
 		self.assert_no_orphans(fault_handler)
 		self.assert_no_rename_loops(fault_handler)
-		self.assert_no_epsilon_loops(fault_handler)
+		self.assert_no_nullable_loops(fault_handler)
 		if not allow_duplicate_rules:
 			self.assert_no_duplicate_rules(fault_handler)
 			

@@ -113,10 +113,10 @@ class TestTableConstructions(GrammarTester):
 		self.R('Y: b | X')
 		self.pathological = True
 	
-	def test_05_pathology_boundless_epsilon(self):
+	def test_05_pathology_boundless_nullable(self):
 		"""
 		This shows the other fly in the trial_parse ointment: a symbol that produces
-		unbounded repetition of epsilon creates another kind of infinite loop.
+		unbounded nullable repetition creates another kind of infinite loop.
 		"""
 		self.R('S: X b')
 		self.R('X: Y | Y X')
@@ -143,13 +143,13 @@ class TestTableConstructions(GrammarTester):
 		self.pathological = True
 
 	def test_08_zero_or_more(self):
-		""" Epsilon left-recursion in first position is normal. Here S may be epsilon, and is left-recursive. """
+		""" Nullable left-recursion in first position is normal. Here S is nullable (by way of E) and left-recursive. """
 		self.R('S: E | S x')
 		self.R('E: | y')
 		self.good = ['', 'xxx', 'y', 'yxxx']
 		
-	def test_09_pathology_boundless_epsilon_type_two(self):
-		""" The Epsilon Loop Detector can be a tad tricky to get right... """
+	def test_09_pathology_boundless_nullable_type_two(self):
+		""" The Nullable Loop Detector can be a tad tricky to get right... """
 		self.R('S: E | S x')
 		self.R('E: | y | E S')
 		self.pathological = True

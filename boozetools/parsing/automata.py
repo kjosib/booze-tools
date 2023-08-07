@@ -141,6 +141,7 @@ class LR0_State(NamedTuple):
 	"""
 	shift: dict[str, int]  # symbol => state-id
 	reduce: list[int]  # rule-id
+	closure: set[int]  # set of parse-item index
 	
 	def reductions_before(self, lexeme):
 		""" Did I mention LR(0) doesn't worry about look-ahead? """
@@ -155,6 +156,8 @@ class LR0_State(NamedTuple):
 	def has_conflict(self):
 		return self.has_shift_reduce_conflict() or self.has_reduce_reduce_conflict()
 
+	def is_adequate_reduce(self):
+		return len(self.reduce) == 1 and not self.shift
 
 class LookAheadState(NamedTuple):
 	"""
@@ -163,10 +166,14 @@ class LookAheadState(NamedTuple):
 	is a dictionary keyed by look-ahead token.
 	"""
 	shift: dict[str, int]  # symbol => state-id
-	reduce: dict[str, list[int]]  # LALR
+	reduce: dict[str, list[int]]  # symbol => list of rule_id
 	
 	def reductions_before(self, lexeme):
-		return self.reduce.get(lexeme, ())
+		if None in self.reduce:
+			assert len(self.reduce) == 1
+			return self.reduce[None]
+		else:
+			return self.reduce.get(lexeme, ())
 
 	def has_shift_reduce_conflict(self):
 		return bool(self.shift.keys() & self.reduce.keys())
@@ -176,7 +183,7 @@ class LookAheadState(NamedTuple):
 	
 	def has_conflict(self):
 		return self.has_shift_reduce_conflict() or self.has_reduce_reduce_conflict()
-	
+
 def reachable(step: dict, reduce: dict, grammar:ContextFreeGrammar) -> dict:
 	"""
 	This function exists so that parse-table construction algorithms can respect operator
@@ -197,7 +204,7 @@ def reachable(step: dict, reduce: dict, grammar:ContextFreeGrammar) -> dict:
 	get a warning printed on STDERR but otherwise the operator-precedence declarations
 	are ignored in that instance.
 	
-	FIXME: This function should not perform I/O directly.
+	FIXME: This function ought not perform I/O directly.
 	"""
 	for token, rule_id_list in list(reduce.items()):
 		if token not in step: continue
@@ -306,10 +313,14 @@ class DragonBookTable(HandleFindingAutomaton):
 	
 	def get_breadcrumb(self, state_id) -> str: return self.breadcrumbs[state_id]
 	
+	def stats(self):
+		size = len(self.action_matrix)
+		print('Action and Goto: %d states' % size)
+		if self.splits:
+			print("%d nondeterministic splits" % len(self.splits))
+
 	def display(self):
 		mask = lambda xs:[x or "" for x in xs]
-		size = len(self.action_matrix)
-		print('Action and Goto: (%d states)' % size)
 		head = ['', ''] + self.terminals + [''] + self.nonterminals
 		body = []
 		for i, (b, a, g) in enumerate(zip(self.breadcrumbs, self.action_matrix, self.goto_matrix)):
@@ -481,17 +492,23 @@ def tabulate(hfa: HFA[LookAheadState], grammar:ContextFreeGrammar, *, style:Pars
 	action, goto, nonassoc_errors = [], [], set()
 	for q, state in enumerate(hfa.graph):
 		goto.append([state.shift.get(s, 0) for s in nonterminals])
-		action_row = [state.shift.get(s, 0) for s in terminals]
-		for symbol, rule_ids in state.reduce.items():
-			idx = translate[symbol]
-			shift = action_row[idx]
-			if rule_ids == ():
-				# This is how function `reachable(...)` communicates a non-association situation.
-				assert shift == 0
-				nonassoc_errors.add((q,idx))
-			elif shift == 0 and len(rule_ids) == 1:
-				action_row[idx] = encode_reduce(rule_ids[0])
-			else: action_row[idx] = style.decide_inadequacy(q, symbol, shift, rule_ids, grammar.rules)
+		if None in state.reduce:
+			assert len(state.reduce) == 1
+			assert len(state.reduce[None]) == 1, (q, state.reduce[None])
+			sole_action = encode_reduce(state.reduce[None][0])
+			action_row = [sole_action]  * len(terminals)
+		else:
+			action_row = [state.shift.get(s, 0) for s in terminals]
+			for symbol, rule_ids in state.reduce.items():
+				idx = translate[symbol]
+				shift = action_row[idx]
+				if rule_ids == ():
+					# This is how function `reachable(...)` communicates a non-association situation.
+					assert shift == 0
+					nonassoc_errors.add((q,idx))
+				elif shift == 0 and len(rule_ids) == 1:
+					action_row[idx] = encode_reduce(rule_ids[0])
+				else: action_row[idx] = style.decide_inadequacy(q, symbol, shift, rule_ids, grammar.rules)
 		action.append(action_row)
 	
 	for q, t in nonassoc_errors: action[q][t] = 0

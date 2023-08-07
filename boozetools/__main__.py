@@ -17,6 +17,7 @@ from boozetools.macroparse import compaction
 def parse_arguments():
 	parser = argparse.ArgumentParser(prog='py -m boozetools', description=__doc__,)
 	parser.add_argument('source_path', help='path to input file')
+	parser.add_argument("-m", "--method", help="Override the parse table generation method in the %method spec. (LR1, CLR, or LALR)")
 	parser.add_argument('-f', '--force', action='store_true', dest='force', help='allow to write over existing file')
 	parser.add_argument('-o', '--output', help='path to output file')
 	parser.add_argument('-i', '--indent', help='indent the JSON output for easier reading.', action='store_const', dest='indent', const=2, default=None)
@@ -28,24 +29,33 @@ def parse_arguments():
 	# if len(sys.argv) < 2: exit(parser.print_help())
 	return parser.parse_args()
 
+def _method(args):
+	if args.method:
+		from boozetools.parsing.all_methods import PARSE_TABLE_METHODS
+		try: return PARSE_TABLE_METHODS[args.method.upper()]
+		except KeyError: _err("No joy! Valid methods are: "+" ".join(PARSE_TABLE_METHODS.keys()) )
+
+def _err(msg):
+	print(msg, file=sys.stderr)
+	exit(1)
+
 def main(args):
 	if args.verbose: compaction.VERBOSE = True
 	stem, extension = os.path.splitext(args.source_path)
 	target_path = args.output or stem+'.automaton'
 	if os.path.exists(target_path) and not args.force:
-		print('Target file already exists and --force command-line argument was not given.', file=sys.stderr)
-		exit(1)
+		_err("Target file already exists and --force command-line argument was not given.")
 	with(open(args.source_path)) as fh:document = fh.read()
 	strict = not (args.pretty or args.csv or args.dot or args.dev)
 	try:
-		intermediate_form = compile_string(document, strict)
+		intermediate_form = compile_string(document, strict, _method(args))
 		if args.dot: intermediate_form.make_dot_file(target_path+'.dot')
 		textbook_form = intermediate_form.determinize()
 	except DefinitionError as e:
-		print(e.args[0], file=sys.stderr)
-		exit(1)
+		_err(e.args[0])
 	else:
 		if args.pretty: textbook_form.pretty_print()
+		else: textbook_form.report_stats()
 		if args.csv: textbook_form.make_csv(target_path)
 		compact = textbook_form.as_compact_form(filename=os.path.basename(args.source_path))
 		if args.dev:

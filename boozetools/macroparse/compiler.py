@@ -66,7 +66,13 @@ class TextBookForm:
 			self.dfa.stats()
 			self.dfa.display()
 		if self.parse_table is not None:
+			self.parse_table.stats()
 			self.parse_table.display()
+	def report_stats(self):
+		if self.dfa is not None:
+			self.dfa.stats()
+		if self.parse_table is not None:
+			self.parse_table.stats()
 	def make_csv(self, pathstem):
 		if self.dfa is not None:
 			self.dfa.make_csv(pathstem)
@@ -86,14 +92,14 @@ class IntermediateForm(NamedTuple):
 	def make_dot_file(self, path): self.hfa.make_dot_file(path)
 
 
-def compile_string(document:str, strict:bool) -> IntermediateForm:
+def compile_string(document:str, strict:bool, method=None) -> IntermediateForm:
 	text = failureprone.SourceText(document)
-	return _compile_text(text, strict)
+	return _compile_text(text, strict, method)
 
-def compile_file(pathname, *, verbose=False, strict=True) -> dict:
+def compile_file(pathname, *, verbose=False, strict=True, method=None) -> dict:
 	with(open(pathname)) as fh:
 		text = failureprone.SourceText(fh.read(), filename=pathname)
-	intermediate_form = _compile_text(text, strict)
+	intermediate_form = _compile_text(text, strict, method)
 	textbook_form = intermediate_form.determinize()
 	if verbose:
 		print("\n  -- ", pathname, " --")
@@ -104,7 +110,7 @@ STRERROR = {
 	regular.VariableTrailingContextError: "Variable size for both stem and trailing context is not currently supported.",
 }
 
-def _compile_text(document:failureprone.SourceText, strict:bool) -> IntermediateForm:
+def _compile_text(document:failureprone.SourceText, strict:bool, method=None) -> IntermediateForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
 	# The approach is a sort of outside-in parse. The outermost layer concerns the overall markdown document format,
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
@@ -246,7 +252,10 @@ def _compile_text(document:failureprone.SourceText, strict:bool) -> Intermediate
 	# Compose the control tables. (Compaction is elsewhere. Serialization will be straight JSON via standard library.)
 	if condition_definitions: tie_conditions()
 	cfg = ebnf.sugarless_form()
-	hfa = ebnf.method(cfg)
+	if method is None:
+		hfa = ebnf.method(cfg)
+	else:
+		hfa = method(cfg)
 	style = GeneralizedStyle(len(hfa.graph)) if ebnf.is_nondeterministic else DeterministicStyle(ebnf.is_strict)
 	return IntermediateForm(nfa=nfa, scan_actions=scan_actions, hfa=hfa, cfg=cfg, parse_style=style,)
 
