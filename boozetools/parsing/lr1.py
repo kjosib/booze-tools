@@ -14,8 +14,7 @@ def canonical_lr1(grammar: ContextFreeGrammar) -> HFA[LookAheadState]:
 	A Knuth parse-item is like an LR(0) item augmented with the (1) next token
 	expected AFTER the corresponding rule would be recognized. The initial core
 	would look like { .S/# } in the usual notation. Otherwise, the algorithm has
-	much in common with the LR(0) construction above -- but to see that clearly
-	you'll have to look at the function `abstract_lr1_construction(...)`.
+	much in common with the LR(0) construction.
 	"""
 	
 	def build_state(core: frozenset):
@@ -30,8 +29,8 @@ def canonical_lr1(grammar: ContextFreeGrammar) -> HFA[LookAheadState]:
 				shifted_cores[pi.next_symbol].add((item_index + 1, follower))
 				if pi.next_symbol in symbol_front:
 					# i.e. next_symbol is a non-terminal:
-					goto_q = lr0.graph[iso_q].shift[pi.next_symbol]
-					after_set = read_set(item_index+1, {follower}, goto_q)
+					goto_iso_q = lr0.graph[iso_q].shift[pi.next_symbol]
+					after_set = read_set(item_index+1, {follower}, goto_iso_q)
 					return front(pi.next_symbol, after_set)
 		
 		iso_q = lr0.bft.catalog[_isocore(core)]
@@ -128,8 +127,8 @@ def minimal_lr1(grammar: ContextFreeGrammar) -> HFA[LookAheadState]:
 				shifted_cores[pi.next_symbol].add((item_index + 1, follow_set))
 				if pi.next_symbol in symbol_front:
 					# i.e. next_symbol is a non-terminal:
-					goto_q = lr0.graph[iso_q].shift[pi.next_symbol]
-					after_set = read_set(item_index+1, follow_set, goto_q)
+					goto_iso_q = lr0.graph[iso_q].shift[pi.next_symbol]
+					after_set = read_set(item_index+1, follow_set, goto_iso_q)
 					return list(front(iso_q, pi.next_symbol, after_set))
 		
 		def note_reduce(rule_id, look_ahead):

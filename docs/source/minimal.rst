@@ -244,8 +244,6 @@ along with a stand-in for "everything-else" that LALR got right in the first pla
     because the relevant code was shared and perhaps too closely so.
     Either that, or it was insufficient to begin with.
     
-    Depending on when you read this, it may already have been fixed.
-
 I'm not sure this intermediate step is necessarily worthwhile.
 LALR does a lot of work on subsets of tokens,
 and I suspect it's just about the same work-factor if
@@ -365,7 +363,9 @@ c. Treat the propagation step as a transitive-closure problem.
 It will be handy to have a quick way to tell which rule (or its left-hand side) is associated
 with any given parse-item, and the offset from a parse-item to the beginning of its rule.
 
-For any further detail than this, see the actual code.
+For any further detail than this, see the code_.
+
+.. _code: https://github.com/kjosib/booze-tools/blob/master/boozetools/parsing/lr1.py
 
 Results and Next Steps
 ~~~~~~~~~~~~~~~~~~~~~~~~
