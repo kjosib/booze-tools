@@ -340,21 +340,23 @@ class ContextFreeGrammar:
 	
 	def find_first(self):
 		"""
-		Particularly the LL school of grammar processing uses first-sets.
-		These tables answer the question: For each nonterminal symbol,
-		what terminal symbols could it possibly start with?
+		Return a dictionary of sets to answer the question:
+		For each symbol, what terminal symbols might it start with?
 		
-		The FIRST set of a nonterminal is the union of the FIRST sets of each right-hand side.
-		Without nullable symbols, the FIRST set of a right-hand side is that of its first symbol.
-		With them, you need to include all symbols up to the first non-nullable symbol.
+		This is a least-fixed-point problem particularly suited to Tarjan's
+		strongly-connected-components algorithm.
 		
-		Anyway, this is a job for a strongly_connected_components,
-		in part because it also produces a topological sort which
-		allows for a quick determination of the level sets.
+		NB: A nontrivial SCC means the grammar is ill-suited to deterministic methods.
+		    Proof is left as an exercise for the reader.
 		"""
 		
 		# Structure the problem as a graph, called ``first``
-		first = collections.defaultdict(set)
+		first = {
+			s: set() if s in self.symbol_rule_ids else {s}
+			for s in self.symbols
+		}
+		
+		# Each nonterminal absorbs "first" sets from particular others:
 		nullable = self.find_nullable()
 		for rule in self.rules:
 			for symbol in rule.rhs:
@@ -453,4 +455,13 @@ class ContextFreeGrammar:
 		if not allow_duplicate_rules:
 			self.assert_no_duplicate_rules(fault_handler)
 			
+	@classmethod
+	def shorthand(cls, start:str, rules:dict):
+		""" Just a quick way to enter a test-grammar where semantic-value is irrelevant. """
+		cfg = cls()
+		cfg.start.append(start)
+		for lhs, rhs in rules.items():
+			for alt in rhs.split('|'):
+				cfg.add_rule(Rule(lhs, tuple(alt), None, 0, None))
+		return cfg
 

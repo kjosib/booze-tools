@@ -16,6 +16,7 @@ class ParseItem(NamedTuple):
 	next_symbol : Optional[str]  # None means end-of-rule.
 	rule_id : Optional[int]  # None means it's a pseudo-rule for the augmented grammar
 	offset : int
+	read_set: set[str]
 
 class ParseItemMap(NamedTuple):
 	"""
@@ -34,18 +35,20 @@ class ParseItemMap(NamedTuple):
 	parse_items : list[ParseItem]
 	symbol_front : dict[str: list[int]]
 	language_front : list[int]
+	transparent : frozenset[int]  # Parse-item indices where all symbols after the dot are nullable.
 	
 	@staticmethod
 	def from_grammar(grammar: ContextFreeGrammar):
 		parse_item = []
 		language_front = []
+		transparent = set()
 		symbol_front = {nonterminal: [] for nonterminal in grammar.symbol_rule_ids}
 		
 		def plonk(where, rhs):
 			where.append(len(parse_item))
 			for offset, symbol in enumerate(rhs):
-				parse_item.append(ParseItem(symbol, rule_id, offset))
-			parse_item.append(ParseItem(None, rule_id, len(rhs)))
+				parse_item.append(ParseItem(symbol, rule_id, offset, set()))
+			parse_item.append(ParseItem(None, rule_id, len(rhs), set()))
 		
 		for rule_id, rule in enumerate(grammar.rules):
 			plonk(symbol_front[rule.lhs], rule.rhs)
@@ -54,7 +57,22 @@ class ParseItemMap(NamedTuple):
 		for language in grammar.start:
 			plonk(language_front, [language])
 		
-		return ParseItemMap(parse_item, symbol_front, language_front)
+		nullable = grammar.find_nullable()
+		symbol_first_set = grammar.find_first()
+		for index in reversed(range(len(parse_item))):
+			pi = parse_item[index]
+			if pi.next_symbol is None:
+				transparent.add(index)
+			elif pi.next_symbol in symbol_front:
+				pi.read_set.update(symbol_first_set[pi.next_symbol])
+				if pi.next_symbol in nullable:
+					pi.read_set.update(parse_item[index + 1].read_set)
+					if index + 1 in transparent:
+						transparent.add(index)
+			else:
+				pi.read_set.add(pi.next_symbol)
+		
+		return ParseItemMap(parse_item, symbol_front, language_front, frozenset(transparent))
 
 
 def lr0_construction(pim:ParseItemMap) -> HFA[LR0_State]:
@@ -92,7 +110,7 @@ def lr0_construction(pim:ParseItemMap) -> HFA[LR0_State]:
 		}
 		graph.append(LR0_State(shift=shift, reduce=reduce, closure=closure))
 
-	parse_items, symbol_front, language_front = pim
+	parse_items, symbol_front, language_front, transparent = pim
 	
 	bft = BreadthFirstTraversal()
 	initial = [bft.lookup(frozenset([item_index])) for item_index in language_front]
