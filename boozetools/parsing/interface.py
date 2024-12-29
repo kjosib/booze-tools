@@ -79,9 +79,9 @@ class HandleFindingAutomaton:
 	
 	# The first several methods are involved in actually finding handles.
 	def get_initial(self, language) -> int: raise NotImplementedError(type(self), 'return the initial state id for the selected language, which by the way is usually `None `.')
-	def get_translation(self, symbol) -> int: raise NotImplementedError(type(self, 'Because scanners should not care the order of terminals in the parse table. Zero is reserved for end-of-text.'))
+	def get_translation(self, symbol) -> int: raise NotImplementedError(type(self), 'Because scanners should not care the order of terminals in the parse table. Zero is reserved for end-of-text.')
 	def get_action(self, state_id:int, terminal_id) -> int: raise NotImplementedError(type(self), 'Positive -> successor state id. Negative -> rule id for reduction. Zero -> error.')
-	def get_goto(self, state_id:int, nonterminal_id) -> int: raise NotImplementedError(type(self, 'return a successor state id.'))
+	def get_goto(self, state_id:int, nonterminal_id) -> int: raise NotImplementedError(type(self), 'return a successor state id.')
 	def get_breadcrumb(self, state_id:int) -> str: raise NotImplementedError(type(self), 'This is used in error reporting. Return the name of the symbol that shifts into this state.')
 	def interactive_step(self, state_id:int) -> int: raise NotImplementedError(type(self), 'Return the reduce instruction for interactive-reducing states; zero otherwise.')
 
@@ -93,7 +93,6 @@ class HandleFindingAutomaton:
 	# These next two methods are in support of GLR parsing:
 	def get_split_offset(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
 	def get_split(self, split_id:int) -> list: raise NotImplementedError(type(self), "A list of parse actions of the usual (deterministic) form.")
-
 
 class AbstractParser:
 	"""
