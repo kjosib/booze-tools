@@ -20,8 +20,10 @@ from ..parsing import shift_reduce
 from ..parsing.lalr import lalr_construction
 from ..parsing.automata import tabulate, DeterministicStyle
 
-class PatternError(Exception): pass
-class VariableTrailingContextError(PatternError): pass
+class PatternError(Exception):
+	gripe = "Malformed pattern."
+class VariableTrailingContextError(PatternError):
+	gripe = "Variable size for both stem and trailing context in the same pattern is not currently supported."
 class NameTooShort(Exception): pass
 
 
@@ -210,8 +212,7 @@ class RuleAnalyzer(StrictPass):
 		elif stemSize:
 			trailCode = stemSize
 		else:
-			raise VariableTrailingContextError(
-				'Variable stem and variable trailing context in the same pattern are not presently supported.')
+			raise VariableTrailingContextError()
 		return self(node.left_context), expression, trailCode
 	
 	def pattern_only_right_context(self, node):

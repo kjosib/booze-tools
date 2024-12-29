@@ -362,7 +362,9 @@ class DragonBookTable(HandleFindingAutomaton):
 			if cid >= 0:
 				mentions[cid].add(provenance)
 		return zip(self.constructors, mentions)
-
+	
+	def each_terminal_kind(self) -> frozenset[str]:
+		return frozenset(self.terminals)
 
 class ParsingStyle:
 	"""

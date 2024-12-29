@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.abspath('.'))
 # -- Project information -----------------------------------------------------
 
 project = 'booze-tools'
-copyright = '2019, Ian Kjos'
-author = 'Ian Kjos'
+copyright = '2019, Beth Kjos'
+author = 'Beth Kjos'
 
 
 # -- General configuration ---------------------------------------------------
@@ -28,8 +28,7 @@ author = 'Ian Kjos'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-	# 'sphinx.ext.napoleon',
-	# 'recommonmark',
+	"sphinx_rtd_theme",
 ]
 
 # Add any paths that contain templates here, relative to this directory.

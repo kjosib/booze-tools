@@ -106,9 +106,6 @@ def compile_file(pathname, *, verbose=False, strict=True, method=None) -> dict:
 		textbook_form.pretty_print()
 	return textbook_form.as_compact_form(filename=os.path.basename(pathname))
 
-STRERROR = {
-	regular.VariableTrailingContextError: "Variable size for both stem and trailing context is not currently supported.",
-}
 
 def _compile_text(document:failureprone.SourceText, strict:bool, method=None) -> IntermediateForm:
 	""" This has the job of reading the specification and building the textbook-form tables. """
@@ -116,12 +113,6 @@ def _compile_text(document:failureprone.SourceText, strict:bool, method=None) ->
 	# which is dealt with in the main body of this routine prior to determinizing and serializing everything.
 	# Each major sub-language is line-oriented and interpreted with one of the following five subroutines:
 	
-	def handle_meta_exception(e: Exception, pattern_text:str):
-		if isinstance(e, regular.PatternError):
-			raise grammar.DefinitionError('At line %d: %s'%(line_number, STRERROR[type(e)].format(e.args))) from None
-		else:
-			raise grammar.DefinitionError('At line %d: Malformed pattern.' % line_number) from None
-
 	def definitions():
 		name, subexpression = current_line_text.split(None, 1)
 		regular.let_subexpression(env, name, subexpression)
@@ -134,14 +125,14 @@ def _compile_text(document:failureprone.SourceText, strict:bool, method=None) ->
 		At some point it might be nice to add validation that these are all used correctly...
 		"""
 		name, includes = error_help.parse(current_line_text, line_number, "condition")
-		if name in condition_definitions: error_help.gripe('Re-declared scan-condition %r; this is unexpected.'%name)
+		if name in condition_definitions: error_help.gripe_about(current_line_text, 0, 'Re-declared scan-condition %r; this is unexpected.'%name)
 		condition_definitions[name] = includes
 
 	def note_pattern(pattern_text):
 		# Now patterns that share a trail length can also share a rule ID number.
 		try: rule_pattern = regular.analyze_pattern(pattern_text, env)
 		except regular.PatternError as e:
-			handle_meta_exception(e, pattern_text)
+			raise grammar.DefinitionError('At line %d: %s' % (line_number, e.gripe)) from None
 		else: pending_patterns[rule_pattern.trail_code].append(rule_pattern)
 
 	def patterns():

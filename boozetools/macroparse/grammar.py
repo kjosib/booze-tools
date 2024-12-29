@@ -167,7 +167,7 @@ def list_of(what, sep):
 	METAGRAMMAR.rule(head, '.%s %s .%s' % (head, sep, what))(APPEND)
 	return head
 def one_or_more(what):
-	head = 'one_or_more(%r)' % (what)
+	head = 'one_or_more(%r)' % [what]
 	METAGRAMMAR.rule(head, '.%s' % what)(FIRST)
 	METAGRAMMAR.rule(head, '.%s .%s' % (head, what))(APPEND)
 	return head
@@ -310,12 +310,12 @@ class EBNF_Definition:
 		self.is_nondeterministic = False
 		self.is_strict = strict
 		self.__void_symbols = set()
-		self.__void_sets = {self.__void_symbols.__contains__}
+		self.__void_sets = [self.__void_symbols.__contains__]
 		self.method = PARSE_TABLE_METHODS["LR1"]
 		self.__schedule = []
 	
 	def is_symbol_void(self, symbol:str):
-		return any(predicate(symbol) for predicate in self.__void_sets)
+		return any(predicate(symbol) for predicate in self.__void_sets)  # NOQA: The predicates are indeed callable.
 	
 	def read_precedence_line(self, line:str, line_nr:int):
 		direction, symbols = self.error_help.parse(line, line_nr, 'precedence')
@@ -326,7 +326,7 @@ class EBNF_Definition:
 		elif direction is METHOD: self.method = symbols
 		elif direction is VOID: self.__void_symbols.update(symbols)
 		elif direction is VOID_SET:
-			try: self.__void_sets.update(SET_PATTERNS[k.lower()] for k in symbols)
+			try: self.__void_sets.extend(SET_PATTERNS[k.lower()] for k in symbols)
 			except KeyError: self.error_help.gripe_about(line, 10, "The only valid void_set patterns are %r"%(list(SET_PATTERNS)))
 		else: self.plain_cfg.assoc(direction, symbols)
 

@@ -166,9 +166,9 @@ class CompactHFA(HandleFindingAutomaton):
 			if cid >= 0:
 				mentions[cid].add(line_number)
 		return zip(self.__constructor, mentions)
-
-
-		
+	
+	def each_terminal_kind(self) -> frozenset[str]:
+		return frozenset(self.terminals)
 
 def _expand_rules(raw):
 	"""

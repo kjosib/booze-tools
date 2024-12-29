@@ -93,6 +93,22 @@ class HandleFindingAutomaton:
 	# These next two methods are in support of GLR parsing:
 	def get_split_offset(self) -> int: raise NotImplementedError(type(self), "Action entries >= this number mean to split the parser.")
 	def get_split(self, split_id:int) -> list: raise NotImplementedError(type(self), "A list of parse actions of the usual (deterministic) form.")
+	
+	# Last, a small concession to error handling:
+	def each_terminal_kind(self) -> frozenset[str]: raise NotImplementedError(type(self), "What it says on the tin.")
+	
+	def expected_terminals_at_state(self, state_id:int) -> frozenset[str]:
+		"""
+		Return the set of expected terminal symbols at a given parse state.
+
+		This function depends on the immediate-error-detection property
+		which LR1 tables have and LALR tables lack. So use (minimal) LR1.
+		"""
+		return frozenset(
+			symbol
+			for symbol in self.each_terminal_kind()
+			if self.get_action(state_id, self.get_translation(symbol))
+		)
 
 class AbstractParser:
 	"""

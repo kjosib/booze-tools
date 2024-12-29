@@ -136,10 +136,18 @@ class SourceText:
 		r = max(0, row - self.first_line)
 		return self.content[self.__bounds[r]:self.__bounds[r + 1]]
 	
-	def complain(self, a_slice:slice, message:str):
+	def _format_message(self, row, col, message):
+		prefix = "At" if self.filename is None else str(self.filename)+":"
+		return "%s line %d, column %d: %s" % (prefix, row, col + 1, message)
+	
+	def complaint(self, a_slice:slice, message:str):
 		left, right = a_slice.start, a_slice.stop
 		row, col = self.find_row_col(left)
+		reference = self._format_message(row, col, message)
 		line = self.line_of_text(row)
-		if self.filename is None: print("At line %d, column %d:" % (row, col + 1), message, file=sys.stderr)
-		else: print("%s:%d column %d: " % (self.filename, row, col + 1), message, file=sys.stderr)
-		print(illustration(line, col, right-left, prefix=' >>> '), file=sys.stderr)
+		illustrated = illustration(line, col, right - left, prefix=' >>> ')
+		return "%s\n%s"%(reference, illustrated)
+
+	def complain(self, a_slice:slice, message:str):
+		print(self.complaint(a_slice, message), file=sys.stderr)
+

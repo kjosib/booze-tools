@@ -90,7 +90,7 @@ On-Error Call-Backs:
     For everything else, there are error call-backs.
     If you look in ``boozetools/macroparse/runtime.py``
     (`here <https://github.com/kjosib/booze-tools/blob/master/boozetools/macroparse/runtime.py>`_)
-    you'll find ``class AbstractTypical`` which defines default behavior for
+    you'll find ``class TypicalApplication`` which defines default behavior for
     situations in which (a) the parser's error-rule mechanism was unable to resolve,
     or (b) a stuck scanner.
 
